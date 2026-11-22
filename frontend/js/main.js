@@ -144,9 +144,12 @@ class RoboForgeApp {
       const a3 = ((sDeg + eDeg + wDeg) * Math.PI) / 180;
       const tcpX = l1 * Math.cos(a1) + l2 * Math.cos(a2) + l3 * Math.cos(a3);
       const tcpZ = lBase + l1 * Math.sin(a1) + l2 * Math.sin(a2) + l3 * Math.sin(a3);
-      const tcpEl = document.querySelector(".arm-tcp-coords");
+      const tcpEl = document.querySelector(".arm-tcp-banner strong") || document.querySelector(".arm-tcp-coords");
       if (tcpEl) {
         tcpEl.textContent = `X ${tcpX.toFixed(1)} · Y 0.0 · Z ${tcpZ.toFixed(1)} mm`;
+      }
+      if (this.showLoads3D) {
+        this._refreshEngineeringOverlays();
       }
     };
     ids.forEach((id) => {
