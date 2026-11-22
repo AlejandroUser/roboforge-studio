@@ -12,6 +12,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .cad.arm_assembly import (
+    build_and_export_arm_assembly,
+    compute_arm_design_hash,
+    export_arm_mujoco,
+    export_arm_urdf,
+    export_bom_csv,
+)
 from .cad.exporter import (
     EXPORTS_ROOT,
     PROJECT_ROOT,
@@ -30,6 +37,8 @@ from .cad.gear_variants import generate_all_gear_variants
 from .cad.mount_variants import generate_all_mount_variants
 from .cad.step_analyzer import analyze_step_file
 from .cad.variants import generate_all_variants
+from .physics.arm_kinematics import evaluate_arm_assembly, load_arm_presets
+from .physics.copilot import run_closed_loop_copilot
 from .physics.dfm_rules import evaluate_global_alerts
 from .physics.fea_solver import run_gear_fea, run_mount_fea, run_step_fea
 from .physics.gear_mechanics import (
@@ -56,6 +65,10 @@ from .physics.profiles import (
     save_custom_printer,
 )
 from .schemas import (
+    ArmAssemblyRequest,
+    ArmAssemblyResponse,
+    CopilotRequest,
+    CopilotResponse,
     CustomMaterialCreate,
     FEARequest,
     FEAResult,
@@ -101,13 +114,16 @@ GEAR_VARIANT_ORDER: tuple[GearVariantKind, ...] = (
 )
 
 HASH_PATTERN = re.compile(r"^(?:[a-f0-9]{8,64}|ref_[a-f0-9]{12})$")
-FILENAME_PATTERN = re.compile(r"^[a-z0-9_]+\.(glb|step|stl|3mf)$")
+FILENAME_PATTERN = re.compile(r"^[a-z0-9_]+\.(glb|step|stl|3mf|urdf|xml|csv)$")
 
 MEDIA_TYPES: dict[str, str] = {
     ".glb": "model/gltf-binary",
     ".stl": "model/stl",
     ".step": "application/step",
     ".3mf": "model/3mf",
+    ".urdf": "application/xml",
+    ".xml": "application/xml",
+    ".csv": "text/csv; charset=utf-8",
 }
 
 app = FastAPI(
@@ -682,6 +698,87 @@ def run_gear_fea_validation(fea_req: GearFEARequest) -> FEAResult:
         raise HTTPException(
             status_code=500,
             detail=f"Error en el solver FEA 3D de transmisión (Gmsh/Tet4): {exc}",
+        ) from exc
+
+
+@app.get("/api/arm/presets")
+def get_arm_presets() -> dict[str, Any]:
+    return load_arm_presets()
+
+
+@app.post("/api/arm/generate", response_model=ArmAssemblyResponse)
+def generate_arm_assembly(req: ArmAssemblyRequest) -> ArmAssemblyResponse:
+    materials = load_materials()
+    if req.material_id not in materials:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Material '{req.material_id}' no encontrado en la base de datos.",
+        )
+    material = materials[req.material_id]
+
+    design_hash = compute_arm_design_hash(req)
+    out_dir = get_export_dir(design_hash)
+
+    cad_result = build_and_export_arm_assembly(
+        req=req,
+        material=material,
+        out_dir=out_dir,
+        design_hash=design_hash,
+    )
+    segment_volumes_mm3 = cad_result["segment_volumes_mm3"]
+
+    kin_result = evaluate_arm_assembly(
+        req=req,
+        segment_volumes_mm3=segment_volumes_mm3,
+        material=material,
+    )
+
+    joints = kin_result["joints"]
+    bom = kin_result["bom"]
+
+    urdf_path = out_dir / "arm_assembly.urdf"
+    mujoco_path = out_dir / "arm_mujoco.xml"
+    bom_csv_path = out_dir / "arm_bom.csv"
+
+    export_arm_urdf(req, joints, urdf_path)
+    export_arm_mujoco(req, joints, mujoco_path)
+    export_bom_csv(bom, bom_csv_path)
+
+    presets_data = load_arm_presets()
+    preset_info = presets_data.get("presets", {}).get(req.preset, {})
+    preset_name = preset_info.get("name", req.preset)
+
+    return ArmAssemblyResponse(
+        design_hash=design_hash,
+        preset_name=preset_name,
+        material_name=material.get("name", req.material_id),
+        dof=req.dof,
+        max_reach_mm=kin_result["max_reach_mm"],
+        total_arm_mass_kg=kin_result["total_arm_mass_kg"],
+        printed_mass_g=kin_result["printed_mass_g"],
+        estimated_total_cost_usd=kin_result["estimated_total_cost_usd"],
+        tcp_position_mm=kin_result["tcp_position_mm"],
+        tcp_deflection_mm=kin_result["tcp_deflection_mm"],
+        joints=joints,
+        bom=bom,
+        global_alerts=kin_result.get("global_alerts", []),
+        glb_url=f"/api/files/{design_hash}/arm_assembly.glb",
+        step_url=f"/api/files/{design_hash}/arm_assembly.step",
+        stl_url=f"/api/files/{design_hash}/arm_assembly.stl",
+        urdf_url=f"/api/files/{design_hash}/arm_assembly.urdf",
+        mujoco_url=f"/api/files/{design_hash}/arm_mujoco.xml",
+        bom_csv_url=f"/api/files/{design_hash}/arm_bom.csv",
+    )
+
+
+@app.post("/api/copilot/optimize", response_model=CopilotResponse)
+def optimize_with_copilot(req: CopilotRequest) -> CopilotResponse:
+    try:
+        return run_closed_loop_copilot(req)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error en el copiloto de optimización: {exc}",
         ) from exc
 
 

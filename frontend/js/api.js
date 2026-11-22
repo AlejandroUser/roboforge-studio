@@ -220,6 +220,36 @@ export async function deleteCustomMaterial(materialId) {
 }
 
 /**
+ * Obtiene presets de Brazo Completo (4–6 DOF) desde GET /api/arm/presets.
+ */
+export async function fetchArmPresets() {
+  const raw = await requestJson("/api/arm/presets", { method: "GET" });
+  return raw?.presets || raw?.arms || raw || {};
+}
+
+/**
+ * Genera ensamblaje 3D completo + URDF + MuJoCo + BOM vía POST /api/arm/generate.
+ */
+export async function generateArmAssembly(payload, signal) {
+  return requestJson("/api/arm/generate", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    signal,
+  });
+}
+
+/**
+ * Ejecuta el Copiloto IA de optimización en bucle cerrado vía POST /api/copilot/optimize.
+ */
+export async function runCopilotOptimize(payload, signal) {
+  return requestJson("/api/copilot/optimize", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    signal,
+  });
+}
+
+/**
  * Sube un archivo .STEP/.STP a POST /api/analyze-step y retorna StepReferenceAnalysis.
  */
 export async function analyzeStepFile(file) {

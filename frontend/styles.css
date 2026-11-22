@@ -1990,6 +1990,204 @@ input[type="range"]:disabled {
   background: var(--bg-hover);
 }
 
+/* ==========================================================================
+   HITO 5: COPILOT IA & ARM ASSEMBLY (TORQUES / BOM / URDF / MUJOCO)
+   ========================================================================== */
+
+.copilot-section {
+  background: linear-gradient(180deg, rgba(167, 139, 250, 0.08) 0%, var(--bg-surface) 100%);
+  border-color: rgba(167, 139, 250, 0.3);
+}
+
+.copilot-input-row {
+  display: flex;
+  gap: 6px;
+}
+
+.copilot-input-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-copilot {
+  border: 1px solid rgba(167, 139, 250, 0.55);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.35), rgba(56, 189, 248, 0.25));
+  color: #f5f3ff;
+  border-radius: var(--radius-sm);
+  padding: 6px 11px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.14s ease;
+}
+
+.btn-copilot:hover:not(:disabled) {
+  filter: brightness(1.12);
+  border-color: #c4b5fd;
+}
+
+.btn-copilot:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.copilot-result {
+  background: var(--bg-root);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.copilot-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.copilot-result-head small {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.copilot-summary {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.copilot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.copilot-chip {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: #ddd6fe;
+  background: rgba(139, 92, 246, 0.14);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* Arm Assembly Right Panel */
+.arm-panel-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.arm-panel-card h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent-cyan);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.arm-downloads-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.btn-download-sim {
+  border-color: rgba(167, 139, 250, 0.42);
+  background: rgba(167, 139, 250, 0.12);
+  color: #ddd6fe;
+}
+
+.btn-download-sim:hover {
+  border-color: #c4b5fd;
+  background: rgba(167, 139, 250, 0.24);
+  color: #ffffff;
+}
+
+.btn-download-bom {
+  border-color: rgba(245, 158, 11, 0.42);
+  background: rgba(245, 158, 11, 0.12);
+  color: #fcd34d;
+}
+
+.btn-download-bom:hover {
+  border-color: #fbbf24;
+  background: rgba(245, 158, 11, 0.24);
+  color: #ffffff;
+}
+
+.arm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.arm-table th {
+  text-align: left;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 5px 5px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.arm-table td {
+  padding: 6px 5px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  color: var(--text-primary);
+  vertical-align: top;
+}
+
+.arm-table td.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.arm-table tr:last-child td {
+  border-bottom: none;
+}
+
+.arm-table .sub-spec {
+  display: block;
+  font-size: 9.5px;
+  color: var(--text-muted);
+}
+
+.arm-tcp-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: var(--bg-root);
+  border: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+.arm-tcp-banner strong {
+  color: var(--accent-emerald);
+}
+
 /* Toast */
 .toast {
   position: fixed;

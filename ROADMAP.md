@@ -1,6 +1,6 @@
 # RoboForge Studio — Roadmap & Gestión de Proyecto
 
-> Ver estrategia completa hacia la v2.0 en [`docs/ARCHITECTURE_V2.md`](docs/ARCHITECTURE_V2.md) y estudio de brazos robóticos avanzados en [`docs/ROBOTIC_ARMS_REFERENCE.md`](docs/ROBOTIC_ARMS_REFERENCE.md).
+> Estrategia de arquitectura: [`docs/ARCHITECTURE_V2.md`](docs/ARCHITECTURE_V2.md) | Ingeniería de brazos robóticos avanzados: [`docs/ROBOTIC_ARMS_REFERENCE.md`](docs/ROBOTIC_ARMS_REFERENCE.md).
 
 ## Hito 1 — MVP Funcional (Completado ✅)
 - [x] Infraestructura de proyecto + Agent Factory (`AGENTS.md`, `.agents/skills/`).
@@ -29,11 +29,13 @@
 - [x] 3 variantes B-Rep en `build123d` + ecuación de Lewis + FEA 3D real (`POST /api/gears/fea`).
 
 ## Hito 4 — Perfiles de Impresora/Material + `.3MF` Inteligente + Ghost Overlay `.STEP` (Completado ✅)
-- [x] Estudio de ingeniería de brazos robóticos avanzados ([`docs/ROBOTIC_ARMS_REFERENCE.md`](docs/ROBOTIC_ARMS_REFERENCE.md): PAROL6, AR4-MK5, SO-ARM100, Faze4, QDD cicloidales, UR5e/Franka CRB & eje hueco).
-- [x] 5 perfiles reales de impresoras 3D (`Bambu X1C`, `Prusa MK4S`, `Voron 2.4`, `Creality K1C`, `Ender 3 V3`) + CRUD persistente de impresoras y materiales personalizados (`user_profiles.json`) + alertas DFM de tamaño de cama y cámara cerrada.
-- [x] **Exportador `.3MF` Inteligente** (OPC ZIP con 2 objetos: malla principal + `RoboForge_Refuerzo_100pct_Modifier` en zona crítica estructural para OrcaSlicer/Bambu Studio/PrusaSlicer) en las 3 familias.
-- [x] **Ghost Overlay `.STEP`** en el visor 3D (superposición holográfica cian translúcida de la pieza original subida).
+- [x] Estudio de ingeniería de brazos robóticos avanzados ([`docs/ROBOTIC_ARMS_REFERENCE.md`](docs/ROBOTIC_ARMS_REFERENCE.md)).
+- [x] 5 perfiles reales de impresoras 3D + CRUD persistente de impresoras y materiales personalizados (`user_profiles.json`) + alertas DFM de cama y cámara cerrada.
+- [x] Exportador `.3MF` Inteligente (OPC ZIP multi-objeto con malla modificadora de relleno 100% en zona crítica FEA).
+- [x] Ghost Overlay `.STEP` holográfico translúcido en el visor 3D.
 
-## Hito 5 — Próximo Gran Salto (Ver `docs/ARCHITECTURE_V2.md`)
-- [ ] **Cadena Cinemática Multi-Eslabón (Brazo Completo 4–6 DOF)** con cálculo de cargas en cascada, exportación **URDF / MuJoCo XML** y **BOM completa**.
-- [ ] **Migración UI a React + TypeScript + React Three Fiber** + **Copiloto IA en bucle cerrado**.
+## Hito 5 — Brazo Completo Multi-Eslabón (4–6 DOF) + URDF/MuJoCo + BOM + Copiloto IA (Completado ✅)
+- [x] **4ª Pestaña `Brazo Completo`:** 4 presets inspirados en referentes reales (`PAROL6 6-DOF`, `AR4-MK5 Industrial`, `SO-ARM LeRobot`, `Cobot Hueco UR`).
+- [x] **Cinemática Directa Interactiva (FK)** y **Cargas / Torques en Cascada** (`J1 Hombro`, `J2 Codo`, `J3 Muñeca`) con recomendación de actuadores y deflexión acumulada en el TCP.
+- [x] **Ensamblaje 3D articulado en `build123d`** + exportación directa **`.STEP`**, **`.STL`**, **`.URDF` (ROS 2 / Gazebo)**, **`.XML` (MuJoCo)** y **`BOM .CSV`**.
+- [x] **Copiloto IA en Bucle Cerrado (`POST /api/copilot/optimize`):** interpreta requisitos en español/inglés y converge automáticamente a la geometría más ligera que cumple FS y deflexión objetivo.

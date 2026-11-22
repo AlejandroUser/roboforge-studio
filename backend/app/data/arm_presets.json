@@ -1,0 +1,100 @@
+{
+  "presets": {
+    "parol6_desktop": {
+      "id": "parol6_desktop",
+      "name": "PAROL6 6-DOF",
+      "subtitle": "Brazo de escritorio 6-DOF (~445 mm / 1.0 kg) en PETG-CF",
+      "defaults": {
+        "preset": "parol6_desktop",
+        "dof": 6,
+        "payload_kg": 1.0,
+        "base_height_mm": 95.0,
+        "upper_arm_mm": 200.0,
+        "forearm_mm": 170.0,
+        "wrist_mm": 75.0,
+        "link_style": "hollow_cobot",
+        "shoulder_joint_deg": 35.0,
+        "elbow_joint_deg": -55.0,
+        "wrist_joint_deg": 20.0,
+        "gear_ratio_shoulder": 20.0,
+        "gear_ratio_elbow": 10.0,
+        "max_accel_rad_s2": 12.0,
+        "material_id": "petg_cf",
+        "print_orientation": "xy_flat",
+        "printer_id": "bambu_x1c"
+      }
+    },
+    "ar4_industrial": {
+      "id": "ar4_industrial",
+      "name": "AR4-MK5 Industrial",
+      "subtitle": "Brazo semi-industrial 6-DOF (~630 mm / 2.0 kg) en PA12-CF",
+      "defaults": {
+        "preset": "ar4_industrial",
+        "dof": 6,
+        "payload_kg": 2.0,
+        "base_height_mm": 120.0,
+        "upper_arm_mm": 290.0,
+        "forearm_mm": 240.0,
+        "wrist_mm": 100.0,
+        "link_style": "organic_ibeam",
+        "shoulder_joint_deg": 28.0,
+        "elbow_joint_deg": -48.0,
+        "wrist_joint_deg": 20.0,
+        "gear_ratio_shoulder": 40.0,
+        "gear_ratio_elbow": 20.0,
+        "max_accel_rad_s2": 10.0,
+        "material_id": "pa12_cf",
+        "print_orientation": "xy_flat",
+        "printer_id": "voron_24"
+      }
+    },
+    "so_arm_lerobot": {
+      "id": "so_arm_lerobot",
+      "name": "SO-ARM LeRobot",
+      "subtitle": "Ultraligero 5-DOF para IA y teleoperación (~315 mm / 0.4 kg)",
+      "defaults": {
+        "preset": "so_arm_lerobot",
+        "dof": 5,
+        "payload_kg": 0.4,
+        "base_height_mm": 72.0,
+        "upper_arm_mm": 135.0,
+        "forearm_mm": 120.0,
+        "wrist_mm": 60.0,
+        "link_style": "rounded_truss",
+        "shoulder_joint_deg": 40.0,
+        "elbow_joint_deg": -65.0,
+        "wrist_joint_deg": 25.0,
+        "gear_ratio_shoulder": 8.0,
+        "gear_ratio_elbow": 6.0,
+        "max_accel_rad_s2": 18.0,
+        "material_id": "pla_plus",
+        "print_orientation": "xy_flat",
+        "printer_id": "prusa_mk4s"
+      }
+    },
+    "cobot_hollow_ur": {
+      "id": "cobot_hollow_ur",
+      "name": "Cobot Hueco UR",
+      "subtitle": "Cobot 6-DOF de eje hueco con QDD cicloidal (~700 mm / 3.5 kg)",
+      "defaults": {
+        "preset": "cobot_hollow_ur",
+        "dof": 6,
+        "payload_kg": 3.5,
+        "base_height_mm": 135.0,
+        "upper_arm_mm": 320.0,
+        "forearm_mm": 270.0,
+        "wrist_mm": 110.0,
+        "link_style": "hollow_cobot",
+        "shoulder_joint_deg": 25.0,
+        "elbow_joint_deg": -45.0,
+        "wrist_joint_deg": 20.0,
+        "gear_ratio_shoulder": 50.0,
+        "gear_ratio_elbow": 30.0,
+        "max_accel_rad_s2": 8.0,
+        "material_id": "pa12_cf",
+        "print_orientation": "xy_flat",
+        "printer_id": "voron_24"
+      }
+    }
+  }
+}

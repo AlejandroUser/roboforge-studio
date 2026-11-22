@@ -1,3 +1,5 @@
+from .arm_kinematics import evaluate_arm_assembly, load_arm_presets
+from .copilot import run_closed_loop_copilot
 from .dfm_rules import evaluate_global_alerts
 from .fea_solver import run_gear_fea, run_mount_fea, run_step_fea
 from .gear_mechanics import (
@@ -27,6 +29,7 @@ __all__ = [
     "load_presets",
     "load_mount_presets",
     "load_gear_presets",
+    "load_arm_presets",
     "load_printers",
     "save_custom_printer",
     "delete_custom_printer",
@@ -36,10 +39,12 @@ __all__ = [
     "evaluate_variant_metrics",
     "evaluate_mount_metrics",
     "evaluate_gear_metrics",
+    "evaluate_arm_assembly",
     "evaluate_global_alerts",
     "evaluate_mount_global_alerts",
     "evaluate_gear_global_alerts",
     "evaluate_printer_dfm_alerts",
+    "run_closed_loop_copilot",
     "run_simp_cantilever",
     "extract_organic_void_polygons",
     "run_step_fea",

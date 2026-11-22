@@ -237,6 +237,108 @@ const FALLBACK_GEAR_DEFAULTS = {
   },
 };
 
+const ARM_META = {
+  parol6_desktop: {
+    label: "PAROL6 6-DOF",
+    subtitle: "Desktop industrial 6-DOF · 1 kg",
+    icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M5 20H15M8 20V16L13 10L18 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="16" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="13" cy="10" r="1.8" stroke="currentColor" stroke-width="1.5"/><circle cx="18" cy="6" r="1.5" fill="currentColor"/></svg>`,
+  },
+  ar4_industrial: {
+    label: "AR4-MK5 Industrial",
+    subtitle: "Alcance extendido · 2.2 kg",
+    icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M4 20H14M7 20V14L14 7L20 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="7" cy="14" r="2.2" stroke="currentColor" stroke-width="1.6"/><circle cx="14" cy="7" r="2" stroke="currentColor" stroke-width="1.6"/></svg>`,
+  },
+  so_arm_lerobot: {
+    label: "SO-ARM LeRobot",
+    subtitle: "Compacto servo bus · 0.5 kg",
+    icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M6 20H14M10 20V15L15 11L18 9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="15" r="1.8" stroke="currentColor" stroke-width="1.5"/><circle cx="15" cy="11" r="1.6" stroke="currentColor" stroke-width="1.5"/></svg>`,
+  },
+  cobot_hollow_ur: {
+    label: "Cobot Hueco UR",
+    subtitle: "Cobot tubular QDD · 3.0 kg",
+    icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M4 20H15M8 20V15L12 8L19 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="15" r="2.3" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="8" r="2.1" stroke="currentColor" stroke-width="1.6"/><circle cx="19" cy="7" r="1.6" stroke="currentColor" stroke-width="1.5"/></svg>`,
+  },
+};
+
+const FALLBACK_ARM_DEFAULTS = {
+  parol6_desktop: {
+    preset: "parol6_desktop",
+    dof: 6,
+    payload_kg: 1.0,
+    base_height_mm: 95.0,
+    upper_arm_mm: 200.0,
+    forearm_mm: 170.0,
+    wrist_mm: 75.0,
+    link_style: "hollow_cobot",
+    shoulder_joint_deg: 35.0,
+    elbow_joint_deg: -55.0,
+    wrist_joint_deg: 20.0,
+    gear_ratio_shoulder: 20.0,
+    gear_ratio_elbow: 10.0,
+    max_accel_rad_s2: 12.0,
+    material_id: "petg_cf",
+    print_orientation: "xy_flat",
+    printer_id: "bambu_x1c",
+  },
+  ar4_industrial: {
+    preset: "ar4_industrial",
+    dof: 6,
+    payload_kg: 2.2,
+    base_height_mm: 120.0,
+    upper_arm_mm: 280.0,
+    forearm_mm: 240.0,
+    wrist_mm: 90.0,
+    link_style: "organic_ibeam",
+    shoulder_joint_deg: 30.0,
+    elbow_joint_deg: -60.0,
+    wrist_joint_deg: 30.0,
+    gear_ratio_shoulder: 40.0,
+    gear_ratio_elbow: 20.0,
+    max_accel_rad_s2: 10.0,
+    material_id: "pa12_cf",
+    print_orientation: "xy_flat",
+    printer_id: "voron_24",
+  },
+  so_arm_lerobot: {
+    preset: "so_arm_lerobot",
+    dof: 5,
+    payload_kg: 0.5,
+    base_height_mm: 70.0,
+    upper_arm_mm: 140.0,
+    forearm_mm: 125.0,
+    wrist_mm: 55.0,
+    link_style: "rounded_truss",
+    shoulder_joint_deg: 40.0,
+    elbow_joint_deg: -65.0,
+    wrist_joint_deg: 25.0,
+    gear_ratio_shoulder: 8.0,
+    gear_ratio_elbow: 6.0,
+    max_accel_rad_s2: 18.0,
+    material_id: "petg_cf",
+    print_orientation: "xy_flat",
+    printer_id: "bambu_x1c",
+  },
+  cobot_hollow_ur: {
+    preset: "cobot_hollow_ur",
+    dof: 6,
+    payload_kg: 3.0,
+    base_height_mm: 135.0,
+    upper_arm_mm: 320.0,
+    forearm_mm: 270.0,
+    wrist_mm: 105.0,
+    link_style: "hollow_cobot",
+    shoulder_joint_deg: 25.0,
+    elbow_joint_deg: -50.0,
+    wrist_joint_deg: 25.0,
+    gear_ratio_shoulder: 50.0,
+    gear_ratio_elbow: 30.0,
+    max_accel_rad_s2: 10.0,
+    material_id: "pa12_cf",
+    print_orientation: "xy_flat",
+    printer_id: "voron_24",
+  },
+};
+
 const FALLBACK_END_PRESETS = {
   nema17: {
     label: "NEMA 17",
@@ -379,10 +481,12 @@ export class ControlsController {
     this.endPresets = structuredClone(FALLBACK_END_PRESETS);
     this.mountPresets = structuredClone(FALLBACK_MOUNT_DEFAULTS);
     this.gearPresets = structuredClone(FALLBACK_GEAR_DEFAULTS);
+    this.armPresets = structuredClone(FALLBACK_ARM_DEFAULTS);
     this.activeFamily = "links";
     this.currentArchitecture = "articulated_6dof";
     this.currentMountActuator = "nema17";
     this.currentGearPreset = "spur_nema17";
+    this.currentArmPreset = "parol6_desktop";
     this.currentOrientation = "xy_flat";
     this.referenceVolumeCm3 = null;
 
@@ -398,13 +502,15 @@ export class ControlsController {
     this._renderArchitectureGrid();
     this._renderMountPresetGrid();
     this._renderGearPresetGrid();
+    this._renderArmPresetGrid();
   }
 
   setFamily(family) {
-    this.activeFamily = ["links", "mounts", "gears"].includes(family) ? family : "links";
+    this.activeFamily = ["links", "mounts", "gears", "arm"].includes(family) ? family : "links";
     document.getElementById("family-controls-links")?.classList.toggle("hidden", this.activeFamily !== "links");
     document.getElementById("family-controls-mounts")?.classList.toggle("hidden", this.activeFamily !== "mounts");
     document.getElementById("family-controls-gears")?.classList.toggle("hidden", this.activeFamily !== "gears");
+    document.getElementById("family-controls-arm")?.classList.toggle("hidden", this.activeFamily !== "arm");
 
     const headerLabel = document.getElementById("header-arch-label");
     if (headerLabel) {
@@ -412,6 +518,8 @@ export class ControlsController {
         headerLabel.textContent = MOUNT_META[this.currentMountActuator]?.label || this.currentMountActuator;
       } else if (this.activeFamily === "gears") {
         headerLabel.textContent = GEAR_META[this.currentGearPreset]?.label || this.currentGearPreset;
+      } else if (this.activeFamily === "arm") {
+        headerLabel.textContent = ARM_META[this.currentArmPreset]?.label || this.currentArmPreset;
       } else {
         headerLabel.textContent = ARCH_META[this.currentArchitecture]?.label || this.currentArchitecture;
       }
@@ -548,6 +656,14 @@ export class ControlsController {
       { id: "gear-module_mm", suffix: " mm", decimals: 1 },
       { id: "gear-face_width_mm", suffix: " mm", decimals: 1 },
       { id: "gear-backlash_mm", suffix: " mm", decimals: 2 },
+      // Brazo Completo (Ensamblaje 4-6 DOF)
+      { id: "arm-base_height_mm", suffix: " mm", decimals: 0 },
+      { id: "arm-upper_arm_mm", suffix: " mm", decimals: 0 },
+      { id: "arm-forearm_mm", suffix: " mm", decimals: 0 },
+      { id: "arm-wrist_mm", suffix: " mm", decimals: 0 },
+      { id: "arm-shoulder_joint_deg", suffix: "°", decimals: 0 },
+      { id: "arm-elbow_joint_deg", suffix: "°", decimals: 0 },
+      { id: "arm-wrist_joint_deg", suffix: "°", decimals: 0 },
     ];
 
     for (const cfg of sliderConfigs) {
@@ -1291,6 +1407,128 @@ export class ControlsController {
       print_orientation: this.currentOrientation,
       nozzle_diameter_mm: clamp(document.getElementById("nozzle_diameter_mm")?.value, 0.2, 1.0, 0.4),
       printer_clearance_mm: clamp(document.getElementById("printer_clearance_mm")?.value, 0.0, 0.5, 0.15),
+    };
+  }
+
+  _renderArmPresetGrid() {
+    const grid = document.getElementById("arm-preset-grid");
+    if (!grid) return;
+    grid.innerHTML = "";
+
+    for (const [presetId, meta] of Object.entries(ARM_META)) {
+      const preset = this.armPresets[presetId];
+      const title = meta.label || preset?.name;
+      const subtitle = meta.subtitle || preset?.subtitle;
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `arch-card${presetId === this.currentArmPreset ? " active" : ""}`;
+      btn.dataset.armPreset = presetId;
+      btn.innerHTML = `
+        <div class="arch-card-head">
+          ${meta.icon}
+        </div>
+        <span class="arch-card-title">${title}</span>
+        <span class="arch-card-sub">${subtitle}</span>
+      `;
+      btn.addEventListener("click", () => {
+        this.applyArmPreset(presetId);
+      });
+      grid.appendChild(btn);
+    }
+  }
+
+  setArmPresets(rawPresets) {
+    if (!rawPresets || typeof rawPresets !== "object") return;
+    const entries = Array.isArray(rawPresets)
+      ? rawPresets.map((p) => [p.id || p.preset, p])
+      : Object.entries(rawPresets);
+
+    for (const [key, val] of entries) {
+      if (!key || !val || typeof val !== "object") continue;
+      const flat = val.defaults || val.params || val;
+      this.armPresets[key] = {
+        ...(this.armPresets[key] || {}),
+        ...flat,
+        name: ARM_META[key]?.label || val.name,
+        subtitle: ARM_META[key]?.subtitle || val.subtitle || val.description,
+      };
+    }
+    this._renderArmPresetGrid();
+  }
+
+  applyArmPreset(presetId) {
+    const preset = this.armPresets[presetId] || FALLBACK_ARM_DEFAULTS[presetId];
+    if (!preset) return;
+
+    this.currentArmPreset = presetId;
+
+    document.querySelectorAll("[data-arm-preset]").forEach((card) => {
+      card.classList.toggle("active", card.dataset.armPreset === presetId);
+    });
+
+    if (this.activeFamily === "arm") {
+      const headerLabel = document.getElementById("header-arch-label");
+      if (headerLabel) {
+        headerLabel.textContent = ARM_META[presetId]?.label || preset.name || presetId;
+      }
+    }
+
+    this._setInputValue("arm-dof", preset.dof);
+    this._setInputValue("arm-payload_kg", preset.payload_kg);
+    this._setInputValue("arm-link_style", preset.link_style);
+    this._setInputValue("arm-base_height_mm", preset.base_height_mm);
+    this._setInputValue("arm-upper_arm_mm", preset.upper_arm_mm);
+    this._setInputValue("arm-forearm_mm", preset.forearm_mm);
+    this._setInputValue("arm-wrist_mm", preset.wrist_mm);
+    this._setInputValue("arm-shoulder_joint_deg", preset.shoulder_joint_deg);
+    this._setInputValue("arm-elbow_joint_deg", preset.elbow_joint_deg);
+    this._setInputValue("arm-wrist_joint_deg", preset.wrist_joint_deg);
+    this._setInputValue("arm-gear_ratio_shoulder", preset.gear_ratio_shoulder);
+    this._setInputValue("arm-gear_ratio_elbow", preset.gear_ratio_elbow);
+    this._setInputValue("arm-max_accel_rad_s2", preset.max_accel_rad_s2);
+
+    if (preset.material_id && this.materialsMap[preset.material_id]) {
+      this._setInputValue("material_id", preset.material_id);
+      this._renderMaterialBadge(preset.material_id);
+    }
+    if (preset.printer_id && this.printersMap[preset.printer_id]) {
+      this._setInputValue("printer_id", preset.printer_id);
+      this._applyPrinterDefaults(preset.printer_id, false);
+    }
+    if (preset.print_orientation) {
+      this.currentOrientation = preset.print_orientation;
+      document.querySelectorAll("[data-orientation]").forEach((p) => {
+        p.classList.toggle("active", p.dataset.orientation === this.currentOrientation);
+      });
+    }
+  }
+
+  /**
+   * Construye el payload JSON exacto que espera ArmAssemblyRequest en backend/app/schemas.py.
+   */
+  getArmPayload() {
+    return {
+      preset: this.currentArmPreset,
+      dof: Math.round(clamp(document.getElementById("arm-dof")?.value, 4, 6, 6)),
+      payload_kg: clamp(document.getElementById("arm-payload_kg")?.value, 0.1, 8.0, 1.0),
+      base_height_mm: clamp(document.getElementById("arm-base_height_mm")?.value, 50, 200, 95),
+      upper_arm_mm: clamp(document.getElementById("arm-upper_arm_mm")?.value, 100, 400, 200),
+      forearm_mm: clamp(document.getElementById("arm-forearm_mm")?.value, 80, 350, 170),
+      wrist_mm: clamp(document.getElementById("arm-wrist_mm")?.value, 40, 160, 75),
+      link_style: document.getElementById("arm-link_style")?.value || "hollow_cobot",
+
+      shoulder_joint_deg: clamp(document.getElementById("arm-shoulder_joint_deg")?.value, -60, 90, 35),
+      elbow_joint_deg: clamp(document.getElementById("arm-elbow_joint_deg")?.value, -130, 130, -55),
+      wrist_joint_deg: clamp(document.getElementById("arm-wrist_joint_deg")?.value, -90, 90, 20),
+
+      gear_ratio_shoulder: clamp(document.getElementById("arm-gear_ratio_shoulder")?.value, 4, 120, 20),
+      gear_ratio_elbow: clamp(document.getElementById("arm-gear_ratio_elbow")?.value, 4, 100, 10),
+      max_accel_rad_s2: clamp(document.getElementById("arm-max_accel_rad_s2")?.value, 1, 100, 12),
+
+      material_id: document.getElementById("material_id")?.value || "petg_cf",
+      print_orientation: this.currentOrientation,
+      printer_id: document.getElementById("printer_id")?.value || "bambu_x1c",
     };
   }
 }

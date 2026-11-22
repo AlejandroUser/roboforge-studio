@@ -9,14 +9,17 @@ import {
   createCustomPrinter,
   deleteCustomMaterial,
   deleteCustomPrinter,
+  fetchArmPresets,
   fetchGearPresets,
   fetchMaterials,
   fetchMountPresets,
   fetchPresets,
   fetchPrinters,
+  generateArmAssembly,
   generateDesign,
   generateGears,
   generateMounts,
+  runCopilotOptimize,
   runFEA,
   runGearFEA,
   runMountFEA,
@@ -90,6 +93,7 @@ class RoboForgeApp {
     this._bindHeaderActions();
     this._bindViewportToolbar();
     this._bindProfileModal();
+    this._bindCopilot();
 
     await this._bootstrapBackendData();
   }
@@ -116,7 +120,7 @@ class RoboForgeApp {
 
   async switchFamily(family) {
     if (this.isGenerating || this.isRunningFea) return;
-    this.activeFamily = ["links", "mounts", "gears"].includes(family) ? family : "links";
+    this.activeFamily = ["links", "mounts", "gears", "arm"].includes(family) ? family : "links";
 
     document.querySelectorAll(".family-tab").forEach((tab) => {
       const isActive = tab.dataset.family === this.activeFamily;
@@ -126,11 +130,21 @@ class RoboForgeApp {
 
     this.controls.setFamily(this.activeFamily);
 
+    const isArm = this.activeFamily === "arm";
+    this.btnRunFea?.classList.toggle("hidden", isArm);
+    document.getElementById("btn-heatmap")?.classList.toggle("hidden", isArm);
+    if (isArm) {
+      this.btnToggleFeaMesh?.classList.add("hidden");
+      this.heatmapLegendEl?.classList.add("hidden");
+    }
+
     if (this.btnGenerateLabel) {
       if (this.activeFamily === "mounts") {
         this.btnGenerateLabel.textContent = "Generar Monturas (3 Variantes)";
       } else if (this.activeFamily === "gears") {
         this.btnGenerateLabel.textContent = "Generar Transmisión (3 Variantes)";
+      } else if (this.activeFamily === "arm") {
+        this.btnGenerateLabel.textContent = "Generar Brazo Completo";
       } else {
         this.btnGenerateLabel.textContent = "Generar y Optimizar (5 Variantes)";
       }
@@ -356,17 +370,99 @@ class RoboForgeApp {
     });
   }
 
+  _bindCopilot() {
+    const input = document.getElementById("copilot-prompt");
+    const btn = document.getElementById("btn-copilot-run");
+    btn?.addEventListener("click", () => this.runCopilot());
+    input?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.runCopilot();
+      }
+    });
+  }
+
+  async runCopilot() {
+    const input = document.getElementById("copilot-prompt");
+    const btn = document.getElementById("btn-copilot-run");
+    const resultBox = document.getElementById("copilot-result");
+    const badgeEl = document.getElementById("copilot-status-badge");
+    const iterEl = document.getElementById("copilot-iter-count");
+    const summaryEl = document.getElementById("copilot-summary");
+    const chipsEl = document.getElementById("copilot-chips");
+
+    const prompt = input?.value?.trim() || "";
+    if (prompt.length < 4) {
+      this.showToast("Describe tu objetivo (ej. 'Brazo de 240mm para 40N en PA12-CF').", true);
+      return;
+    }
+    if (this.isGenerating || this.isRunningFea) return;
+
+    if (btn) btn.disabled = true;
+    this.setStatus("busy", "Copiloto optimizando...");
+    this.showLoader(
+      "Copiloto IA en Bucle Cerrado...",
+      "Interpretando restricciones e iterando geometría óptima para mínima masa"
+    );
+
+    try {
+      const res = await runCopilotOptimize({
+        prompt,
+        current_request: this.controls.getPayload(),
+      });
+
+      if (badgeEl) {
+        badgeEl.textContent = res.converged ? "✓ Convergió" : "⚠ Mejor compromiso";
+        badgeEl.className = `badge ${res.converged ? "badge-recommended" : "badge-supports-req"}`;
+      }
+      if (iterEl) {
+        const n = (res.iterations || []).length;
+        iterEl.textContent = `${n} iter.`;
+      }
+      if (summaryEl) {
+        summaryEl.textContent = res.summary || "";
+      }
+      if (chipsEl) {
+        chipsEl.innerHTML = "";
+        for (const c of res.parsed_constraints || []) {
+          const span = document.createElement("span");
+          span.className = "copilot-chip";
+          span.textContent = c;
+          chipsEl.appendChild(span);
+        }
+      }
+      resultBox?.classList.remove("hidden");
+
+      if (res.optimized_request) {
+        this.controls.applyDesignParams(res.optimized_request);
+      }
+
+      this.hideLoader();
+      if (btn) btn.disabled = false;
+      this.showToast("Copiloto completó optimización. Generando variantes 3D...", false);
+      await this.runGeneration();
+    } catch (err) {
+      console.error("Copilot error:", err);
+      this.setStatus("error", "Error Copiloto");
+      this.showToast(`Error en Copiloto IA: ${err.message}`, true);
+      this.hideLoader();
+      if (btn) btn.disabled = false;
+    }
+  }
+
   async _bootstrapBackendData() {
     this.setStatus("busy", "Conectando...");
     try {
-      const [health, materials, presets, mountPresets, gearPresets, printers] = await Promise.all([
-        checkHealth(),
-        fetchMaterials(),
-        fetchPresets(),
-        fetchMountPresets().catch(() => null),
-        fetchGearPresets().catch(() => null),
-        fetchPrinters().catch(() => null),
-      ]);
+      const [health, materials, presets, mountPresets, gearPresets, printers, armPresets] =
+        await Promise.all([
+          checkHealth(),
+          fetchMaterials(),
+          fetchPresets(),
+          fetchMountPresets().catch(() => null),
+          fetchGearPresets().catch(() => null),
+          fetchPrinters().catch(() => null),
+          fetchArmPresets().catch(() => null),
+        ]);
 
       if (materials?.list?.length) {
         this.controls.setMaterials(materials);
@@ -383,8 +479,12 @@ class RoboForgeApp {
       if (gearPresets) {
         this.controls.setGearPresets(gearPresets);
       }
+      if (armPresets) {
+        this.controls.setArmPresets(armPresets);
+      }
 
-      // Aplicar presets iniciales para sincronizar UI de las 3 familias
+      // Aplicar presets iniciales para sincronizar UI de las 4 familias
+      this.controls.applyArmPreset("parol6_desktop");
       this.controls.applyGearPreset("spur_nema17");
       this.controls.applyMountPreset("nema17");
       this.controls.applyArchitecturePreset("articulated_6dof");
@@ -646,31 +746,77 @@ class RoboForgeApp {
 
     const isMounts = this.activeFamily === "mounts";
     const isGears = this.activeFamily === "gears";
-    const payload = isGears
-      ? this.controls.getGearPayload()
-      : isMounts
-        ? this.controls.getMountPayload()
-        : this.controls.getPayload();
+    const isArm = this.activeFamily === "arm";
+    const payload = isArm
+      ? this.controls.getArmPayload()
+      : isGears
+        ? this.controls.getGearPayload()
+        : isMounts
+          ? this.controls.getMountPayload()
+          : this.controls.getPayload();
 
     this.btnGenerate.disabled = true;
     this.setStatus(
       "busy",
-      isGears ? "Generando Transmisión..." : isMounts ? "Generando Monturas..." : "Optimizando CAD + SIMP..."
+      isArm
+        ? "Ensamblando Brazo..."
+        : isGears
+          ? "Generando Transmisión..."
+          : isMounts
+            ? "Generando Monturas..."
+            : "Optimizando CAD + SIMP..."
     );
     this.showLoader(
-      isGears
-        ? "Sintetizando Engranajes / Poleas GT2 (build123d)..."
-        : isMounts
-          ? "Sintetizando Monturas Mecatrónicas (build123d)..."
-          : "Sintetizando Geometría B-Rep + TopOpt SIMP...",
-      isGears
-        ? "Generando 3 variantes (Sólida, Alma Rebajada, Radios Biónicos), mallas y cálculo de Lewis"
-        : isMounts
-          ? "Generando 3 variantes (Estándar, Cartelas, Aligerada), mallas GLB/STL/STEP y análisis estructural"
-          : "Generando 5 variantes topológicas, mallas GLB/STL/STEP y perfil de esfuerzos"
+      isArm
+        ? "Sintetizando Ensamblaje 3D + URDF/MuJoCo + BOM..."
+        : isGears
+          ? "Sintetizando Engranajes / Poleas GT2 (build123d)..."
+          : isMounts
+            ? "Sintetizando Monturas Mecatrónicas (build123d)..."
+            : "Sintetizando Geometría B-Rep + TopOpt SIMP...",
+      isArm
+        ? "Calculando cinemática directa (FK), torques en cascada, BOM y ensamblaje multi-cuerpo"
+        : isGears
+          ? "Generando 3 variantes (Sólida, Alma Rebajada, Radios Biónicos), mallas y cálculo de Lewis"
+          : isMounts
+            ? "Generando 3 variantes (Estándar, Cartelas, Aligerada), mallas GLB/STL/STEP y análisis estructural"
+            : "Generando 5 variantes topológicas, mallas GLB/STL/STEP y perfil de esfuerzos"
     );
 
     try {
+      if (isArm) {
+        const armRes = await generateArmAssembly(payload, this.abortController.signal);
+        this.currentResponse = armRes;
+        this.activeVariant = null;
+        this.viewport.clearModelCache();
+        this.feaResultsByVariant.clear();
+        this.viewingFeaMesh = false;
+        this.comparator.renderFeaResult(null);
+        this.btnToggleFeaMesh?.classList.add("hidden");
+
+        this.comparator.renderArmAssembly(armRes);
+
+        if (armRes.glb_url) {
+          await this.viewport.loadModel(armRes.glb_url, { autoFit: true, isFeaMesh: false });
+        }
+        if (this.hudDot) {
+          this.hudDot.style.background = "#38bdf8";
+          this.hudDot.style.boxShadow = "0 0 8px #38bdf8";
+        }
+        if (this.hudName) {
+          this.hudName.textContent = `${armRes.preset_name || "Brazo Completo"} (${armRes.dof}-DOF)`;
+        }
+        if (this.hudMeta) {
+          this.hudMeta.textContent = `Alcance ${Math.round(armRes.max_reach_mm)} mm · ${Number(
+            armRes.total_arm_mass_kg
+          ).toFixed(2)} kg · Costo $${Number(armRes.estimated_total_cost_usd).toFixed(0)}`;
+        }
+
+        this.setStatus("ready", `Brazo ${armRes.dof}-DOF listo`);
+        this.showToast(`Ensamblaje #${armRes.design_hash.slice(0, 8)} generado con URDF, MuJoCo y BOM.`, false);
+        return;
+      }
+
       const response = isGears
         ? await generateGears(payload, this.abortController.signal)
         : isMounts

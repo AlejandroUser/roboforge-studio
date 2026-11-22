@@ -367,6 +367,165 @@ export class ComparatorController {
       this.listEl.appendChild(card);
     }
   }
+
+  /**
+   * Renderiza el panel derecho completo para Familia 4: Brazo Completo (Ensamblaje 4–6 DOF).
+   */
+  renderArmAssembly(res) {
+    if (!this.listEl || !res) return;
+
+    if (this.hashPillEl && res.design_hash) {
+      this.hashPillEl.textContent = `#${res.design_hash.slice(0, 8)}`;
+      this.hashPillEl.classList.remove("hidden");
+    }
+    if (this.subtitleEl) {
+      this.subtitleEl.textContent = `${res.preset_name || "Brazo"} · ${res.dof || 6}-DOF · ${res.material_name || ""}`;
+    }
+
+    this._renderGlobalAlerts(res.global_alerts || []);
+
+    const tcp = Array.isArray(res.tcp_position_mm) && res.tcp_position_mm.length >= 3
+      ? res.tcp_position_mm
+      : [0, 0, 0];
+
+    const jointsRows = (res.joints || [])
+      .map((j) => {
+        const fs = Number(j.safety_factor ?? 0);
+        const fsClass = fs >= 2.0 ? "good" : fs >= 1.25 ? "warn" : "bad";
+        return `
+          <tr>
+            <td>
+              <strong>${escapeHtml(j.joint_name || j.joint_id)}</strong>
+              <span class="sub-spec">${escapeHtml(j.recommended_actuator || "")}</span>
+            </td>
+            <td class="mono">
+              ${fmt(j.dynamic_torque_nm, 2)} N·m
+              <span class="sub-spec">Est: ${fmt(j.static_torque_nm, 2)} · ${fmt(j.gear_ratio, 0)}:1</span>
+            </td>
+            <td class="mono">
+              ${fmt(j.required_motor_torque_nm, 2)} N·m
+              <span class="sub-spec">Motor req.</span>
+            </td>
+            <td class="mono"><span class="metric-val ${fsClass}">${fmt(fs, 2)}×</span></td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    const bomRows = (res.bom || [])
+      .map(
+        (item) => `
+        <tr>
+          <td>
+            <strong>${escapeHtml(item.part_name)}</strong>
+            <span class="sub-spec">${escapeHtml(item.category)} · ${escapeHtml(item.spec)}</span>
+          </td>
+          <td class="mono">${Number(item.qty || 1)}×</td>
+          <td class="mono">$${fmt(item.total_cost_usd, 2)}</td>
+        </tr>
+      `
+      )
+      .join("");
+
+    const dlIcon = `<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5V10.5M8 10.5L5 7.5M8 10.5L11 7.5M2.5 12.5H13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+    this.listEl.innerHTML = `
+      <section class="arm-panel-card">
+        <h3>
+          <span>Resumen del Sistema (${Number(res.dof || 6)}-DOF)</span>
+          <span class="badge badge-recommended">$${fmt(res.estimated_total_cost_usd, 0)} USD</span>
+        </h3>
+
+        <div class="metrics-grid">
+          <div class="metric-cell">
+            <span class="metric-label">Alcance Máx</span>
+            <span class="metric-val">${fmt(res.max_reach_mm, 0)} mm</span>
+            <span class="metric-sub">Radio útil</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-label">Masa Total</span>
+            <span class="metric-val">${fmt(res.total_arm_mass_kg, 2)} kg</span>
+            <span class="metric-sub">Con motores</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-label">Impresión 3D</span>
+            <span class="metric-val">${fmt(res.printed_mass_g, 0)} g</span>
+            <span class="metric-sub">${escapeHtml(res.material_name || "")}</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-label">Deflex. TCP</span>
+            <span class="metric-val">${fmt(res.tcp_deflection_mm, 2)} mm</span>
+            <span class="metric-sub">Acumulada</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-label">Costo Total</span>
+            <span class="metric-val good">$${fmt(res.estimated_total_cost_usd, 2)}</span>
+            <span class="metric-sub">BOM estimada</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-label">Articulaciones</span>
+            <span class="metric-val">${(res.joints || []).length} ejes</span>
+            <span class="metric-sub">En cascada</span>
+          </div>
+        </div>
+
+        <div class="arm-tcp-banner">
+          <span>Posición TCP (FK)</span>
+          <strong>X ${fmt(tcp[0], 1)} · Y ${fmt(tcp[1], 1)} · Z ${fmt(tcp[2], 1)} mm</strong>
+        </div>
+
+        <div class="arm-downloads-grid">
+          <a class="btn-download" href="${escapeHtml(res.step_url)}" download title="Descargar Ensamblaje B-Rep (.STEP)">
+            ${dlIcon}.STEP
+          </a>
+          <a class="btn-download" href="${escapeHtml(res.stl_url)}" download title="Descargar Ensamblaje (.STL)">
+            ${dlIcon}.STL
+          </a>
+          <a class="btn-download btn-download-sim" href="${escapeHtml(res.urdf_url)}" download title="Descargar modelo ROS 2 / Gazebo (.URDF)">
+            ${dlIcon}.URDF
+          </a>
+          <a class="btn-download btn-download-sim" href="${escapeHtml(res.mujoco_url)}" download title="Descargar modelo MuJoCo MJCF (.XML)">
+            ${dlIcon}.XML
+          </a>
+          <a class="btn-download btn-download-bom" href="${escapeHtml(res.bom_csv_url)}" download title="Descargar Lista de Materiales (.CSV)">
+            ${dlIcon}BOM .CSV
+          </a>
+        </div>
+      </section>
+
+      <section class="arm-panel-card">
+        <h3>Torques en Cascada por Articulación</h3>
+        <table class="arm-table">
+          <thead>
+            <tr>
+              <th>Eje / Actuador</th>
+              <th>Torque Din.</th>
+              <th>Motor</th>
+              <th>FS</th>
+            </tr>
+          </thead>
+          <tbody>${jointsRows}</tbody>
+        </table>
+      </section>
+
+      <section class="arm-panel-card">
+        <h3>
+          <span>Lista de Materiales (BOM)</span>
+          <small style="color:var(--text-muted);font-family:var(--font-mono);">${(res.bom || []).length} ítems</small>
+        </h3>
+        <table class="arm-table">
+          <thead>
+            <tr>
+              <th>Componente</th>
+              <th>Cant.</th>
+              <th>Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>${bomRows}</tbody>
+        </table>
+      </section>
+    `;
+  }
 }
 
 export { VARIANT_COLORS };

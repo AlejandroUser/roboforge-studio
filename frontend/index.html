@@ -50,6 +50,9 @@
           <button type="button" class="family-tab" data-family="gears" role="tab" aria-selected="false">
             Transmisión
           </button>
+          <button type="button" class="family-tab" data-family="arm" role="tab" aria-selected="false">
+            Brazo Completo
+          </button>
         </nav>
 
         <div class="arch-pill" id="header-arch-pill" title="Preset activo">
@@ -115,6 +118,34 @@
               <div><small>Agujeros</small><strong id="step-holes">—</strong></div>
             </div>
             <ul class="step-notes-list" id="step-notes"></ul>
+          </div>
+        </section>
+
+        <!-- COPILOTO IA EN BUCLE CERRADO -->
+        <section class="panel-section copilot-section">
+          <div class="section-header">
+            <span class="section-num">IA</span>
+            <h2>Copiloto IA (Optimización Automática)</h2>
+          </div>
+          <div class="copilot-input-row">
+            <input
+              type="text"
+              id="copilot-prompt"
+              class="num-input text-input"
+              placeholder="Ej. Brazo de 240mm para 40N en PA12-CF con FS >= 2.5"
+              maxlength="600"
+            />
+            <button type="button" class="btn-copilot" id="btn-copilot-run" title="Optimizar parámetros automáticamente en bucle cerrado">
+              Optimizar
+            </button>
+          </div>
+          <div class="copilot-result hidden" id="copilot-result">
+            <div class="copilot-result-head">
+              <span class="badge" id="copilot-status-badge">✓ Convergió</span>
+              <small id="copilot-iter-count">0 iter.</small>
+            </div>
+            <p class="copilot-summary" id="copilot-summary"></p>
+            <div class="copilot-chips" id="copilot-chips"></div>
           </div>
         </section>
 
@@ -602,6 +633,140 @@
             </div>
           </section>
         </div> <!-- /#family-controls-gears -->
+
+        <!-- FAMILIA 4: BRAZO COMPLETO (CADENA CINEMÁTICA 4–6 DOF) -->
+        <div id="family-controls-arm" class="family-controls hidden">
+          <!-- 01. PRESETS DE BRAZO -->
+          <section class="panel-section">
+            <div class="section-header">
+              <span class="section-num">01</span>
+              <h2>Arquitectura del Brazo Completo</h2>
+            </div>
+            <div class="arch-grid" id="arm-preset-grid">
+              <!-- Populated by controls.js -->
+            </div>
+          </section>
+
+          <!-- 02. GEOMETRÍA DEL BRAZO -->
+          <section class="panel-section">
+            <div class="section-header">
+              <span class="section-num">02</span>
+              <h2>Geometría y Estilo de Eslabones</h2>
+            </div>
+
+            <div class="two-col-grid">
+              <div class="control-group">
+                <label for="arm-dof">Grados de Libertad</label>
+                <select id="arm-dof" class="select-input">
+                  <option value="4">4 DOF</option>
+                  <option value="5">5 DOF</option>
+                  <option value="6" selected>6 DOF</option>
+                </select>
+              </div>
+              <div class="control-group">
+                <label for="arm-payload_kg">Carga Útil (kg)</label>
+                <input type="number" id="arm-payload_kg" class="num-input" min="0.1" max="8.0" step="0.1" value="1.0" />
+              </div>
+            </div>
+
+            <div class="control-group">
+              <label for="arm-link_style">Estilo de Eslabones</label>
+              <select id="arm-link_style" class="select-input">
+                <option value="hollow_cobot" selected>Cobot Hueco (Torsión Cerrada)</option>
+                <option value="organic_ibeam">Viga en I Orgánica</option>
+                <option value="rounded_truss">Celosía Redondeada</option>
+                <option value="tapered_solid">Sólido Ahusado</option>
+              </select>
+            </div>
+
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="arm-base_height_mm">Altura Base</label>
+                <span class="readout" id="val-arm-base_height_mm">95 mm</span>
+              </div>
+              <input type="range" id="arm-base_height_mm" min="50" max="200" step="5" value="95" />
+            </div>
+
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="arm-upper_arm_mm">Brazo Superior (L1)</label>
+                <span class="readout" id="val-arm-upper_arm_mm">200 mm</span>
+              </div>
+              <input type="range" id="arm-upper_arm_mm" min="100" max="400" step="5" value="200" />
+            </div>
+
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="arm-forearm_mm">Antebrazo (L2)</label>
+                <span class="readout" id="val-arm-forearm_mm">170 mm</span>
+              </div>
+              <input type="range" id="arm-forearm_mm" min="80" max="350" step="5" value="170" />
+            </div>
+
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="arm-wrist_mm">Muñeca + Brida TCP (L3)</label>
+                <span class="readout" id="val-arm-wrist_mm">75 mm</span>
+              </div>
+              <input type="range" id="arm-wrist_mm" min="40" max="160" step="5" value="75" />
+            </div>
+          </section>
+
+          <!-- 03. CINEMÁTICA DIRECTA INTERACTIVA -->
+          <section class="panel-section">
+            <div class="section-header">
+              <span class="section-num">03</span>
+              <h2>Cinemática Directa (Pose FK)</h2>
+            </div>
+
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="arm-shoulder_joint_deg">J1 Hombro</label>
+                <span class="readout accent" id="val-arm-shoulder_joint_deg">35°</span>
+              </div>
+              <input type="range" id="arm-shoulder_joint_deg" min="-60" max="90" step="5" value="35" />
+            </div>
+
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="arm-elbow_joint_deg">J2 Codo</label>
+                <span class="readout accent" id="val-arm-elbow_joint_deg">-55°</span>
+              </div>
+              <input type="range" id="arm-elbow_joint_deg" min="-130" max="130" step="5" value="-55" />
+            </div>
+
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="arm-wrist_joint_deg">J3 Muñeca</label>
+                <span class="readout accent" id="val-arm-wrist_joint_deg">20°</span>
+              </div>
+              <input type="range" id="arm-wrist_joint_deg" min="-90" max="90" step="5" value="20" />
+            </div>
+          </section>
+
+          <!-- 04. TRANSMISIÓN Y DINÁMICA -->
+          <section class="panel-section">
+            <div class="section-header">
+              <span class="section-num">04</span>
+              <h2>Transmisión y Dinámica</h2>
+            </div>
+
+            <div class="three-col-grid">
+              <div class="control-group">
+                <label for="arm-gear_ratio_shoulder">Red. Hombro</label>
+                <input type="number" id="arm-gear_ratio_shoulder" class="num-input" min="4" max="120" step="1" value="20" />
+              </div>
+              <div class="control-group">
+                <label for="arm-gear_ratio_elbow">Red. Codo</label>
+                <input type="number" id="arm-gear_ratio_elbow" class="num-input" min="4" max="100" step="1" value="10" />
+              </div>
+              <div class="control-group">
+                <label for="arm-max_accel_rad_s2">Acel. (rad/s²)</label>
+                <input type="number" id="arm-max_accel_rad_s2" class="num-input" min="1" max="100" step="1" value="12" />
+              </div>
+            </div>
+          </section>
+        </div> <!-- /#family-controls-arm -->
 
         <!-- 5. MATERIAL Y MANUFACTURA 3D -->
         <section class="panel-section">

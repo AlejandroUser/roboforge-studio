@@ -329,3 +329,102 @@ class CustomMaterialCreate(BaseModel):
     cost_per_kg_usd: float = Field(..., ge=5.0, le=500.0)
     color_hex: str = Field("#38bdf8", pattern=r"^#[0-9a-fA-F]{6}$")
     notes: str = ""
+
+
+# Hito 5: Cadena Cinemática Multi-Eslabón (Brazo Completo) + URDF/MuJoCo + BOM
+ArmPresetType = Literal["parol6_desktop", "ar4_industrial", "so_arm_lerobot", "cobot_hollow_ur"]
+
+
+class ArmAssemblyRequest(BaseModel):
+    preset: ArmPresetType = "parol6_desktop"
+    dof: int = Field(6, ge=4, le=6)
+    payload_kg: float = Field(1.0, ge=0.1, le=8.0)
+    base_height_mm: float = Field(95.0, ge=50.0, le=200.0)
+    upper_arm_mm: float = Field(200.0, ge=100.0, le=400.0)
+    forearm_mm: float = Field(170.0, ge=80.0, le=350.0)
+    wrist_mm: float = Field(75.0, ge=40.0, le=160.0)
+    link_style: Literal["organic_ibeam", "hollow_cobot", "rounded_truss", "tapered_solid"] = "hollow_cobot"
+
+    # Ángulos de cinemática directa (grados)
+    shoulder_joint_deg: float = Field(35.0, ge=-60.0, le=90.0)
+    elbow_joint_deg: float = Field(-55.0, ge=-130.0, le=130.0)
+    wrist_joint_deg: float = Field(20.0, ge=-90.0, le=90.0)
+
+    # Transmisión y dinámica
+    gear_ratio_shoulder: float = Field(20.0, ge=4.0, le=120.0)
+    gear_ratio_elbow: float = Field(10.0, ge=4.0, le=100.0)
+    max_accel_rad_s2: float = Field(12.0, ge=1.0, le=100.0)
+
+    # Material e impresora
+    material_id: str = "petg_cf"
+    print_orientation: PrintOrientation = "xy_flat"
+    printer_id: Optional[str] = "bambu_x1c"
+
+
+class JointTorqueSummary(BaseModel):
+    joint_id: str
+    joint_name: str
+    segment_length_mm: float
+    segment_mass_g: float
+    motor_mass_g: float
+    static_torque_nm: float
+    dynamic_torque_nm: float
+    gear_ratio: float
+    required_motor_torque_nm: float
+    recommended_actuator: str
+    safety_factor: float
+
+
+class BOMItem(BaseModel):
+    category: Literal["Impresión 3D", "Actuadores", "Rodamientos", "Tornillería", "Transmisión"]
+    part_name: str
+    spec: str
+    qty: int
+    unit_cost_usd: float
+    total_cost_usd: float
+
+
+class ArmAssemblyResponse(BaseModel):
+    design_hash: str
+    preset_name: str
+    material_name: str
+    dof: int
+    max_reach_mm: float
+    total_arm_mass_kg: float
+    printed_mass_g: float
+    estimated_total_cost_usd: float
+    tcp_position_mm: list[float]
+    tcp_deflection_mm: float
+    joints: list[JointTorqueSummary]
+    bom: list[BOMItem]
+    global_alerts: list[AlertItem] = Field(default_factory=list)
+    glb_url: str
+    step_url: str
+    stl_url: str
+    urdf_url: str
+    mujoco_url: str
+    bom_csv_url: str
+
+
+# Hito 5: Copiloto de Optimización Automática en Bucle Cerrado
+class CopilotRequest(BaseModel):
+    prompt: str = Field(..., min_length=4, max_length=600)
+    current_request: Optional[LinkDesignRequest] = None
+
+
+class CopilotIteration(BaseModel):
+    step: int
+    root_width_mm: float
+    thickness_mm: float
+    mass_g: float
+    safety_factor: float
+    tip_deflection_mm: float
+    passes: bool
+
+
+class CopilotResponse(BaseModel):
+    summary: str
+    parsed_constraints: list[str]
+    optimized_request: LinkDesignRequest
+    iterations: list[CopilotIteration]
+    converged: bool
