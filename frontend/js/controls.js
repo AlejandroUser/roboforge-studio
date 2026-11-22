@@ -1145,6 +1145,7 @@ export class ControlsController {
       `;
       btn.addEventListener("click", () => {
         this.applyMountPreset(actId);
+        this.onArchitectureChange(actId);
       });
       grid.appendChild(btn);
     }
@@ -1303,6 +1304,7 @@ export class ControlsController {
       `;
       btn.addEventListener("click", () => {
         this.applyGearPreset(presetId);
+        this.onArchitectureChange(presetId);
       });
       grid.appendChild(btn);
     }
@@ -1433,6 +1435,7 @@ export class ControlsController {
       `;
       btn.addEventListener("click", () => {
         this.applyArmPreset(presetId);
+        this.onArchitectureChange(presetId);
       });
       grid.appendChild(btn);
     }

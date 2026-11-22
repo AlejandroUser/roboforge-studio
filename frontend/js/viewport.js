@@ -466,6 +466,150 @@ export class Viewport3D {
     this.ghostVisible = false;
   }
 
+  /**
+   * 60 FPS Real-Time Forward Kinematics on hierarchical arm_assembly.glb nodes.
+   */
+  setArmJointAngles(shoulderDeg, elbowDeg, wristDeg) {
+    if (!this.activeGroup) return false;
+    const j1 = this.activeGroup.getObjectByName("joint_shoulder");
+    const j2 = this.activeGroup.getObjectByName("joint_elbow");
+    const j3 = this.activeGroup.getObjectByName("joint_wrist");
+    if (!j1 || !j2 || !j3) return false;
+
+    j1.rotation.set(0, -THREE.MathUtils.degToRad(Number(shoulderDeg) || 0), 0);
+    j2.rotation.set(0, -THREE.MathUtils.degToRad(Number(elbowDeg) || 0), 0);
+    j3.rotation.set(0, -THREE.MathUtils.degToRad(Number(wristDeg) || 0), 0);
+    this.activeGroup.updateMatrixWorld(true);
+    return true;
+  }
+
+  /**
+   * 3D Engineering Boundary Condition Overlays:
+   * - Red 3D Load Force Arrows (ArrowHelper)
+   * - Green Fixed Clamp Markers (u = 0)
+   * - Translucent Cyan Workspace Envelope Arc for Full Robotic Arms
+   */
+  setEngineeringOverlays({
+    family = "links",
+    visible = true,
+    loadDirection = "y_inplane",
+    maxReachMm = 445,
+    baseHeightMm = 95,
+  } = {}) {
+    this.clearEngineeringOverlays();
+    this.overlaysVisible = Boolean(visible);
+    if (!visible || !this.activeGroup) return;
+
+    const box = new THREE.Box3().setFromObject(this.activeGroup);
+    if (box.isEmpty()) return;
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+
+    const group = new THREE.Group();
+    group.name = "engineering_overlays";
+
+    const clampMat = new THREE.MeshBasicMaterial({
+      color: 0x10b981,
+      transparent: true,
+      opacity: 0.72,
+      side: THREE.DoubleSide,
+    });
+
+    if (family === "arm") {
+      const reach = Math.max(120, Number(maxReachMm) || 400);
+      const shoulderY = Math.max(40, Number(baseHeightMm) || 90);
+      const ringGeo = new THREE.RingGeometry(reach - 2.5, reach, 64, 1, -Math.PI * 0.25, Math.PI * 1.15);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.28,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const arc = new THREE.Mesh(ringGeo, ringMat);
+      arc.position.set(center.x - size.x * 0.25, shoulderY, center.z);
+      group.add(arc);
+
+      const baseRing = new THREE.Mesh(new THREE.RingGeometry(24, 34, 32), clampMat);
+      baseRing.rotation.x = -Math.PI / 2;
+      baseRing.position.set(box.min.x + 42, box.min.y + 0.6, center.z);
+      group.add(baseRing);
+
+      const arrowLen = Math.max(28, reach * 0.14);
+      const arrow = new THREE.ArrowHelper(
+        new THREE.Vector3(0, -1, 0),
+        new THREE.Vector3(box.max.x, box.max.y * 0.75 + arrowLen, center.z),
+        arrowLen,
+        0xef4444,
+        arrowLen * 0.32,
+        arrowLen * 0.2
+      );
+      group.add(arrow);
+    } else if (family === "mounts") {
+      const plateFrame = new THREE.Mesh(
+        new THREE.RingGeometry(Math.min(size.x, size.z) * 0.38, Math.min(size.x, size.z) * 0.48, 4),
+        clampMat
+      );
+      plateFrame.rotation.x = -Math.PI / 2;
+      plateFrame.rotation.z = Math.PI / 4;
+      plateFrame.position.set(center.x, box.min.y + 0.6, center.z);
+      group.add(plateFrame);
+
+      const arrowLen = Math.max(24, size.y * 0.55);
+      const dir = loadDirection === "z_outofplane" ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(0, 0, -1);
+      const origin =
+        loadDirection === "z_outofplane"
+          ? new THREE.Vector3(center.x, box.max.y + arrowLen + 4, box.max.z - 6)
+          : new THREE.Vector3(center.x, box.max.y * 0.72, box.max.z + arrowLen + 4);
+      group.add(new THREE.ArrowHelper(dir, origin, arrowLen, 0xef4444, arrowLen * 0.32, arrowLen * 0.22));
+    } else if (family === "gears") {
+      const boreR = Math.max(4, size.x * 0.12);
+      const clampRing = new THREE.Mesh(new THREE.RingGeometry(boreR, boreR + 2.5, 28), clampMat);
+      clampRing.rotation.x = -Math.PI / 2;
+      clampRing.position.set(center.x, box.max.y + 1.0, center.z);
+      group.add(clampRing);
+
+      const arrowLen = Math.max(18, size.x * 0.45);
+      const dir = loadDirection === "z_outofplane" ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(0, 0, 1);
+      const origin =
+        loadDirection === "z_outofplane"
+          ? new THREE.Vector3(box.max.x - 2, box.max.y + arrowLen + 3, center.z)
+          : new THREE.Vector3(box.max.x + 3, center.y, center.z - arrowLen * 0.5);
+      group.add(new THREE.ArrowHelper(dir, origin, arrowLen, 0xef4444, arrowLen * 0.34, arrowLen * 0.22));
+    } else {
+      const rootR = Math.max(10, size.z * 0.32);
+      const clampRing = new THREE.Mesh(new THREE.RingGeometry(rootR, rootR + 3.2, 32), clampMat);
+      clampRing.rotation.x = -Math.PI / 2;
+      clampRing.position.set(box.min.x + rootR + 2, box.max.y + 1.0, center.z);
+      group.add(clampRing);
+
+      const arrowLen = Math.max(26, size.x * 0.22);
+      const dir = loadDirection === "z_outofplane" ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(0, 0, 1);
+      const origin =
+        loadDirection === "z_outofplane"
+          ? new THREE.Vector3(box.max.x - rootR * 0.7, box.max.y + arrowLen + 4, center.z)
+          : new THREE.Vector3(box.max.x - rootR * 0.7, center.y, box.min.z - arrowLen - 4);
+      group.add(new THREE.ArrowHelper(dir, origin, arrowLen, 0xef4444, arrowLen * 0.32, arrowLen * 0.2));
+    }
+
+    this.overlayGroup = group;
+    this.scene.add(group);
+  }
+
+  clearEngineeringOverlays() {
+    if (this.overlayGroup) {
+      this.scene.remove(this.overlayGroup);
+      this.overlayGroup.traverse((obj) => {
+        obj.geometry?.dispose?.();
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach((m) => m?.dispose?.());
+      });
+      this.overlayGroup = null;
+    }
+  }
+
   setCameraView(viewName = "iso", animate = true) {
     const r = this.modelRadius;
     const fovRad = THREE.MathUtils.degToRad(this.camera.fov);

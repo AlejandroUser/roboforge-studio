@@ -289,31 +289,80 @@ def build_and_export_arm_assembly(
     if not (stl_path.exists() and stl_path.stat().st_size > 0):
         export_stl(full_assembly, str(stl_path), tolerance=0.14, angular_tolerance=0.22)
 
-    # Export multi-material GLB scene
+    # Export hierarchical multi-material GLB scene for 60 FPS real-time FK in Three.js
     if not (glb_path.exists() and glb_path.stat().st_size > 0):
+        import numpy as np
+        from trimesh.transformations import rotation_matrix, translation_matrix
+
         link_rgba = _hex_to_rgba(str(material.get("color_hex", "")), [62, 184, 204, 255])
+        joint_rgba = [42, 48, 62, 255]
+
+        # Local zero-pose meshes (each segment starts at origin along +X in XZ plane)
+        upper_local = _place_link_in_xz(upper_raw, (0.0, 0.0, 0.0), 0.0)
+        forearm_local = _place_link_in_xz(forearm_raw, (0.0, 0.0, 0.0), 0.0)
+        j_shoulder_local = _build_joint_housing((0.0, 0.0, 0.0), radius=27.0 * scale, length_y=upper_t + 24.0)
+        j_elbow_local = _build_joint_housing((0.0, 0.0, 0.0), radius=21.0 * scale, length_y=upper_t + 18.0)
+        j_wrist_local = _build_joint_housing((0.0, 0.0, 0.0), radius=16.0 * scale, length_y=forearm_t + 14.0)
+        wrist_local, tcp_local = _build_wrist_and_tcp((0.0, 0.0, 0.0), req.wrist_mm, 0.0, scale)
+
         scene = trimesh.Scene()
         scene.add_geometry(
             _part_to_trimesh(base_part, [74, 88, 108, 255], 0.65, 0.35, "arm_base"),
             node_name="base_pedestal",
+            parent_node_name="world",
+        )
+
+        # Joint 1: Shoulder pivot at (0, 0, base_height_mm), rotated around Y by -shoulder_joint_deg
+        t_j1 = translation_matrix([0.0, 0.0, float(req.base_height_mm)]) @ rotation_matrix(
+            math.radians(-req.shoulder_joint_deg), [0.0, 1.0, 0.0]
+        )
+        scene.graph.update(frame_to="joint_shoulder", frame_from="world", matrix=t_j1)
+        scene.add_geometry(
+            _part_to_trimesh(j_shoulder_local, joint_rgba, 0.72, 0.30, "shoulder_housing"),
+            node_name="shoulder_housing",
+            parent_node_name="joint_shoulder",
         )
         scene.add_geometry(
-            _part_to_trimesh(
-                Compound(children=[upper_part, forearm_part, wrist_tube]),
-                link_rgba,
-                0.55,
-                0.32,
-                "arm_links",
-            ),
-            node_name="arm_links",
+            _part_to_trimesh(upper_local, link_rgba, 0.55, 0.32, "upper_arm_link"),
+            node_name="upper_arm_link",
+            parent_node_name="joint_shoulder",
+        )
+
+        # Joint 2: Elbow pivot at (upper_arm_mm, 0, 0) in shoulder frame
+        t_j2 = translation_matrix([float(req.upper_arm_mm), 0.0, 0.0]) @ rotation_matrix(
+            math.radians(-req.elbow_joint_deg), [0.0, 1.0, 0.0]
+        )
+        scene.graph.update(frame_to="joint_elbow", frame_from="joint_shoulder", matrix=t_j2)
+        scene.add_geometry(
+            _part_to_trimesh(j_elbow_local, joint_rgba, 0.72, 0.30, "elbow_housing"),
+            node_name="elbow_housing",
+            parent_node_name="joint_elbow",
         )
         scene.add_geometry(
-            _part_to_trimesh(joints_compound, [42, 48, 62, 255], 0.72, 0.30, "arm_joints"),
-            node_name="joint_housings",
+            _part_to_trimesh(forearm_local, link_rgba, 0.55, 0.32, "forearm_link"),
+            node_name="forearm_link",
+            parent_node_name="joint_elbow",
+        )
+
+        # Joint 3: Wrist pivot at (forearm_mm, 0, 0) in elbow frame
+        t_j3 = translation_matrix([float(req.forearm_mm), 0.0, 0.0]) @ rotation_matrix(
+            math.radians(-req.wrist_joint_deg), [0.0, 1.0, 0.0]
+        )
+        scene.graph.update(frame_to="joint_wrist", frame_from="joint_elbow", matrix=t_j3)
+        scene.add_geometry(
+            _part_to_trimesh(j_wrist_local, joint_rgba, 0.72, 0.30, "wrist_housing"),
+            node_name="wrist_housing",
+            parent_node_name="joint_wrist",
         )
         scene.add_geometry(
-            _part_to_trimesh(tcp_flange, [242, 182, 58, 255], 0.70, 0.28, "tcp_flange"),
+            _part_to_trimesh(wrist_local, link_rgba, 0.55, 0.32, "wrist_tube"),
+            node_name="wrist_tube",
+            parent_node_name="joint_wrist",
+        )
+        scene.add_geometry(
+            _part_to_trimesh(tcp_local, [242, 182, 58, 255], 0.70, 0.28, "tcp_flange"),
             node_name="tcp_flange",
+            parent_node_name="joint_wrist",
         )
         scene.export(str(glb_path), file_type="glb")
 

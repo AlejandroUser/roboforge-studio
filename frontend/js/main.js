@@ -87,7 +87,9 @@ class RoboForgeApp {
     });
 
     this.autoGenTimer = null;
+    this.showLoads3D = true;
     this._bindLiveAutoRegenerate();
+    this._bindRealtimeArmFK();
 
     this.comparator = new ComparatorController({
       onSelectVariant: (variant) => this.selectVariant(variant, { autoFit: false }),
@@ -105,13 +107,65 @@ class RoboForgeApp {
     const sidebar = document.querySelector(".sidebar-left");
     if (!sidebar) return;
 
+    const fkIds = new Set([
+      "arm-shoulder_joint_deg",
+      "arm-elbow_joint_deg",
+      "arm-wrist_joint_deg",
+    ]);
+
     sidebar.addEventListener("change", (e) => {
       const el = e.target;
       if (!el || !el.matches("input, select")) return;
       if (el.type === "file") return;
       if (el.id === "copilot-prompt-input") return;
       if (el.closest("#profile-modal")) return;
+      // FK angle sliders animate at 60 FPS on the GPU without slow backend roundtrip
+      if (fkIds.has(el.id) && this.activeFamily === "arm") return;
       this.scheduleAutoGenerate(420);
+    });
+  }
+
+  _bindRealtimeArmFK() {
+    const ids = ["arm-shoulder_joint_deg", "arm-elbow_joint_deg", "arm-wrist_joint_deg"];
+    const onPoseInput = () => {
+      if (this.activeFamily !== "arm") return;
+      const sDeg = Number(document.getElementById("arm-shoulder_joint_deg")?.value || 0);
+      const eDeg = Number(document.getElementById("arm-elbow_joint_deg")?.value || 0);
+      const wDeg = Number(document.getElementById("arm-wrist_joint_deg")?.value || 0);
+      this.viewport.setArmJointAngles(sDeg, eDeg, wDeg);
+
+      // Update live TCP (FK) readout in right panel instantaneously
+      const lBase = Number(document.getElementById("arm-base_height_mm")?.value || 95);
+      const l1 = Number(document.getElementById("arm-upper_arm_mm")?.value || 200);
+      const l2 = Number(document.getElementById("arm-forearm_mm")?.value || 170);
+      const l3 = Number(document.getElementById("arm-wrist_mm")?.value || 75);
+      const a1 = (sDeg * Math.PI) / 180;
+      const a2 = ((sDeg + eDeg) * Math.PI) / 180;
+      const a3 = ((sDeg + eDeg + wDeg) * Math.PI) / 180;
+      const tcpX = l1 * Math.cos(a1) + l2 * Math.cos(a2) + l3 * Math.cos(a3);
+      const tcpZ = lBase + l1 * Math.sin(a1) + l2 * Math.sin(a2) + l3 * Math.sin(a3);
+      const tcpEl = document.querySelector(".arm-tcp-coords");
+      if (tcpEl) {
+        tcpEl.textContent = `X ${tcpX.toFixed(1)} · Y 0.0 · Z ${tcpZ.toFixed(1)} mm`;
+      }
+    };
+    ids.forEach((id) => {
+      document.getElementById(id)?.addEventListener("input", onPoseInput);
+    });
+  }
+
+  _refreshEngineeringOverlays() {
+    if (!this.viewport) return;
+    const armPayload = this.activeFamily === "arm" ? this.controls.getArmPayload() : null;
+    const maxReach = armPayload
+      ? armPayload.upper_arm_mm + armPayload.forearm_mm + armPayload.wrist_mm
+      : 445;
+    this.viewport.setEngineeringOverlays({
+      family: this.activeFamily,
+      visible: this.showLoads3D,
+      loadDirection: this.feaLoadDirection || "y_inplane",
+      maxReachMm: maxReach,
+      baseHeightMm: armPayload?.base_height_mm || 95,
     });
   }
 
@@ -208,6 +262,14 @@ class RoboForgeApp {
 
     // Toggle between Real 3D FEA mesh and CAD model
     this.btnToggleFeaMesh?.addEventListener("click", () => this.toggleFeaMeshView());
+
+    // 3D Engineering Overlays (Load arrows + Clamp markers + Workspace Envelope)
+    const btnLoads3d = document.getElementById("btn-loads-3d");
+    btnLoads3d?.addEventListener("click", () => {
+      this.showLoads3D = !this.showLoads3D;
+      btnLoads3d.classList.toggle("active", this.showLoads3D);
+      this._refreshEngineeringOverlays();
+    });
 
     // Ghost Overlay .STEP toggle
     this.btnGhostStep?.addEventListener("click", async () => {
@@ -825,6 +887,7 @@ class RoboForgeApp {
 
         if (armRes.glb_url) {
           await this.viewport.loadModel(armRes.glb_url, { autoFit: true, isFeaMesh: false });
+          this._refreshEngineeringOverlays();
         }
         if (this.hudDot) {
           this.hudDot.style.background = "#38bdf8";
@@ -918,6 +981,7 @@ class RoboForgeApp {
     try {
       this.viewport.stressProfile = variant.metrics?.stress_profile || null;
       await this.viewport.loadModel(variant.glb_url, { autoFit, isFeaMesh: false });
+      this._refreshEngineeringOverlays();
       this._syncFeaUiForActiveVariant();
     } catch (err) {
       console.error("GLB load error:", err);
