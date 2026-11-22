@@ -74,7 +74,7 @@ class RoboForgeApp {
 
     this.controls = new ControlsController({
       onArchitectureChange: () => {
-        // El usuario puede ajustar parámetros adicionales o pulsar Generar
+        this.scheduleAutoGenerate(120);
       },
       onStepFileSelected: (file, validationErr) => this.handleStepUpload(file, validationErr),
       onClearStepReference: () => {
@@ -86,6 +86,9 @@ class RoboForgeApp {
       },
     });
 
+    this.autoGenTimer = null;
+    this._bindLiveAutoRegenerate();
+
     this.comparator = new ComparatorController({
       onSelectVariant: (variant) => this.selectVariant(variant, { autoFit: false }),
     });
@@ -96,6 +99,30 @@ class RoboForgeApp {
     this._bindCopilot();
 
     await this._bootstrapBackendData();
+  }
+
+  _bindLiveAutoRegenerate() {
+    const sidebar = document.querySelector(".sidebar-left");
+    if (!sidebar) return;
+
+    sidebar.addEventListener("change", (e) => {
+      const el = e.target;
+      if (!el || !el.matches("input, select")) return;
+      if (el.type === "file") return;
+      if (el.id === "copilot-prompt-input") return;
+      if (el.closest("#profile-modal")) return;
+      this.scheduleAutoGenerate(420);
+    });
+  }
+
+  scheduleAutoGenerate(delayMs = 420) {
+    if (this.autoGenTimer) clearTimeout(this.autoGenTimer);
+    this.autoGenTimer = setTimeout(() => {
+      this.autoGenTimer = null;
+      if (!this.isRunningFea) {
+        this.runGeneration();
+      }
+    }, delayMs);
   }
 
   _bindHeaderActions() {
