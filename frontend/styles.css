@@ -934,10 +934,10 @@ input[type="range"]:disabled {
   outline: none;
 }
 
-/* Floating HUD Top-Left */
+/* Floating HUD Top-Left (below toolbar row so it never collides at medium widths) */
 .viewport-hud-top-left {
   position: absolute;
-  top: 14px;
+  top: 62px;
   left: 14px;
   max-width: 310px;
   background: var(--bg-glass);
