@@ -977,8 +977,11 @@ input[type="range"]:disabled {
   top: 14px;
   right: 14px;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 6px;
+  max-width: calc(100% - 340px);
   background: var(--bg-glass);
   backdrop-filter: blur(10px);
   border: 1px solid var(--border-subtle);
@@ -1037,6 +1040,36 @@ input[type="range"]:disabled {
   background: rgba(245, 158, 11, 0.16);
   border-color: rgba(245, 158, 11, 0.55);
   color: #fbbf24;
+}
+
+.tool-btn.fea-cta {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(56, 189, 248, 0.16));
+  border-color: rgba(16, 185, 129, 0.48);
+  color: #6ee7b7;
+  font-weight: 600;
+}
+
+.tool-btn.fea-cta:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(56, 189, 248, 0.24));
+  border-color: #34d399;
+  color: #ffffff;
+}
+
+.tool-btn.fea-cta:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+#btn-toggle-fea-mesh {
+  border-color: rgba(167, 139, 250, 0.4);
+  color: #c4b5fd;
+  font-weight: 600;
+}
+
+#btn-toggle-fea-mesh.active {
+  background: rgba(167, 139, 250, 0.2);
+  border-color: rgba(167, 139, 250, 0.65);
+  color: #ede9fe;
 }
 
 /* Floating Stress Heatmap Legend */
@@ -1317,6 +1350,87 @@ input[type="range"]:disabled {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   opacity: 0.8;
+}
+
+/* Real 3D FEA Results Card */
+.fea-results-card {
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.08) 0%, var(--bg-surface) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.fea-results-card.fea-fail {
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.09) 0%, var(--bg-surface) 100%);
+  border-color: rgba(239, 68, 68, 0.42);
+}
+
+.fea-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fea-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fea-card-title strong {
+  font-size: 12.5px;
+  color: #f8fafc;
+}
+
+.fea-card-title small {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.fea-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.btn-fea-switch {
+  border: 1px solid rgba(167, 139, 250, 0.45);
+  background: rgba(167, 139, 250, 0.14);
+  color: #ddd6fe;
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.btn-fea-switch:hover {
+  background: rgba(167, 139, 250, 0.25);
+  color: #ffffff;
+}
+
+.fea-notes-list {
+  margin: 0;
+  padding-left: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: 6px;
+}
+
+.fea-notes-list:empty {
+  display: none;
 }
 
 /* Variant Cards */

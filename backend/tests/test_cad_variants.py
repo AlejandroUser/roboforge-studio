@@ -146,3 +146,39 @@ def test_edge_case_geometries_build_validly(kwargs):
     for vid in EXPECTED_VARIANTS:
         assert variants[vid]["is_valid"] is True
         assert variants[vid]["volume_mm3"] > 0.0
+
+
+def test_api_fea_endpoint_and_glb_download():
+    """POST /api/fea must run Gmsh + 3D Tet4 FEM on a variant .STEP and serve the colored FEA GLB."""
+    from fastapi.testclient import TestClient
+
+    from backend.app.main import app
+
+    client = TestClient(app)
+    req = LinkDesignRequest()
+    design_hash = compute_design_hash(req)
+
+    payload = {
+        "design_hash": design_hash,
+        "variant_id": "tapered_solid",
+        "request": req.model_dump(),
+        "mesh_size_mm": 8.0,
+        "load_direction": "y_inplane",
+    }
+    resp = client.post("/api/fea", json=payload)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+
+    assert data["design_hash"] == design_hash
+    assert data["variant_id"] == "tapered_solid"
+    assert data["node_count"] > 50
+    assert data["element_count"] > 100
+    assert data["max_von_mises_mpa"] > 0.0
+    assert data["p95_von_mises_mpa"] > 0.0
+    assert data["max_displacement_mm"] > 0.0
+    assert data["fea_safety_factor"] > 0.0
+    assert data["fea_glb_url"].startswith(f"/api/files/{design_hash}/")
+
+    glb_resp = client.get(data["fea_glb_url"])
+    assert glb_resp.status_code == 200
+    assert len(glb_resp.content) > 1000

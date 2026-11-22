@@ -138,3 +138,29 @@ class StepReferenceAnalysis(BaseModel):
     detected_holes: list[DetectedHole] = Field(default_factory=list)
     suggested_request: LinkDesignRequest
     notes: list[str] = Field(default_factory=list)
+
+
+# Hito 3A: Validación FEA 3D Real (Gmsh + 3D Tet4 Linear Elasticity FEM)
+class FEARequest(BaseModel):
+    design_hash: str
+    variant_id: VariantKind
+    request: LinkDesignRequest
+    mesh_size_mm: float = Field(7.0, ge=3.0, le=15.0)
+    load_direction: Literal["y_inplane", "z_outofplane"] = "y_inplane"
+
+
+class FEAResult(BaseModel):
+    design_hash: str
+    variant_id: VariantKind
+    solver_name: str
+    node_count: int
+    element_count: int
+    solve_time_s: float
+    max_von_mises_mpa: float
+    p95_von_mises_mpa: float
+    max_displacement_mm: float
+    effective_yield_mpa: float
+    fea_safety_factor: float
+    passes_fea: bool
+    fea_glb_url: str
+    notes: list[str] = Field(default_factory=list)

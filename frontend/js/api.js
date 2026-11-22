@@ -98,6 +98,17 @@ export async function generateDesign(payload, signal) {
 }
 
 /**
+ * Ejecuta validación FEA 3D real (Gmsh + Tet4 FEM) vía POST /api/fea y retorna FEAResult.
+ */
+export async function runFEA(payload, signal) {
+  return requestJson("/api/fea", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    signal,
+  });
+}
+
+/**
  * Sube un archivo .STEP/.STP a POST /api/analyze-step y retorna StepReferenceAnalysis.
  */
 export async function analyzeStepFile(file) {

@@ -439,6 +439,16 @@
           </div>
           <div class="toolbar-sep"></div>
           <div class="toolbar-group">
+            <button type="button" class="tool-btn icon-text fea-cta" id="btn-run-fea" title="Ejecutar simulación FEA 3D real con Gmsh + Tet4">
+              <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <path d="M9 2L15.5 5.8V12.2L9 16L2.5 12.2V5.8L9 2Z" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/>
+                <path d="M9 2L9 9M9 9L15.5 5.8M9 9L2.5 5.8M9 9L9 16" stroke="currentColor" stroke-width="1.2" stroke-opacity="0.75"/>
+              </svg>
+              <span>Ejecutar FEA 3D (Gmsh)</span>
+            </button>
+            <button type="button" class="tool-btn icon-text hidden" id="btn-toggle-fea-mesh" title="Alternar entre Malla FEA 3D y Modelo CAD">
+              <span id="toggle-fea-mesh-label">Malla FEA 3D</span>
+            </button>
             <button type="button" class="tool-btn icon-text" id="btn-heatmap" title="Activar Mapa de Esfuerzos FEA">
               <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
                 <path d="M9 2.5C9 2.5 5 6.8 5 10.5A4 4 0 0 0 13 10.5C13 6.8 9 2.5 9 2.5Z" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/>
@@ -470,7 +480,7 @@
 
         <!-- FLOATING STRESS HEATMAP LEGEND -->
         <div class="heatmap-legend hidden" id="heatmap-legend" aria-label="Leyenda de esfuerzos">
-          <div class="heatmap-legend-title">Esfuerzo von Mises (MPa)</div>
+          <div class="heatmap-legend-title" id="heatmap-legend-title">Esfuerzo von Mises (MPa)</div>
           <div class="heatmap-gradient-bar"></div>
           <div class="heatmap-ticks">
             <span>0 MPa</span>
@@ -523,6 +533,9 @@
 
         <!-- GLOBAL ALERTS -->
         <div class="alerts-container" id="global-alerts"></div>
+
+        <!-- REAL 3D FEA RESULTS CARD -->
+        <section class="fea-results-card hidden" id="fea-results-card" aria-label="Resultados FEA 3D Real"></section>
 
         <!-- VARIANT CARDS -->
         <div class="variants-list" id="variants-list">

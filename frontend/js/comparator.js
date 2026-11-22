@@ -34,6 +34,7 @@ export class ComparatorController {
   constructor({ onSelectVariant } = {}) {
     this.onSelectVariant = onSelectVariant || (() => {});
     this.alertsEl = document.getElementById("global-alerts");
+    this.feaCardEl = document.getElementById("fea-results-card");
     this.listEl = document.getElementById("variants-list");
     this.hashPillEl = document.getElementById("design-hash-pill");
     this.subtitleEl = document.getElementById("comparator-subtitle");
@@ -63,6 +64,82 @@ export class ComparatorController {
     if (!this.listEl) return;
     this.listEl.querySelectorAll(".variant-card").forEach((card) => {
       card.classList.toggle("active", card.dataset.variantId === variantId);
+    });
+  }
+
+  renderFeaResult(feaResult, variantName, isShowingFeaMesh, { onToggleMesh } = {}) {
+    if (!this.feaCardEl) return;
+    if (!feaResult) {
+      this.feaCardEl.classList.add("hidden");
+      this.feaCardEl.innerHTML = "";
+      return;
+    }
+
+    this.feaCardEl.classList.remove("hidden");
+    this.feaCardEl.classList.toggle("fea-fail", !feaResult.passes_fea);
+
+    const statusBadge = feaResult.passes_fea
+      ? `<span class="badge badge-recommended">✓ Aprobado FEA</span>`
+      : `<span class="badge badge-fail">✕ Revisar</span>`;
+
+    const fsClass = feaResult.passes_fea ? "good" : feaResult.fea_safety_factor >= 1.2 ? "warn" : "bad";
+    const toggleLabel = isShowingFeaMesh ? "Ver Modelo CAD" : "Ver Malla FEA 3D";
+    const notesHtml = (feaResult.notes || [])
+      .map((n) => `<li>${escapeHtml(n)}</li>`)
+      .join("");
+
+    this.feaCardEl.innerHTML = `
+      <div class="fea-card-head">
+        <div class="fea-card-title">
+          <strong>Resultados FEA 3D Real</strong>
+          <small>${escapeHtml(variantName || feaResult.variant_id)} · ${escapeHtml(feaResult.solver_name || "Gmsh + Tet4")}</small>
+        </div>
+        ${statusBadge}
+      </div>
+
+      <div class="metrics-grid">
+        <div class="metric-cell">
+          <span class="metric-label">Nodos</span>
+          <span class="metric-val">${Number(feaResult.node_count || 0).toLocaleString("es")}</span>
+          <span class="metric-sub">3D Tet4</span>
+        </div>
+        <div class="metric-cell">
+          <span class="metric-label">Tetraedros</span>
+          <span class="metric-val">${Number(feaResult.element_count || 0).toLocaleString("es")}</span>
+          <span class="metric-sub">${fmt(feaResult.solve_time_s, 2)} s</span>
+        </div>
+        <div class="metric-cell">
+          <span class="metric-label">FS FEA</span>
+          <span class="metric-val ${fsClass}">${fmt(feaResult.fea_safety_factor, 2)}×</span>
+          <span class="metric-sub">Sy ${fmt(feaResult.effective_yield_mpa, 0)} MPa</span>
+        </div>
+        <div class="metric-cell">
+          <span class="metric-label">Von Mises P95</span>
+          <span class="metric-val">${fmt(feaResult.p95_von_mises_mpa, 1)}</span>
+          <span class="metric-sub">MPa (efect.)</span>
+        </div>
+        <div class="metric-cell">
+          <span class="metric-label">Von Mises Pico</span>
+          <span class="metric-val">${fmt(feaResult.max_von_mises_mpa, 1)}</span>
+          <span class="metric-sub">MPa máx.</span>
+        </div>
+        <div class="metric-cell">
+          <span class="metric-label">Desplazamiento</span>
+          <span class="metric-val">${fmt(feaResult.max_displacement_mm, 2)}</span>
+          <span class="metric-sub">mm máx.</span>
+        </div>
+      </div>
+
+      <div class="fea-card-actions">
+        <button type="button" class="btn-fea-switch" id="btn-fea-card-toggle">${toggleLabel}</button>
+      </div>
+
+      <ul class="fea-notes-list">${notesHtml}</ul>
+    `;
+
+    const toggleBtn = this.feaCardEl.querySelector("#btn-fea-card-toggle");
+    toggleBtn?.addEventListener("click", () => {
+      onToggleMesh?.();
     });
   }
 

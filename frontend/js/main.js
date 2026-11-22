@@ -8,6 +8,7 @@ import {
   fetchMaterials,
   fetchPresets,
   generateDesign,
+  runFEA,
 } from "/js/api.js";
 import { Viewport3D } from "/js/viewport.js";
 import { ControlsController } from "/js/controls.js";
@@ -21,11 +22,17 @@ class RoboForgeApp {
     this.currentResponse = null;
     this.activeVariant = null;
     this.isGenerating = false;
+    this.isRunningFea = false;
+    this.viewingFeaMesh = false;
+    this.feaResultsByVariant = new Map();
     this.abortController = null;
     this.toastTimer = null;
 
     // UI elements
     this.btnGenerate = document.getElementById("btn-generate");
+    this.btnRunFea = document.getElementById("btn-run-fea");
+    this.btnToggleFeaMesh = document.getElementById("btn-toggle-fea-mesh");
+    this.toggleFeaMeshLabel = document.getElementById("toggle-fea-mesh-label");
     this.statusIndicator = document.getElementById("status-indicator");
     this.statusText = document.getElementById("status-text");
     this.loaderEl = document.getElementById("viewport-loader");
@@ -36,6 +43,7 @@ class RoboForgeApp {
     this.hudMeta = document.getElementById("hud-variant-meta");
     this.toastEl = document.getElementById("app-toast");
     this.heatmapLegendEl = document.getElementById("heatmap-legend");
+    this.heatmapLegendTitle = document.getElementById("heatmap-legend-title");
     this.heatmapMidLabel = document.getElementById("heatmap-mid-label");
     this.heatmapMaxLabel = document.getElementById("heatmap-max-label");
   }
@@ -92,14 +100,23 @@ class RoboForgeApp {
       camButtons.forEach((b) => b.classList.toggle("active", b.dataset.camView === "iso"));
     });
 
+    // Real 3D FEA (Gmsh + Tet4) trigger
+    this.btnRunFea?.addEventListener("click", () => this.runFeaSimulation());
+
+    // Toggle between Real 3D FEA mesh and CAD model
+    this.btnToggleFeaMesh?.addEventListener("click", () => this.toggleFeaMeshView());
+
     // Stress Heatmap toggle
     const btnHeatmap = document.getElementById("btn-heatmap");
-    btnHeatmap?.addEventListener("click", () => {
+    btnHeatmap?.addEventListener("click", async () => {
+      if (this.viewingFeaMesh && this.activeVariant) {
+        await this._switchToCadModel();
+      }
       const next = !this.viewport.heatmapEnabled;
       const profile = this.activeVariant?.metrics?.stress_profile || null;
       this.viewport.setStressHeatmap(next, profile);
       btnHeatmap.classList.toggle("active", next);
-      this._updateHeatmapLegend(next, this.activeVariant);
+      this._updateHeatmapLegend();
     });
 
     // Wireframe toggle
@@ -202,20 +219,173 @@ class RoboForgeApp {
     }
   }
 
-  _updateHeatmapLegend(enabled, variant) {
+  _updateHeatmapLegend() {
     if (!this.heatmapLegendEl) return;
-    if (!enabled) {
-      this.heatmapLegendEl.classList.add("hidden");
+
+    const feaResult = this.activeVariant
+      ? this.feaResultsByVariant.get(this.activeVariant.variant_id)
+      : null;
+
+    if (this.viewingFeaMesh && feaResult) {
+      if (this.heatmapLegendTitle) {
+        this.heatmapLegendTitle.textContent = "Von Mises FEA 3D (MPa)";
+      }
+      if (this.heatmapMidLabel) {
+        this.heatmapMidLabel.textContent = `P95: ${Number(feaResult.p95_von_mises_mpa ?? 0).toFixed(1)}`;
+      }
+      if (this.heatmapMaxLabel) {
+        this.heatmapMaxLabel.textContent = `Pico: ${Number(feaResult.max_von_mises_mpa ?? 0).toFixed(1)} MPa`;
+      }
+      this.heatmapLegendEl.classList.remove("hidden");
       return;
     }
-    const maxStress = Number(variant?.metrics?.max_stress_mpa ?? 0);
-    if (this.heatmapMidLabel) {
-      this.heatmapMidLabel.textContent = `${(maxStress / 2).toFixed(1)}`;
+
+    if (this.viewport.heatmapEnabled && this.activeVariant) {
+      const maxStress = Number(this.activeVariant?.metrics?.max_stress_mpa ?? 0);
+      if (this.heatmapLegendTitle) {
+        this.heatmapLegendTitle.textContent = "Esfuerzo Analítico (MPa)";
+      }
+      if (this.heatmapMidLabel) {
+        this.heatmapMidLabel.textContent = `${(maxStress / 2).toFixed(1)}`;
+      }
+      if (this.heatmapMaxLabel) {
+        this.heatmapMaxLabel.textContent = `${maxStress.toFixed(1)} MPa`;
+      }
+      this.heatmapLegendEl.classList.remove("hidden");
+      return;
     }
-    if (this.heatmapMaxLabel) {
-      this.heatmapMaxLabel.textContent = `${maxStress.toFixed(1)} MPa`;
+
+    this.heatmapLegendEl.classList.add("hidden");
+  }
+
+  _syncFeaUiForActiveVariant() {
+    const feaResult = this.activeVariant
+      ? this.feaResultsByVariant.get(this.activeVariant.variant_id)
+      : null;
+
+    if (this.btnToggleFeaMesh) {
+      this.btnToggleFeaMesh.classList.toggle("hidden", !feaResult);
+      this.btnToggleFeaMesh.classList.toggle("active", Boolean(feaResult && this.viewingFeaMesh));
     }
-    this.heatmapLegendEl.classList.remove("hidden");
+    if (this.toggleFeaMeshLabel) {
+      this.toggleFeaMeshLabel.textContent = this.viewingFeaMesh ? "Malla FEA 3D" : "Modelo CAD";
+    }
+
+    this.comparator.renderFeaResult(
+      feaResult || null,
+      this.activeVariant?.name,
+      this.viewingFeaMesh,
+      { onToggleMesh: () => this.toggleFeaMeshView() }
+    );
+
+    this._updateHeatmapLegend();
+  }
+
+  async runFeaSimulation() {
+    if (this.isRunningFea || this.isGenerating) return;
+    if (!this.currentResponse || !this.activeVariant) {
+      this.showToast("Genera un diseño antes de ejecutar FEA 3D.", true);
+      return;
+    }
+
+    this.isRunningFea = true;
+    if (this.btnRunFea) this.btnRunFea.disabled = true;
+    this.setStatus("busy", "Resolviendo FEA 3D...");
+    this.showLoader(
+      "Ejecutando Solver FEA 3D (Gmsh + Tet4)...",
+      `Mallando sólido .STEP de ${this.activeVariant.name} y resolviendo elasticidad lineal 3D`
+    );
+
+    try {
+      const payload = {
+        design_hash: this.currentResponse.design_hash,
+        variant_id: this.activeVariant.variant_id,
+        request: this.controls.getPayload(),
+        mesh_size_mm: 7.0,
+        load_direction: "y_inplane",
+      };
+
+      const feaResult = await runFEA(payload);
+      this.feaResultsByVariant.set(this.activeVariant.variant_id, feaResult);
+
+      // Cargar malla FEA 3D con vertexColors reales
+      await this.viewport.loadModel(feaResult.fea_glb_url, {
+        autoFit: false,
+        isFeaMesh: true,
+        bypassCache: true,
+      });
+      this.viewingFeaMesh = true;
+
+      // Desactivar botón de mapa analítico si estaba activo para evitar confusión
+      const btnHeatmap = document.getElementById("btn-heatmap");
+      btnHeatmap?.classList.remove("active");
+      this.viewport.heatmapEnabled = false;
+
+      if (this.hudMeta) {
+        this.hudMeta.textContent = `FEA 3D: P95 ${Number(feaResult.p95_von_mises_mpa).toFixed(
+          1
+        )} MPa · Pico ${Number(feaResult.max_von_mises_mpa).toFixed(1)} MPa · FS ${Number(
+          feaResult.fea_safety_factor
+        ).toFixed(2)}×`;
+      }
+
+      this._syncFeaUiForActiveVariant();
+      this.setStatus("ready", `FEA 3D listo (${Number(feaResult.solve_time_s).toFixed(2)}s)`);
+      this.showToast(
+        `FEA 3D completado (${feaResult.element_count.toLocaleString("es")} tetraedros, FS ${Number(
+          feaResult.fea_safety_factor
+        ).toFixed(2)}×).`,
+        false
+      );
+    } catch (err) {
+      console.error("FEA 3D error:", err);
+      this.setStatus("error", "Error FEA 3D");
+      this.showToast(`Error en FEA 3D: ${err.message}`, true);
+    } finally {
+      this.hideLoader();
+      if (this.btnRunFea) this.btnRunFea.disabled = false;
+      this.isRunningFea = false;
+    }
+  }
+
+  async _switchToCadModel() {
+    if (!this.activeVariant) return;
+    this.viewingFeaMesh = false;
+    await this.viewport.loadModel(this.activeVariant.glb_url, {
+      autoFit: false,
+      isFeaMesh: false,
+    });
+    const m = this.activeVariant.metrics || {};
+    if (this.hudMeta) {
+      this.hudMeta.textContent = `${Number(m.mass_g ?? 0).toFixed(1)} g · FS ${Number(
+        m.safety_factor ?? 0
+      ).toFixed(2)}× · Deflex. ${Number(m.tip_deflection_mm ?? 0).toFixed(2)} mm`;
+    }
+    this._syncFeaUiForActiveVariant();
+  }
+
+  async toggleFeaMeshView() {
+    if (!this.activeVariant) return;
+    const feaResult = this.feaResultsByVariant.get(this.activeVariant.variant_id);
+    if (!feaResult) return;
+
+    if (this.viewingFeaMesh) {
+      await this._switchToCadModel();
+    } else {
+      this.viewingFeaMesh = true;
+      await this.viewport.loadModel(feaResult.fea_glb_url, {
+        autoFit: false,
+        isFeaMesh: true,
+      });
+      if (this.hudMeta) {
+        this.hudMeta.textContent = `FEA 3D: P95 ${Number(feaResult.p95_von_mises_mpa).toFixed(
+          1
+        )} MPa · Pico ${Number(feaResult.max_von_mises_mpa).toFixed(1)} MPa · FS ${Number(
+          feaResult.fea_safety_factor
+        ).toFixed(2)}×`;
+      }
+      this._syncFeaUiForActiveVariant();
+    }
   }
 
   async runGeneration() {
@@ -240,8 +410,12 @@ class RoboForgeApp {
       const response = await generateDesign(payload, this.abortController.signal);
       this.currentResponse = response;
 
-      // Limpiar caché de modelos de generaciones anteriores si el hash cambió
+      // Limpiar caché de modelos y FEA de generaciones anteriores
       this.viewport.clearModelCache();
+      this.feaResultsByVariant.clear();
+      this.viewingFeaMesh = false;
+      this.comparator.renderFeaResult(null);
+      this.btnToggleFeaMesh?.classList.add("hidden");
 
       const recommended =
         response.variants?.find((v) => v.variant_id === response.recommended_variant) ||
@@ -276,6 +450,7 @@ class RoboForgeApp {
   async selectVariant(variant, { autoFit = false } = {}) {
     if (!variant?.glb_url) return;
     this.activeVariant = variant;
+    this.viewingFeaMesh = false;
 
     const accent = VARIANT_COLORS[variant.variant_id] || "#38bdf8";
     if (this.hudDot) {
@@ -301,8 +476,8 @@ class RoboForgeApp {
 
     try {
       this.viewport.stressProfile = variant.metrics?.stress_profile || null;
-      await this.viewport.loadModel(variant.glb_url, { autoFit });
-      this._updateHeatmapLegend(this.viewport.heatmapEnabled, variant);
+      await this.viewport.loadModel(variant.glb_url, { autoFit, isFeaMesh: false });
+      this._syncFeaUiForActiveVariant();
     } catch (err) {
       console.error("GLB load error:", err);
       this.showToast(`Error cargando modelo 3D: ${err.message}`, true);

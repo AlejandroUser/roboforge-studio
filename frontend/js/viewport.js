@@ -59,6 +59,7 @@ export class Viewport3D {
     this.sectionCutEnabled = false;
     this.sectionCutRatio = 0.5;
     this.heatmapEnabled = false;
+    this.isShowingFeaMesh = false;
     this.stressProfile = null;
     this.clipPlaneX = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0);
     this.loadToken = 0;
@@ -144,10 +145,10 @@ export class Viewport3D {
   /**
    * Carga un archivo GLB por URL (usando caché en memoria si ya fue cargado).
    */
-  async loadModel(glbUrl, { autoFit = true } = {}) {
+  async loadModel(glbUrl, { autoFit = true, isFeaMesh = false, bypassCache = false } = {}) {
     const token = ++this.loadToken;
 
-    let cached = this.modelCache.get(glbUrl);
+    let cached = bypassCache ? null : this.modelCache.get(glbUrl);
     if (!cached) {
       const gltf = await new Promise((resolve, reject) => {
         this.loader.load(
@@ -160,7 +161,7 @@ export class Viewport3D {
 
       if (token !== this.loadToken) return null;
 
-      const wrapper = this._prepareLoadedScene(gltf.scene);
+      const wrapper = this._prepareLoadedScene(gltf.scene, { isFeaMesh });
       this.modelCache.set(glbUrl, wrapper);
       cached = wrapper;
     }
@@ -172,6 +173,7 @@ export class Viewport3D {
     }
 
     this.activeGroup = cached;
+    this.isShowingFeaMesh = Boolean(isFeaMesh);
     this.scene.add(this.activeGroup);
 
     // Recalcular bounds del modelo activo
@@ -196,17 +198,26 @@ export class Viewport3D {
   /**
    * Centra el modelo sobre la grilla (Y >= 0, X/Z centrados) y mejora materiales PBR.
    */
-  _prepareLoadedScene(root) {
+  _prepareLoadedScene(root, { isFeaMesh = false } = {}) {
     const group = new THREE.Group();
 
-    // Asegurar normales suaves/limpias y propiedades PBR industriales
+    // Asegurar normales suaves/limpias y propiedades PBR industriales (o vertexColors reales para FEA)
     root.traverse((obj) => {
       if (!obj.isMesh) return;
       if (obj.geometry && !obj.geometry.attributes.normal) {
         obj.geometry.computeVertexNormals();
       }
+      const hasVertexColors = Boolean(obj.geometry?.attributes?.color);
       const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
       const enhanced = materials.map((mat) => {
+        if (isFeaMesh || hasVertexColors) {
+          return new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            vertexColors: true,
+            metalness: 0.12,
+            roughness: 0.48,
+          });
+        }
         if (!mat) {
           return new THREE.MeshStandardMaterial({
             color: 0x64748b,
@@ -338,7 +349,11 @@ export class Viewport3D {
     this.activeGroup.traverse((obj) => {
       if (!obj.isMesh) return;
 
-      if (this.heatmapEnabled) {
+      if (this.isShowingFeaMesh) {
+        if (obj.userData.originalMaterial) {
+          obj.material = obj.userData.originalMaterial;
+        }
+      } else if (this.heatmapEnabled) {
         this._applyHeatmapColorsToMesh(obj, minX, spanX);
       } else if (obj.userData.originalMaterial) {
         obj.material = obj.userData.originalMaterial;

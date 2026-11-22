@@ -17,17 +17,21 @@ from .cad.exporter import (
     PROJECT_ROOT,
     compute_design_hash,
     export_variants,
+    get_export_dir,
     load_cached_metadata,
 )
 from .cad.step_analyzer import analyze_step_file
 from .cad.variants import generate_all_variants
 from .physics.dfm_rules import evaluate_global_alerts
+from .physics.fea_solver import run_step_fea
 from .physics.mechanics import (
     evaluate_variant_metrics,
     load_materials,
     load_presets,
 )
 from .schemas import (
+    FEARequest,
+    FEAResult,
     GenerateResponse,
     LinkDesignRequest,
     StepReferenceAnalysis,
@@ -216,6 +220,55 @@ def generate_design(req: LinkDesignRequest) -> GenerateResponse:
         global_alerts=global_alerts,
         variants=variant_results,
     )
+
+
+@app.post("/api/fea", response_model=FEAResult)
+def run_fea_validation(fea_req: FEARequest) -> FEAResult:
+    materials = load_materials()
+    if fea_req.request.material_id not in materials:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Material '{fea_req.request.material_id}' no encontrado en la base de datos.",
+        )
+    material = materials[fea_req.request.material_id]
+
+    design_hash = (
+        fea_req.design_hash
+        if HASH_PATTERN.match(fea_req.design_hash)
+        else compute_design_hash(fea_req.request)
+    )
+    out_dir = get_export_dir(design_hash)
+    step_path = out_dir / f"{fea_req.variant_id}.step"
+
+    if not (step_path.exists() and step_path.stat().st_size > 0):
+        generated = generate_all_variants(fea_req.request)
+        export_variants(design_hash, generated)
+
+    if not step_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"No se encontró el archivo .STEP para la variante '{fea_req.variant_id}'.",
+        )
+
+    output_glb_path = out_dir / f"{fea_req.variant_id}_fea_{fea_req.load_direction}.glb"
+    try:
+        return run_step_fea(
+            step_path=step_path,
+            output_glb_path=output_glb_path,
+            req=fea_req.request,
+            design_hash=design_hash,
+            variant_id=fea_req.variant_id,
+            material=material,
+            mesh_size_mm=fea_req.mesh_size_mm,
+            load_direction=fea_req.load_direction,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error en el solver FEA 3D (Gmsh/Tet4): {exc}",
+        ) from exc
 
 
 @app.get("/api/files/{design_hash}/{filename}")
