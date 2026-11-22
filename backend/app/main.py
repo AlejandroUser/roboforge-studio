@@ -48,7 +48,15 @@ from .physics.mount_mechanics import (
     evaluate_mount_metrics,
     load_mount_presets,
 )
+from .physics.profiles import (
+    delete_custom_material,
+    delete_custom_printer,
+    load_printers,
+    save_custom_material,
+    save_custom_printer,
+)
 from .schemas import (
+    CustomMaterialCreate,
     FEARequest,
     FEAResult,
     GearDesignRequest,
@@ -63,6 +71,8 @@ from .schemas import (
     MountGenerateResponse,
     MountVariantKind,
     MountVariantResult,
+    PrinterProfile,
+    PrinterProfileCreate,
     StepReferenceAnalysis,
     VariantKind,
     VariantResult,
@@ -90,13 +100,14 @@ GEAR_VARIANT_ORDER: tuple[GearVariantKind, ...] = (
     "gear_spoked",
 )
 
-HASH_PATTERN = re.compile(r"^[a-f0-9]{8,64}$")
-FILENAME_PATTERN = re.compile(r"^[a-z0-9_]+\.(glb|step|stl)$")
+HASH_PATTERN = re.compile(r"^(?:[a-f0-9]{8,64}|ref_[a-f0-9]{12})$")
+FILENAME_PATTERN = re.compile(r"^[a-z0-9_]+\.(glb|step|stl|3mf)$")
 
 MEDIA_TYPES: dict[str, str] = {
     ".glb": "model/gltf-binary",
     ".stl": "model/stl",
     ".step": "application/step",
+    ".3mf": "model/3mf",
 }
 
 app = FastAPI(
@@ -122,6 +133,49 @@ def health_check() -> dict[str, str]:
 @app.get("/api/materials")
 def get_materials() -> dict[str, Any]:
     return load_materials()
+
+
+@app.post("/api/materials/custom")
+def create_custom_material(mat: CustomMaterialCreate) -> dict[str, Any]:
+    try:
+        return save_custom_material(mat)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/materials/custom/{material_id}")
+def remove_custom_material(material_id: str) -> dict[str, Any]:
+    deleted = delete_custom_material(material_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Material personalizado '{material_id}' no encontrado o es de fábrica.",
+        )
+    return {"status": "deleted", "id": material_id}
+
+
+@app.get("/api/printers")
+def get_printers() -> dict[str, Any]:
+    return load_printers()
+
+
+@app.post("/api/printers", response_model=PrinterProfile)
+def create_custom_printer(profile: PrinterProfileCreate) -> PrinterProfile:
+    try:
+        return save_custom_printer(profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/printers/{printer_id}")
+def remove_custom_printer(printer_id: str) -> dict[str, Any]:
+    deleted = delete_custom_printer(printer_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Impresora personalizada '{printer_id}' no encontrada o es de fábrica.",
+        )
+    return {"status": "deleted", "id": printer_id}
 
 
 @app.get("/api/presets")
@@ -248,6 +302,7 @@ def generate_design(req: LinkDesignRequest) -> GenerateResponse:
                 glb_url=f"/api/files/{design_hash}/{vid}.glb",
                 step_url=f"/api/files/{design_hash}/{vid}.step",
                 stl_url=f"/api/files/{design_hash}/{vid}.stl",
+                threemf_url=f"/api/files/{design_hash}/{vid}.3mf",
                 alerts=alerts,
             )
         )
@@ -403,6 +458,7 @@ def generate_mount_design(req: MountDesignRequest) -> MountGenerateResponse:
                 glb_url=f"/api/files/{design_hash}/{vid}.glb",
                 step_url=f"/api/files/{design_hash}/{vid}.step",
                 stl_url=f"/api/files/{design_hash}/{vid}.stl",
+                threemf_url=f"/api/files/{design_hash}/{vid}.3mf",
                 alerts=alerts,
             )
         )
@@ -558,6 +614,7 @@ def generate_gear_design(req: GearDesignRequest) -> GearGenerateResponse:
                 glb_url=f"/api/files/{design_hash}/{vid}.glb",
                 step_url=f"/api/files/{design_hash}/{vid}.step",
                 stl_url=f"/api/files/{design_hash}/{vid}.stl",
+                threemf_url=f"/api/files/{design_hash}/{vid}.3mf",
                 alerts=alerts,
             )
         )

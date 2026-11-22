@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
+import tempfile
 from pathlib import Path
 from typing import Any
 
-from build123d import GeomType, import_step
+import trimesh
+from build123d import GeomType, export_stl, import_step
 from OCP.BRepAdaptor import BRepAdaptor_Surface
 
 from ..schemas import (
@@ -15,6 +18,7 @@ from ..schemas import (
     LinkDesignRequest,
     StepReferenceAnalysis,
 )
+from .exporter import EXPORTS_ROOT
 
 
 def _clamp(val: float, lo: float, hi: float) -> float:
@@ -255,6 +259,42 @@ def analyze_step_file(step_path: Path, filename: str) -> StepReferenceAnalysis:
         reference_volume_cm3=volume_cm3,
     )
 
+    # Export translucent Ghost Overlay GLB for 3D visual comparison
+    reference_glb_url: str | None = None
+    try:
+        ref_hash = hashlib.sha256(step_path.read_bytes()).hexdigest()[:12]
+        ref_dir = EXPORTS_ROOT / f"ref_{ref_hash}"
+        ref_dir.mkdir(parents=True, exist_ok=True)
+        ref_glb_path = ref_dir / "reference.glb"
+        if not (ref_glb_path.exists() and ref_glb_path.stat().st_size > 0):
+            with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp_stl:
+                tmp_stl_path = Path(tmp_stl.name)
+            try:
+                export_stl(shape, str(tmp_stl_path), tolerance=0.12, angular_tolerance=0.2)
+                loaded = trimesh.load(str(tmp_stl_path), force="mesh")
+                mesh = loaded.dump(concatenate=True) if isinstance(loaded, trimesh.Scene) else loaded
+                if isinstance(mesh, trimesh.Trimesh):
+                    mesh.fix_normals()
+                    material = trimesh.visual.material.PBRMaterial(
+                        name="roboforge_step_ghost",
+                        baseColorFactor=[56, 189, 248, 110],
+                        metallicFactor=0.2,
+                        roughnessFactor=0.35,
+                        alphaMode="BLEND",
+                    )
+                    mesh.visual = trimesh.visual.TextureVisuals(material=material)
+                    mesh.export(str(ref_glb_path), file_type="glb")
+            finally:
+                if tmp_stl_path.exists():
+                    try:
+                        tmp_stl_path.unlink()
+                    except OSError:
+                        pass
+        if ref_glb_path.exists() and ref_glb_path.stat().st_size > 0:
+            reference_glb_url = f"/api/files/ref_{ref_hash}/reference.glb"
+    except Exception:
+        reference_glb_url = None
+
     return StepReferenceAnalysis(
         filename=filename,
         bbox_length_mm=bbox_length,
@@ -263,5 +303,6 @@ def analyze_step_file(step_path: Path, filename: str) -> StepReferenceAnalysis:
         volume_cm3=volume_cm3,
         detected_holes=detected_holes,
         suggested_request=suggested,
+        reference_glb_url=reference_glb_url,
         notes=notes,
     )

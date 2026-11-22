@@ -85,6 +85,9 @@ class LinkDesignRequest(BaseModel):
     reference_volume_cm3: Optional[float] = Field(None, gt=0.0)
     topopt_volume_fraction: float = Field(0.52, ge=0.30, le=0.75)
 
+    # Hito 4: Perfil de impresora 3D opcional para DFM (cama y cámara cerrada)
+    printer_id: Optional[str] = None
+
 
 class AlertItem(BaseModel):
     level: Literal["info", "warning", "critical"]
@@ -122,6 +125,7 @@ class VariantResult(BaseModel):
     glb_url: str
     step_url: str
     stl_url: str
+    threemf_url: Optional[str] = None
     alerts: list[AlertItem] = Field(default_factory=list)
 
 
@@ -147,6 +151,7 @@ class StepReferenceAnalysis(BaseModel):
     volume_cm3: float
     detected_holes: list[DetectedHole] = Field(default_factory=list)
     suggested_request: LinkDesignRequest
+    reference_glb_url: Optional[str] = None
     notes: list[str] = Field(default_factory=list)
 
 
@@ -200,6 +205,7 @@ class MountDesignRequest(BaseModel):
     print_orientation: PrintOrientation = "xy_flat"
     nozzle_diameter_mm: float = Field(0.4, ge=0.2, le=1.0)
     printer_clearance_mm: float = Field(0.15, ge=0.0, le=0.5)
+    printer_id: Optional[str] = None
 
 
 class MountVariantResult(BaseModel):
@@ -211,6 +217,7 @@ class MountVariantResult(BaseModel):
     glb_url: str
     step_url: str
     stl_url: str
+    threemf_url: Optional[str] = None
     alerts: list[AlertItem] = Field(default_factory=list)
 
 
@@ -256,6 +263,7 @@ class GearDesignRequest(BaseModel):
     print_orientation: PrintOrientation = "xy_flat"
     nozzle_diameter_mm: float = Field(0.4, ge=0.2, le=1.0)
     printer_clearance_mm: float = Field(0.15, ge=0.0, le=0.5)
+    printer_id: Optional[str] = None
 
 
 class GearVariantResult(BaseModel):
@@ -267,6 +275,7 @@ class GearVariantResult(BaseModel):
     glb_url: str
     step_url: str
     stl_url: str
+    threemf_url: Optional[str] = None
     alerts: list[AlertItem] = Field(default_factory=list)
 
 
@@ -287,3 +296,36 @@ class GearFEARequest(BaseModel):
     mesh_size_mm: float = Field(4.5, ge=2.0, le=10.0)
     load_direction: Literal["y_inplane", "z_outofplane"] = "y_inplane"
     deform_scale: float = Field(0.0, ge=0.0, le=100.0)
+
+
+# Hito 4: Perfiles de Impresora 3D y Materiales Personalizados
+class PrinterProfileCreate(BaseModel):
+    id: str = Field(..., pattern=r"^[a-z0-9_]{2,32}$")
+    name: str = Field(..., min_length=2, max_length=64)
+    bed_x_mm: float = Field(256.0, ge=100.0, le=600.0)
+    bed_y_mm: float = Field(256.0, ge=100.0, le=600.0)
+    bed_z_mm: float = Field(256.0, ge=100.0, le=600.0)
+    default_nozzle_mm: float = Field(0.4, ge=0.2, le=1.0)
+    clearance_mm: float = Field(0.15, ge=0.0, le=0.5)
+    max_bed_temp_c: float = Field(110.0, ge=40.0, le=150.0)
+    enclosed: bool = True
+    notes: str = ""
+
+
+class PrinterProfile(PrinterProfileCreate):
+    is_custom: bool = False
+
+
+class CustomMaterialCreate(BaseModel):
+    id: str = Field(..., pattern=r"^[a-z0-9_]{2,32}$")
+    name: str = Field(..., min_length=2, max_length=64)
+    category: Literal["fdm", "cnc"] = "fdm"
+    density_g_cm3: float = Field(..., gt=0.5, le=10.0)
+    youngs_xy_mpa: float = Field(..., gt=200.0, le=250000.0)
+    youngs_z_mpa: float = Field(..., gt=200.0, le=250000.0)
+    yield_xy_mpa: float = Field(..., gt=10.0, le=1500.0)
+    yield_z_mpa: float = Field(..., gt=10.0, le=1500.0)
+    max_temp_c: float = Field(..., ge=40.0, le=600.0)
+    cost_per_kg_usd: float = Field(..., ge=5.0, le=500.0)
+    color_hex: str = Field("#38bdf8", pattern=r"^#[0-9a-fA-F]{6}$")
+    notes: str = ""

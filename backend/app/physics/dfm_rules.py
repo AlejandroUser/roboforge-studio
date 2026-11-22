@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ..schemas import AlertItem, EndInterfaceParams, LinkDesignRequest
+from .profiles import evaluate_printer_dfm_alerts
 
 CF_MATERIALS = {"petg_cf", "pa12_cf"}
 
@@ -186,5 +187,24 @@ def evaluate_global_alerts(req: LinkDesignRequest, material: dict) -> list[Alert
 
     alerts.extend(_check_end_interface("Root", req.root_end))
     alerts.extend(_check_end_interface("Tip", req.tip_end))
+
+    # 5. Printer build volume & enclosure compatibility
+    part_x_mm = req.length_mm + 0.5 * (
+        req.root_end.outer_diameter_mm + req.tip_end.outer_diameter_mm
+    )
+    part_y_mm = max(
+        req.root_width_mm,
+        req.tip_width_mm,
+        req.root_end.outer_diameter_mm,
+        req.tip_end.outer_diameter_mm,
+    )
+    part_z_mm = req.thickness_mm
+    if req.print_orientation == "z_vertical":
+        part_x_mm, part_z_mm = part_z_mm, part_x_mm
+    alerts.extend(
+        evaluate_printer_dfm_alerts(
+            req.printer_id, material, part_x_mm, part_y_mm, part_z_mm
+        )
+    )
 
     return alerts

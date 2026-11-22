@@ -169,6 +169,57 @@ export async function runGearFEA(payload, signal) {
 }
 
 /**
+ * Obtiene catálogo de impresoras 3D (defaults + custom) desde GET /api/printers.
+ */
+export async function fetchPrinters() {
+  const raw = await requestJson("/api/printers", { method: "GET" });
+  const map = {};
+  const list = [];
+
+  const source = Array.isArray(raw)
+    ? raw
+    : Array.isArray(raw?.printers)
+      ? raw.printers
+      : raw?.printers && typeof raw.printers === "object"
+        ? Object.entries(raw.printers).map(([id, p]) => ({ id, ...p }))
+        : Object.entries(raw || {}).map(([id, p]) => ({ id, ...p }));
+
+  for (const item of source) {
+    if (!item || typeof item !== "object" || !item.id) continue;
+    map[item.id] = item;
+    list.push(item);
+  }
+
+  return { map, list };
+}
+
+export async function createCustomPrinter(payload) {
+  return requestJson("/api/printers", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteCustomPrinter(printerId) {
+  return requestJson(`/api/printers/${encodeURIComponent(printerId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function createCustomMaterial(payload) {
+  return requestJson("/api/materials/custom", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteCustomMaterial(materialId) {
+  return requestJson(`/api/materials/custom/${encodeURIComponent(materialId)}`, {
+    method: "DELETE",
+  });
+}
+
+/**
  * Sube un archivo .STEP/.STP a POST /api/analyze-step y retorna StepReferenceAnalysis.
  */
 export async function analyzeStepFile(file) {

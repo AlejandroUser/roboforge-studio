@@ -324,7 +324,7 @@ export class ComparatorController {
 
         ${variantAlertsHtml}
 
-        <div class="variant-actions">
+        <div class="variant-actions${v.threemf_url ? " has-3mf" : ""}">
           <a class="btn-download" href="${escapeHtml(v.step_url)}" download title="Descargar sólido B-Rep (.STEP)">
             <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="M8 2.5V10.5M8 10.5L5 7.5M8 10.5L11 7.5M2.5 12.5H13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -337,6 +337,16 @@ export class ComparatorController {
             </svg>
             .STL
           </a>
+          ${
+            v.threemf_url
+              ? `<a class="btn-download btn-download-3mf" href="${escapeHtml(v.threemf_url)}" download title="3MF con zona de refuerzo 100% para OrcaSlicer/Bambu Studio">
+                  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M8 2.5V10.5M8 10.5L5 7.5M8 10.5L11 7.5M2.5 12.5H13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  .3MF
+                </a>`
+              : ""
+          }
         </div>
       `;
 

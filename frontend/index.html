@@ -605,13 +605,33 @@
 
         <!-- 5. MATERIAL Y MANUFACTURA 3D -->
         <section class="panel-section">
-          <div class="section-header">
-            <span class="section-num">05</span>
-            <h2>Material y Manufactura 3D</h2>
+          <div class="section-header section-header-spread">
+            <div class="section-header-left">
+              <span class="section-num">05</span>
+              <h2>Material y Manufactura 3D</h2>
+            </div>
+            <button type="button" class="btn-mini-add" id="btn-open-profile-modal" title="Agregar impresora 3D o material personalizado">
+              + Mi Impresora / Material
+            </button>
           </div>
 
           <div class="control-group">
-            <label for="material_id">Material de Ingeniería</label>
+            <label for="printer_id">Perfil de Impresora 3D</label>
+            <select id="printer_id" class="select-input">
+              <option value="bambu_x1c">Bambu Lab X1C (256³ mm)</option>
+            </select>
+            <div class="printer-badge-row" id="printer-badge-row">
+              <span class="printer-bed-chip" id="printer-bed-chip">Cama 256×256×256 mm</span>
+              <span class="printer-enclosure-chip enclosed" id="printer-enclosure-chip">Cerrada</span>
+              <button type="button" class="btn-del-custom hidden" id="btn-del-printer" title="Eliminar impresora personalizada">✕</button>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row compact-label">
+              <label for="material_id">Material de Ingeniería</label>
+              <button type="button" class="btn-del-custom hidden" id="btn-del-material" title="Eliminar material personalizado">Eliminar custom</button>
+            </div>
             <select id="material_id" class="select-input">
               <option value="petg_cf">PETG-CF (Cargando catálogo...)</option>
             </select>
@@ -700,6 +720,13 @@
             </button>
             <button type="button" class="tool-btn icon-text hidden" id="btn-toggle-fea-mesh" title="Alternar entre Malla FEA 3D y Modelo CAD">
               <span id="toggle-fea-mesh-label">Malla FEA</span>
+            </button>
+            <button type="button" class="tool-btn icon-text hidden" id="btn-ghost-step" title="Superponer sólido .STEP original en modo holográfico">
+              <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <rect x="3" y="3" width="12" height="12" rx="3" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2.5 2"/>
+                <circle cx="9" cy="9" r="2.5" stroke="currentColor" stroke-width="1.4"/>
+              </svg>
+              <span>Fantasma .STEP</span>
             </button>
             <button type="button" class="tool-btn icon-text" id="btn-heatmap" title="Activar Mapa de Esfuerzos Analítico">
               <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -803,6 +830,143 @@
         </div>
       </aside>
     </main>
+  </div>
+
+  <!-- CUSTOM PRINTER / MATERIAL MODAL -->
+  <div class="modal-backdrop hidden" id="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="profile-modal-title">Personalizar Impresora / Material</h3>
+        <button type="button" class="modal-close" id="btn-close-profile-modal" aria-label="Cerrar">✕</button>
+      </div>
+
+      <div class="segmented-tabs modal-tabs" role="tablist">
+        <button type="button" class="tab-btn active" data-profile-tab="printer" role="tab" aria-selected="true">
+          Nueva Impresora 3D
+        </button>
+        <button type="button" class="tab-btn" data-profile-tab="material" role="tab" aria-selected="false">
+          Nuevo Material
+        </button>
+      </div>
+
+      <!-- TAB 1: NUEVA IMPRESORA -->
+      <form class="modal-form active" id="form-custom-printer" data-profile-panel="printer">
+        <div class="control-group">
+          <label for="cp-name">Nombre de la Impresora</label>
+          <input type="text" id="cp-name" class="num-input text-input" placeholder="Ej. Bambu P1S Taller" required minlength="2" maxlength="64" />
+        </div>
+        <div class="three-col-grid">
+          <div class="control-group">
+            <label for="cp-bed-x">Cama X (mm)</label>
+            <input type="number" id="cp-bed-x" class="num-input" min="100" max="600" step="1" value="256" required />
+          </div>
+          <div class="control-group">
+            <label for="cp-bed-y">Cama Y (mm)</label>
+            <input type="number" id="cp-bed-y" class="num-input" min="100" max="600" step="1" value="256" required />
+          </div>
+          <div class="control-group">
+            <label for="cp-bed-z">Cama Z (mm)</label>
+            <input type="number" id="cp-bed-z" class="num-input" min="100" max="600" step="1" value="256" required />
+          </div>
+        </div>
+        <div class="three-col-grid">
+          <div class="control-group">
+            <label for="cp-nozzle">Boquilla (mm)</label>
+            <input type="number" id="cp-nozzle" class="num-input" min="0.2" max="1.0" step="0.1" value="0.4" required />
+          </div>
+          <div class="control-group">
+            <label for="cp-clearance">Holgura (mm)</label>
+            <input type="number" id="cp-clearance" class="num-input" min="0" max="0.5" step="0.01" value="0.15" required />
+          </div>
+          <div class="control-group">
+            <label for="cp-bed-temp">Cama Máx (°C)</label>
+            <input type="number" id="cp-bed-temp" class="num-input" min="40" max="150" step="5" value="110" required />
+          </div>
+        </div>
+        <label class="toggle-row compact" for="cp-enclosed">
+          <span class="toggle-text">
+            <strong>Cámara Cerrada (Apta ABS / ASA / PA-CF)</strong>
+          </span>
+          <span class="switch">
+            <input type="checkbox" id="cp-enclosed" checked />
+            <span class="switch-track"></span>
+          </span>
+        </label>
+        <div class="control-group">
+          <label for="cp-notes">Notas (opcional)</label>
+          <input type="text" id="cp-notes" class="num-input text-input" placeholder="Boquilla acero endurecido, PEI texturizada..." />
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" data-close-modal>Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar Impresora</button>
+        </div>
+      </form>
+
+      <!-- TAB 2: NUEVO MATERIAL -->
+      <form class="modal-form" id="form-custom-material" data-profile-panel="material">
+        <div class="two-col-grid">
+          <div class="control-group">
+            <label for="cm-name">Nombre del Material</label>
+            <input type="text" id="cm-name" class="num-input text-input" placeholder="Ej. PC-CF Industrial" required minlength="2" maxlength="64" />
+          </div>
+          <div class="control-group">
+            <label for="cm-category">Proceso</label>
+            <select id="cm-category" class="select-input">
+              <option value="fdm" selected>FDM (Impresión 3D)</option>
+              <option value="cnc">CNC (Mecanizado)</option>
+            </select>
+          </div>
+        </div>
+        <div class="three-col-grid">
+          <div class="control-group">
+            <label for="cm-density">Densidad (g/cm³)</label>
+            <input type="number" id="cm-density" class="num-input" min="0.6" max="10" step="0.01" value="1.25" required />
+          </div>
+          <div class="control-group">
+            <label for="cm-temp">Temp. Máx (°C)</label>
+            <input type="number" id="cm-temp" class="num-input" min="40" max="600" step="5" value="115" required />
+          </div>
+          <div class="control-group">
+            <label for="cm-cost">Costo ($/kg)</label>
+            <input type="number" id="cm-cost" class="num-input" min="5" max="500" step="1" value="65" required />
+          </div>
+        </div>
+        <div class="two-col-grid">
+          <div class="control-group">
+            <label for="cm-exy">Módulo E XY (MPa)</label>
+            <input type="number" id="cm-exy" class="num-input" min="250" max="250000" step="50" value="5200" required />
+          </div>
+          <div class="control-group">
+            <label for="cm-ez">Módulo E Z (MPa)</label>
+            <input type="number" id="cm-ez" class="num-input" min="250" max="250000" step="50" value="3100" required />
+          </div>
+        </div>
+        <div class="two-col-grid">
+          <div class="control-group">
+            <label for="cm-yxy">Fluencia XY (MPa)</label>
+            <input type="number" id="cm-yxy" class="num-input" min="15" max="1500" step="1" value="72" required />
+          </div>
+          <div class="control-group">
+            <label for="cm-yz">Fluencia Z (MPa)</label>
+            <input type="number" id="cm-yz" class="num-input" min="15" max="1500" step="1" value="40" required />
+          </div>
+        </div>
+        <div class="two-col-grid">
+          <div class="control-group">
+            <label for="cm-color">Color</label>
+            <input type="color" id="cm-color" class="color-input" value="#38bdf8" />
+          </div>
+          <div class="control-group">
+            <label for="cm-notes">Notas (opcional)</label>
+            <input type="text" id="cm-notes" class="num-input text-input" placeholder="Secar 6h a 80°C..." />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" data-close-modal>Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar Material</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <!-- TOAST NOTIFICATION -->

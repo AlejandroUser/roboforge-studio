@@ -14,6 +14,7 @@ from ..schemas import (
     GearVariantKind,
     VariantMetrics,
 )
+from .profiles import evaluate_printer_dfm_alerts
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 CF_MATERIALS = {"petg_cf", "pa12_cf"}
@@ -352,5 +353,12 @@ def evaluate_gear_global_alerts(
                 ),
             )
         )
+
+    # 4. Printer build volume & enclosure compatibility
+    _, d_o = compute_gear_diameters(req)
+    total_h = req.face_width_mm + req.hub_height_mm
+    alerts.extend(
+        evaluate_printer_dfm_alerts(req.printer_id, material, d_o, d_o, total_h)
+    )
 
     return alerts

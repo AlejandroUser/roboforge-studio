@@ -1,0 +1,67 @@
+[
+  {
+    "id": "bambu_x1c",
+    "name": "Bambu Lab X1-Carbon",
+    "bed_x_mm": 256.0,
+    "bed_y_mm": 256.0,
+    "bed_z_mm": 256.0,
+    "default_nozzle_mm": 0.4,
+    "clearance_mm": 0.15,
+    "max_bed_temp_c": 110.0,
+    "enclosed": true,
+    "notes": "CoreXY cerrada con boquilla endurecida; apta para PA12-CF, ABS/ASA y PETG-CF.",
+    "is_custom": false
+  },
+  {
+    "id": "prusa_mk4s",
+    "name": "Prusa MK4S",
+    "bed_x_mm": 250.0,
+    "bed_y_mm": 210.0,
+    "bed_z_mm": 220.0,
+    "default_nozzle_mm": 0.4,
+    "clearance_mm": 0.16,
+    "max_bed_temp_c": 120.0,
+    "enclosed": false,
+    "notes": "Cama abierta de alta precisión; ideal para PLA+, PETG y PETG-CF.",
+    "is_custom": false
+  },
+  {
+    "id": "voron_24",
+    "name": "Voron 2.4 (300 mm)",
+    "bed_x_mm": 300.0,
+    "bed_y_mm": 300.0,
+    "bed_z_mm": 300.0,
+    "default_nozzle_mm": 0.4,
+    "clearance_mm": 0.15,
+    "max_bed_temp_c": 120.0,
+    "enclosed": true,
+    "notes": "CoreXY gran formato con cámara caliente; excelente para piezas largas en ABS/ASA y PA12-CF.",
+    "is_custom": false
+  },
+  {
+    "id": "creality_k1c",
+    "name": "Creality K1C",
+    "bed_x_mm": 220.0,
+    "bed_y_mm": 220.0,
+    "bed_z_mm": 250.0,
+    "default_nozzle_mm": 0.4,
+    "clearance_mm": 0.18,
+    "max_bed_temp_c": 100.0,
+    "enclosed": true,
+    "notes": "CoreXY cerrada optimizada para filamentos con fibra de carbono (CF).",
+    "is_custom": false
+  },
+  {
+    "id": "ender3_v3",
+    "name": "Creality Ender-3 V3",
+    "bed_x_mm": 220.0,
+    "bed_y_mm": 220.0,
+    "bed_z_mm": 250.0,
+    "default_nozzle_mm": 0.4,
+    "clearance_mm": 0.22,
+    "max_bed_temp_c": 100.0,
+    "enclosed": false,
+    "notes": "Impresora abierta económica; requiere holgura ligeramente mayor (0.22 mm) y filamentos sin warping.",
+    "is_custom": false
+  }
+]

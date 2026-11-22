@@ -61,6 +61,9 @@ export class Viewport3D {
     this.heatmapEnabled = false;
     this.isShowingFeaMesh = false;
     this.stressProfile = null;
+    this.ghostGroup = null;
+    this.ghostUrl = null;
+    this.ghostVisible = false;
     this.clipPlaneX = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0);
     this.loadToken = 0;
 
@@ -388,6 +391,81 @@ export class Viewport3D {
     this._applyMaterialStates();
   }
 
+  /**
+   * Superpone el sólido .STEP original como malla holográfica cian translúcida (Fantasma .STEP).
+   */
+  async setGhostOverlay(glbUrl, visible) {
+    this.ghostVisible = Boolean(visible);
+    if (!glbUrl) {
+      this.clearGhostOverlay();
+      return;
+    }
+
+    if (this.ghostGroup && this.ghostUrl === glbUrl) {
+      this.ghostGroup.visible = this.ghostVisible;
+      return;
+    }
+
+    this.clearGhostOverlay();
+    if (!this.ghostVisible) return;
+
+    const gltf = await new Promise((resolve, reject) => {
+      this.loader.load(glbUrl, (d) => resolve(d), undefined, (e) => reject(e));
+    });
+
+    const root = gltf.scene;
+    const ghostMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      emissive: 0x0ea5e9,
+      emissiveIntensity: 0.35,
+      roughness: 0.35,
+      metalness: 0.1,
+      transparent: true,
+      opacity: 0.28,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+
+    root.traverse((obj) => {
+      if (!obj.isMesh) return;
+      obj.material = ghostMat;
+      obj.renderOrder = 2;
+    });
+
+    root.rotation.x = -Math.PI / 2;
+    root.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(root);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    root.position.x -= center.x;
+    root.position.z -= center.z;
+    root.position.y -= box.min.y;
+
+    const wrapper = new THREE.Group();
+    wrapper.add(root);
+    wrapper.visible = this.ghostVisible;
+
+    this.ghostGroup = wrapper;
+    this.ghostUrl = glbUrl;
+    this.scene.add(wrapper);
+  }
+
+  clearGhostOverlay() {
+    if (this.ghostGroup) {
+      this.scene.remove(this.ghostGroup);
+      this.ghostGroup.traverse((obj) => {
+        if (!obj.isMesh) return;
+        obj.geometry?.dispose?.();
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach((m) => m?.dispose?.());
+      });
+      this.ghostGroup = null;
+    }
+    this.ghostUrl = null;
+    this.ghostVisible = false;
+  }
+
   setCameraView(viewName = "iso", animate = true) {
     const r = this.modelRadius;
     const fovRad = THREE.MathUtils.degToRad(this.camera.fov);
@@ -461,6 +539,7 @@ export class Viewport3D {
   dispose() {
     cancelAnimationFrame(this._rafId);
     this.resizeObserver?.disconnect();
+    this.clearGhostOverlay();
     this.clearModelCache();
     this.controls.dispose();
     this.renderer.dispose();

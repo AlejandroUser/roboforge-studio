@@ -18,6 +18,7 @@ from ..schemas import (
     MountVariantKind,
     VariantKind,
 )
+from .threemf_exporter import compute_modifier_box_for_mesh, export_smart_3mf
 
 # Project root: .../roboforge/
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -156,6 +157,7 @@ def export_variants(
         step_path = out_dir / f"{variant_id}.step"
         stl_path = out_dir / f"{variant_id}.stl"
         glb_path = out_dir / f"{variant_id}.glb"
+        threemf_path = out_dir / f"{variant_id}.3mf"
 
         # Cache check: only re-export if any file is missing or empty
         if not (step_path.exists() and step_path.stat().st_size > 0):
@@ -167,10 +169,21 @@ def export_variants(
         if not (glb_path.exists() and glb_path.stat().st_size > 0):
             _stl_to_glb(stl_path, glb_path, variant_id)
 
+        if not (threemf_path.exists() and threemf_path.stat().st_size > 0):
+            mod_center, mod_size = compute_modifier_box_for_mesh(stl_path, str(variant_id))
+            export_smart_3mf(
+                stl_path=stl_path,
+                output_3mf_path=threemf_path,
+                part_name=f"RoboForge_{variant_id}",
+                modifier_box_center=mod_center,
+                modifier_box_size=mod_size,
+            )
+
         exported_paths[variant_id] = {
             "step": step_path,
             "stl": stl_path,
             "glb": glb_path,
+            "3mf": threemf_path,
         }
 
     # Persist lightweight metadata cache for instant repeated /api/generate calls
@@ -215,7 +228,7 @@ def load_cached_metadata(
     for vid in expected_variants:
         if vid not in meta:
             return None
-        for ext in ("step", "stl", "glb"):
+        for ext in ("step", "stl", "glb", "3mf"):
             fp = out_dir / f"{vid}.{ext}"
             if not (fp.exists() and fp.stat().st_size > 0):
                 return None
@@ -256,7 +269,7 @@ def load_cached_mount_metadata(
     for vid in expected_variants:
         if vid not in meta:
             return None
-        for ext in ("step", "stl", "glb"):
+        for ext in ("step", "stl", "glb", "3mf"):
             fp = out_dir / f"{vid}.{ext}"
             if not (fp.exists() and fp.stat().st_size > 0):
                 return None
@@ -297,7 +310,7 @@ def load_cached_gear_metadata(
     for vid in expected_variants:
         if vid not in meta:
             return None
-        for ext in ("step", "stl", "glb"):
+        for ext in ("step", "stl", "glb", "3mf"):
             fp = out_dir / f"{vid}.{ext}"
             if not (fp.exists() and fp.stat().st_size > 0):
                 return None

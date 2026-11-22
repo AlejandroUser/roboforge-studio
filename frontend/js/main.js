@@ -5,10 +5,15 @@
 import {
   analyzeStepFile,
   checkHealth,
+  createCustomMaterial,
+  createCustomPrinter,
+  deleteCustomMaterial,
+  deleteCustomPrinter,
   fetchGearPresets,
   fetchMaterials,
   fetchMountPresets,
   fetchPresets,
+  fetchPrinters,
   generateDesign,
   generateGears,
   generateMounts,
@@ -31,6 +36,7 @@ class RoboForgeApp {
     this.isGenerating = false;
     this.isRunningFea = false;
     this.viewingFeaMesh = false;
+    this.referenceGlbUrl = null;
     this.feaResultsByVariant = new Map();
     this.abortController = null;
     this.toastTimer = null;
@@ -39,6 +45,7 @@ class RoboForgeApp {
     this.btnGenerate = document.getElementById("btn-generate");
     this.btnGenerateLabel = document.getElementById("btn-generate-label");
     this.btnRunFea = document.getElementById("btn-run-fea");
+    this.btnGhostStep = document.getElementById("btn-ghost-step");
     this.feaLoadDirEl = document.getElementById("fea-load-dir");
     this.feaDeformScaleEl = document.getElementById("fea-deform-scale");
     this.btnToggleFeaMesh = document.getElementById("btn-toggle-fea-mesh");
@@ -68,7 +75,11 @@ class RoboForgeApp {
       },
       onStepFileSelected: (file, validationErr) => this.handleStepUpload(file, validationErr),
       onClearStepReference: () => {
-        this.showToast("Referencia .STEP eliminada.", false);
+        this.referenceGlbUrl = null;
+        this.viewport.clearGhostOverlay();
+        this.btnGhostStep?.classList.add("hidden");
+        this.btnGhostStep?.classList.remove("active");
+        this.showToast("Referencia .STEP y fantasma eliminados.", false);
       },
     });
 
@@ -78,6 +89,7 @@ class RoboForgeApp {
 
     this._bindHeaderActions();
     this._bindViewportToolbar();
+    this._bindProfileModal();
 
     await this._bootstrapBackendData();
   }
@@ -156,6 +168,19 @@ class RoboForgeApp {
     // Toggle between Real 3D FEA mesh and CAD model
     this.btnToggleFeaMesh?.addEventListener("click", () => this.toggleFeaMeshView());
 
+    // Ghost Overlay .STEP toggle
+    this.btnGhostStep?.addEventListener("click", async () => {
+      if (!this.referenceGlbUrl) return;
+      const next = !this.viewport.ghostVisible;
+      try {
+        await this.viewport.setGhostOverlay(this.referenceGlbUrl, next);
+        this.btnGhostStep.classList.toggle("active", next);
+      } catch (err) {
+        console.error("Ghost overlay error:", err);
+        this.showToast(`Error cargando fantasma .STEP: ${err.message}`, true);
+      }
+    });
+
     // Stress Heatmap toggle
     const btnHeatmap = document.getElementById("btn-heatmap");
     btnHeatmap?.addEventListener("click", async () => {
@@ -205,19 +230,149 @@ class RoboForgeApp {
     });
   }
 
+  _bindProfileModal() {
+    const modal = document.getElementById("profile-modal");
+    const openBtn = document.getElementById("btn-open-profile-modal");
+    const closeBtn = document.getElementById("btn-close-profile-modal");
+    const formPrinter = document.getElementById("form-custom-printer");
+    const formMaterial = document.getElementById("form-custom-material");
+    const delPrinterBtn = document.getElementById("btn-del-printer");
+    const delMaterialBtn = document.getElementById("btn-del-material");
+
+    const closeModal = () => modal?.classList.add("hidden");
+    openBtn?.addEventListener("click", () => modal?.classList.remove("hidden"));
+    closeBtn?.addEventListener("click", closeModal);
+    modal?.querySelectorAll("[data-close-modal]").forEach((b) => b.addEventListener("click", closeModal));
+    modal?.addEventListener("click", (e) => {
+      if (e.target === modal) closeModal();
+    });
+
+    // Tabs
+    const tabBtns = modal?.querySelectorAll("[data-profile-tab]") || [];
+    const panels = modal?.querySelectorAll("[data-profile-panel]") || [];
+    tabBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const target = btn.dataset.profileTab;
+        tabBtns.forEach((b) => {
+          const active = b.dataset.profileTab === target;
+          b.classList.toggle("active", active);
+          b.setAttribute("aria-selected", String(active));
+        });
+        panels.forEach((p) => p.classList.toggle("active", p.dataset.profilePanel === target));
+      });
+    });
+
+    const slugify = (text, prefix) => {
+      const base = String(text || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 26);
+      return base.length >= 2 ? base : `${prefix}_${Date.now().toString().slice(-4)}`;
+    };
+
+    formPrinter?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("cp-name")?.value?.trim();
+      const payload = {
+        id: slugify(name, "printer"),
+        name,
+        bed_x_mm: Number(document.getElementById("cp-bed-x")?.value || 256),
+        bed_y_mm: Number(document.getElementById("cp-bed-y")?.value || 256),
+        bed_z_mm: Number(document.getElementById("cp-bed-z")?.value || 256),
+        default_nozzle_mm: Number(document.getElementById("cp-nozzle")?.value || 0.4),
+        clearance_mm: Number(document.getElementById("cp-clearance")?.value || 0.15),
+        max_bed_temp_c: Number(document.getElementById("cp-bed-temp")?.value || 110),
+        enclosed: Boolean(document.getElementById("cp-enclosed")?.checked),
+        notes: document.getElementById("cp-notes")?.value?.trim() || "",
+      };
+      try {
+        const saved = await createCustomPrinter(payload);
+        const printers = await fetchPrinters();
+        this.controls.setPrinters(printers, saved?.id || payload.id);
+        formPrinter.reset();
+        closeModal();
+        this.showToast(`Impresora "${name}" guardada.`, false);
+      } catch (err) {
+        this.showToast(`Error guardando impresora: ${err.message}`, true);
+      }
+    });
+
+    formMaterial?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("cm-name")?.value?.trim();
+      const payload = {
+        id: slugify(name, "mat"),
+        name,
+        category: document.getElementById("cm-category")?.value || "fdm",
+        density_g_cm3: Number(document.getElementById("cm-density")?.value || 1.25),
+        youngs_xy_mpa: Number(document.getElementById("cm-exy")?.value || 5200),
+        youngs_z_mpa: Number(document.getElementById("cm-ez")?.value || 3100),
+        yield_xy_mpa: Number(document.getElementById("cm-yxy")?.value || 72),
+        yield_z_mpa: Number(document.getElementById("cm-yz")?.value || 40),
+        max_temp_c: Number(document.getElementById("cm-temp")?.value || 115),
+        cost_per_kg_usd: Number(document.getElementById("cm-cost")?.value || 65),
+        color_hex: document.getElementById("cm-color")?.value || "#38bdf8",
+        notes: document.getElementById("cm-notes")?.value?.trim() || "",
+      };
+      try {
+        const saved = await createCustomMaterial(payload);
+        const materials = await fetchMaterials();
+        this.controls.setMaterials(materials, saved?.id || payload.id);
+        formMaterial.reset();
+        closeModal();
+        this.showToast(`Material "${name}" guardado.`, false);
+      } catch (err) {
+        this.showToast(`Error guardando material: ${err.message}`, true);
+      }
+    });
+
+    delPrinterBtn?.addEventListener("click", async () => {
+      const id = document.getElementById("printer_id")?.value;
+      if (!id) return;
+      try {
+        await deleteCustomPrinter(id);
+        const printers = await fetchPrinters();
+        this.controls.setPrinters(printers, "bambu_x1c");
+        this.showToast(`Impresora personalizada eliminada.`, false);
+      } catch (err) {
+        this.showToast(`Error eliminando impresora: ${err.message}`, true);
+      }
+    });
+
+    delMaterialBtn?.addEventListener("click", async () => {
+      const id = document.getElementById("material_id")?.value;
+      if (!id) return;
+      try {
+        await deleteCustomMaterial(id);
+        const materials = await fetchMaterials();
+        this.controls.setMaterials(materials, "petg_cf");
+        this.showToast(`Material personalizado eliminado.`, false);
+      } catch (err) {
+        this.showToast(`Error eliminando material: ${err.message}`, true);
+      }
+    });
+  }
+
   async _bootstrapBackendData() {
     this.setStatus("busy", "Conectando...");
     try {
-      const [health, materials, presets, mountPresets, gearPresets] = await Promise.all([
+      const [health, materials, presets, mountPresets, gearPresets, printers] = await Promise.all([
         checkHealth(),
         fetchMaterials(),
         fetchPresets(),
         fetchMountPresets().catch(() => null),
         fetchGearPresets().catch(() => null),
+        fetchPrinters().catch(() => null),
       ]);
 
       if (materials?.list?.length) {
         this.controls.setMaterials(materials);
+      }
+      if (printers?.list?.length) {
+        this.controls.setPrinters(printers);
       }
       if (presets) {
         this.controls.setPresets(presets);
@@ -264,6 +419,12 @@ class RoboForgeApp {
     try {
       const analysis = await analyzeStepFile(file);
       this.controls.setStepReference(analysis);
+      this.referenceGlbUrl = analysis.reference_glb_url || null;
+      this.viewport.clearGhostOverlay();
+      if (this.btnGhostStep) {
+        this.btnGhostStep.classList.toggle("hidden", !this.referenceGlbUrl);
+        this.btnGhostStep.classList.remove("active");
+      }
       this.showToast(
         `Pieza ${analysis.filename} analizada (${Number(analysis.volume_cm3).toFixed(1)} cm³). Generando 5 variantes...`,
         false

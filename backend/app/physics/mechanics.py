@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 
 from ..schemas import AlertItem, LinkDesignRequest, VariantKind, VariantMetrics
+from .profiles import load_custom_materials
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 GRAVITY_M_S2 = 9.81
@@ -42,8 +43,12 @@ def _read_presets_raw() -> dict:
 
 
 def load_materials() -> dict[str, dict]:
-    """Load the engineering materials database keyed by material id."""
-    return copy.deepcopy(_read_materials_raw())
+    """Load the engineering materials database merged with user custom materials."""
+    merged = copy.deepcopy(_read_materials_raw())
+    for item in merged.values():
+        item.setdefault("is_custom", False)
+    merged.update(load_custom_materials())
+    return merged
 
 
 def load_presets() -> dict:

@@ -1748,6 +1748,22 @@ input[type="range"]:disabled {
   padding-top: 2px;
 }
 
+.variant-actions.has-3mf {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.btn-download-3mf {
+  border-color: rgba(16, 185, 129, 0.42);
+  background: rgba(16, 185, 129, 0.12);
+  color: #6ee7b7;
+}
+
+.btn-download-3mf:hover {
+  border-color: #34d399;
+  background: rgba(16, 185, 129, 0.22);
+  color: #ffffff;
+}
+
 .btn-download {
   display: inline-flex;
   align-items: center;
@@ -1774,6 +1790,204 @@ input[type="range"]:disabled {
 .btn-download svg {
   width: 13px;
   height: 13px;
+}
+
+/* ==========================================================================
+   HITO 4: PRINTER PROFILES, GHOST STEP & CUSTOM MODAL
+   ========================================================================== */
+
+.section-header-spread {
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.section-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-mini-add {
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: rgba(56, 189, 248, 0.11);
+  color: var(--accent-cyan);
+  border-radius: 5px;
+  padding: 3px 7px;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.14s ease;
+}
+
+.btn-mini-add:hover {
+  background: rgba(56, 189, 248, 0.22);
+  color: #ffffff;
+}
+
+.printer-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.printer-bed-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: var(--bg-root);
+  border: 1px solid var(--border-subtle);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.printer-enclosure-chip {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 99px;
+  border: 1px solid transparent;
+}
+
+.printer-enclosure-chip.enclosed {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #34d399;
+}
+
+.printer-enclosure-chip.open {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
+.btn-del-custom {
+  margin-left: auto;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.1);
+  color: #fca5a5;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.btn-del-custom:hover {
+  background: rgba(239, 68, 68, 0.24);
+  color: #ffffff;
+}
+
+#btn-ghost-step.active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.65);
+  color: #7dd3fc;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+}
+
+/* Modal */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 8, 13, 0.76);
+  backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  z-index: 90;
+  padding: 16px;
+}
+
+.modal-card {
+  width: min(460px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px 18px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.modal-head h3 {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.modal-close {
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.modal-close:hover {
+  color: #ffffff;
+  border-color: var(--border-strong);
+}
+
+.modal-form {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal-form.active {
+  display: flex;
+}
+
+.text-input {
+  font-family: var(--font-sans);
+}
+
+.color-input {
+  width: 100%;
+  height: 31px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-root);
+  cursor: pointer;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.btn-secondary {
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background: var(--bg-hover);
 }
 
 /* Toast */

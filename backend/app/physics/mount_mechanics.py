@@ -14,6 +14,7 @@ from ..schemas import (
     MountVariantKind,
     VariantMetrics,
 )
+from .profiles import evaluate_printer_dfm_alerts
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
@@ -344,5 +345,18 @@ def evaluate_mount_global_alerts(
                     ),
                 )
             )
+
+    # 4. Printer build volume & enclosure compatibility
+    plate_w = PLATE_WIDTH_MM[req.actuator_type]
+    plate_h = req.shaft_height_mm + plate_w * 0.5
+    if req.print_orientation == "xy_flat":
+        part_x_mm, part_y_mm, part_z_mm = req.base_depth_mm, plate_h, plate_w
+    else:
+        part_x_mm, part_y_mm, part_z_mm = plate_w, req.base_depth_mm, plate_h
+    alerts.extend(
+        evaluate_printer_dfm_alerts(
+            req.printer_id, material, part_x_mm, part_y_mm, part_z_mm
+        )
+    )
 
     return alerts

@@ -374,6 +374,7 @@ export class ControlsController {
     this.onStepFileSelected = onStepFileSelected || (() => {});
     this.onClearStepReference = onClearStepReference || (() => {});
     this.materialsMap = {};
+    this.printersMap = {};
     this.archPresets = structuredClone(FALLBACK_ARCH_DEFAULTS);
     this.endPresets = structuredClone(FALLBACK_END_PRESETS);
     this.mountPresets = structuredClone(FALLBACK_MOUNT_DEFAULTS);
@@ -393,6 +394,7 @@ export class ControlsController {
     this._bindEndControls("tip");
     this._bindOrientationPills();
     this._bindMaterialSelect();
+    this._bindPrinterSelect();
     this._renderArchitectureGrid();
     this._renderMountPresetGrid();
     this._renderGearPresetGrid();
@@ -632,6 +634,80 @@ export class ControlsController {
     });
   }
 
+  _bindPrinterSelect() {
+    const sel = document.getElementById("printer_id");
+    sel?.addEventListener("change", () => {
+      this._applyPrinterDefaults(sel.value, true);
+    });
+  }
+
+  setPrinters({ map, list }, selectId = null) {
+    this.printersMap = map || {};
+    const sel = document.getElementById("printer_id");
+    if (!sel || !list?.length) return;
+
+    const currentVal = selectId || sel.value || "bambu_x1c";
+    sel.innerHTML = "";
+    for (const p of list) {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      const bedTag =
+        p.bed_x_mm === p.bed_y_mm && p.bed_y_mm === p.bed_z_mm
+          ? `${Math.round(p.bed_x_mm)}³`
+          : `${Math.round(p.bed_x_mm)}×${Math.round(p.bed_y_mm)}×${Math.round(p.bed_z_mm)}`;
+      opt.textContent = `${p.name || p.id} (${bedTag} mm)${p.is_custom ? " ★" : ""}`;
+      sel.appendChild(opt);
+    }
+
+    if (this.printersMap[currentVal]) {
+      sel.value = currentVal;
+    } else if (this.printersMap.bambu_x1c) {
+      sel.value = "bambu_x1c";
+    }
+    this._applyPrinterDefaults(sel.value, Boolean(selectId));
+  }
+
+  _applyPrinterDefaults(printerId, updateHardware = false) {
+    const p = this.printersMap[printerId];
+    if (!p) return;
+
+    const bedEl = document.getElementById("printer-bed-chip");
+    const encEl = document.getElementById("printer-enclosure-chip");
+    const delBtn = document.getElementById("btn-del-printer");
+
+    if (bedEl) {
+      bedEl.textContent = `Cama ${Math.round(p.bed_x_mm)}×${Math.round(p.bed_y_mm)}×${Math.round(p.bed_z_mm)} mm`;
+    }
+    if (encEl) {
+      encEl.textContent = p.enclosed ? "Cerrada" : "Abierta";
+      encEl.classList.toggle("enclosed", Boolean(p.enclosed));
+      encEl.classList.toggle("open", !p.enclosed);
+    }
+    if (delBtn) {
+      delBtn.classList.toggle("hidden", !p.is_custom);
+    }
+
+    if (updateHardware) {
+      if (p.default_nozzle_mm !== undefined) {
+        const nozzleSel = document.getElementById("nozzle_diameter_mm");
+        if (nozzleSel) {
+          const valStr = String(Number(p.default_nozzle_mm));
+          const exists = Array.from(nozzleSel.options).some((o) => o.value === valStr);
+          if (!exists) {
+            const opt = document.createElement("option");
+            opt.value = valStr;
+            opt.textContent = `${valStr} mm (Perfil)`;
+            nozzleSel.appendChild(opt);
+          }
+          nozzleSel.value = valStr;
+        }
+      }
+      if (p.clearance_mm !== undefined) {
+        this._setInputValue("printer_clearance_mm", p.clearance_mm);
+      }
+    }
+  }
+
   _renderArchitectureGrid() {
     const grid = document.getElementById("arch-preset-grid");
     if (!grid) return;
@@ -663,18 +739,18 @@ export class ControlsController {
   /**
    * Carga materiales desde GET /api/materials y actualiza el selector + badge.
    */
-  setMaterials({ map, list }) {
+  setMaterials({ map, list }, selectId = null) {
     this.materialsMap = map || {};
     const sel = document.getElementById("material_id");
     if (!sel || !list?.length) return;
 
-    const currentVal = sel.value || "petg_cf";
+    const currentVal = selectId || sel.value || "petg_cf";
     sel.innerHTML = "";
     for (const mat of list) {
       const opt = document.createElement("option");
       opt.value = mat.id;
       const cat = (mat.category || "fdm").toUpperCase();
-      opt.textContent = `${mat.name || mat.id} [${cat}]`;
+      opt.textContent = `${mat.name || mat.id} [${cat}]${mat.is_custom ? " ★" : ""}`;
       sel.appendChild(opt);
     }
 
@@ -711,6 +787,8 @@ export class ControlsController {
     }
     if (temp) temp.textContent = `${Math.round(mat.max_temp_c ?? 0)} °C`;
     if (notes) notes.textContent = mat.notes || "";
+    const delMatBtn = document.getElementById("btn-del-material");
+    if (delMatBtn) delMatBtn.classList.toggle("hidden", !mat.is_custom);
   }
 
   /**
@@ -913,6 +991,7 @@ export class ControlsController {
       operating_temp_c: clamp(document.getElementById("operating_temp_c")?.value, -10, 150, 45),
 
       material_id: document.getElementById("material_id")?.value || "petg_cf",
+      printer_id: document.getElementById("printer_id")?.value || "bambu_x1c",
       print_orientation: this.currentOrientation,
       nozzle_diameter_mm: clamp(document.getElementById("nozzle_diameter_mm")?.value, 0.2, 1.0, 0.4),
       printer_clearance_mm: clamp(document.getElementById("printer_clearance_mm")?.value, 0, 0.5, 0.15),
@@ -1045,6 +1124,7 @@ export class ControlsController {
       motor_temp_c: clamp(document.getElementById("mount-motor_temp_c")?.value, 15, 130, 58.0),
 
       material_id: document.getElementById("material_id")?.value || "petg_cf",
+      printer_id: document.getElementById("printer_id")?.value || "bambu_x1c",
       print_orientation: this.currentOrientation,
       nozzle_diameter_mm: clamp(document.getElementById("nozzle_diameter_mm")?.value, 0.2, 1.0, 0.4),
       printer_clearance_mm: clamp(document.getElementById("printer_clearance_mm")?.value, 0, 0.5, 0.15),
@@ -1207,6 +1287,7 @@ export class ControlsController {
       operating_temp_c: clamp(document.getElementById("gear-operating_temp_c")?.value, 10.0, 130.0, 45.0),
 
       material_id: document.getElementById("material_id")?.value || "petg_cf",
+      printer_id: document.getElementById("printer_id")?.value || "bambu_x1c",
       print_orientation: this.currentOrientation,
       nozzle_diameter_mm: clamp(document.getElementById("nozzle_diameter_mm")?.value, 0.2, 1.0, 0.4),
       printer_clearance_mm: clamp(document.getElementById("printer_clearance_mm")?.value, 0.0, 0.5, 0.15),
