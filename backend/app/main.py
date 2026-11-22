@@ -250,7 +250,10 @@ def run_fea_validation(fea_req: FEARequest) -> FEAResult:
             detail=f"No se encontró el archivo .STEP para la variante '{fea_req.variant_id}'.",
         )
 
-    output_glb_path = out_dir / f"{fea_req.variant_id}_fea_{fea_req.load_direction}.glb"
+    deform_tag = int(round(fea_req.deform_scale))
+    output_glb_path = (
+        out_dir / f"{fea_req.variant_id}_fea_{fea_req.load_direction}_d{deform_tag}.glb"
+    )
     try:
         return run_step_fea(
             step_path=step_path,
@@ -261,6 +264,7 @@ def run_fea_validation(fea_req: FEARequest) -> FEAResult:
             material=material,
             mesh_size_mm=fea_req.mesh_size_mm,
             load_direction=fea_req.load_direction,
+            deform_scale=fea_req.deform_scale,
         )
     except HTTPException:
         raise

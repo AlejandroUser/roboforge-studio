@@ -159,6 +159,7 @@ def run_step_fea(
     material: dict,
     mesh_size_mm: float = 7.0,
     load_direction: str = "y_inplane",
+    deform_scale: float = 0.0,
 ) -> FEAResult:
     """
     Run a real 3D Tet4 Linear Elasticity FEM analysis on a STEP file using Gmsh
@@ -329,9 +330,12 @@ def run_step_fea(
 
     # Export vertex-colored surface mesh to GLB with COLOR_0 preserved
     surf_nodes, inv_idx = np.unique(tris, return_inverse=True)
-    surf_verts = coords[surf_nodes]
+    deform_scale_clamped = max(0.0, min(float(deform_scale), 100.0))
+    surf_verts = coords[surf_nodes] + deform_scale_clamped * u_nodes[surf_nodes]
     surf_faces = inv_idx.reshape((-1, 3))
     surf_vm = nodal_vm[surf_nodes]
+    if deform_scale_clamped > 0.0:
+        notes.append(f"Deformación visual amplificada ×{deform_scale_clamped:.0f} sobre la malla 3D.")
 
     color_scale_max = max(p95_von_mises_mpa * 1.35, 0.1)
     vertex_colors = _von_mises_colormap(surf_vm, color_scale_max)

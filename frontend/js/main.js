@@ -268,14 +268,23 @@ class RoboForgeApp {
       this.btnToggleFeaMesh.classList.toggle("active", Boolean(feaResult && this.viewingFeaMesh));
     }
     if (this.toggleFeaMeshLabel) {
-      this.toggleFeaMeshLabel.textContent = this.viewingFeaMesh ? "Malla FEA 3D" : "Modelo CAD";
+      this.toggleFeaMeshLabel.textContent = this.viewingFeaMesh ? "Malla FEA" : "Modelo CAD";
     }
 
     this.comparator.renderFeaResult(
       feaResult || null,
       this.activeVariant?.name,
       this.viewingFeaMesh,
-      { onToggleMesh: () => this.toggleFeaMeshView() }
+      {
+        onToggleMesh: () => this.toggleFeaMeshView(),
+        loadDirection: this.feaLoadDirection || "y_inplane",
+        deformScale: this.feaDeformScale || 0,
+        onChangeOptions: ({ loadDirection, deformScale }) => {
+          this.feaLoadDirection = loadDirection;
+          this.feaDeformScale = deformScale;
+          this.runFeaSimulation();
+        },
+      }
     );
 
     this._updateHeatmapLegend();
@@ -302,7 +311,8 @@ class RoboForgeApp {
         variant_id: this.activeVariant.variant_id,
         request: this.controls.getPayload(),
         mesh_size_mm: 7.0,
-        load_direction: "y_inplane",
+        load_direction: this.feaLoadDirection || "y_inplane",
+        deform_scale: this.feaDeformScale || 0,
       };
 
       const feaResult = await runFEA(payload);

@@ -147,6 +147,7 @@ class FEARequest(BaseModel):
     request: LinkDesignRequest
     mesh_size_mm: float = Field(7.0, ge=3.0, le=15.0)
     load_direction: Literal["y_inplane", "z_outofplane"] = "y_inplane"
+    deform_scale: float = Field(0.0, ge=0.0, le=100.0)
 
 
 class FEAResult(BaseModel):

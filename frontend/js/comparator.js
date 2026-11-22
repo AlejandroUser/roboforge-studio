@@ -67,7 +67,7 @@ export class ComparatorController {
     });
   }
 
-  renderFeaResult(feaResult, variantName, isShowingFeaMesh, { onToggleMesh } = {}) {
+  renderFeaResult(feaResult, variantName, isShowingFeaMesh, options = {}) {
     if (!this.feaCardEl) return;
     if (!feaResult) {
       this.feaCardEl.classList.add("hidden");
@@ -130,8 +130,17 @@ export class ComparatorController {
         </div>
       </div>
 
-      <div class="fea-card-actions">
+      <div class="fea-card-actions" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
         <button type="button" class="btn-fea-switch" id="btn-fea-card-toggle">${toggleLabel}</button>
+        <select id="fea-load-dir" class="select-input" style="width:auto;padding:4px 8px;font-size:11px;" title="Dirección de carga FEA">
+          <option value="y_inplane" ${options?.loadDirection !== "z_outofplane" ? "selected" : ""}>Carga Y (plano)</option>
+          <option value="z_outofplane" ${options?.loadDirection === "z_outofplane" ? "selected" : ""}>Carga Z (fuera plano)</option>
+        </select>
+        <select id="fea-deform-scale" class="select-input" style="width:auto;padding:4px 8px;font-size:11px;" title="Amplificación visual de deformación">
+          <option value="0" ${Number(options?.deformScale || 0) === 0 ? "selected" : ""}>Deform. 0×</option>
+          <option value="10" ${Number(options?.deformScale || 0) === 10 ? "selected" : ""}>Deform. 10×</option>
+          <option value="25" ${Number(options?.deformScale || 0) === 25 ? "selected" : ""}>Deform. 25×</option>
+        </select>
       </div>
 
       <ul class="fea-notes-list">${notesHtml}</ul>
@@ -139,7 +148,15 @@ export class ComparatorController {
 
     const toggleBtn = this.feaCardEl.querySelector("#btn-fea-card-toggle");
     toggleBtn?.addEventListener("click", () => {
-      onToggleMesh?.();
+      options?.onToggleMesh?.();
+    });
+    const dirSel = this.feaCardEl.querySelector("#fea-load-dir");
+    const defSel = this.feaCardEl.querySelector("#fea-deform-scale");
+    dirSel?.addEventListener("change", () => {
+      options?.onChangeOptions?.({ loadDirection: dirSel.value, deformScale: Number(defSel?.value || 0) });
+    });
+    defSel?.addEventListener("change", () => {
+      options?.onChangeOptions?.({ loadDirection: dirSel?.value || "y_inplane", deformScale: Number(defSel.value) });
     });
   }
 
