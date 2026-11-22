@@ -1,0 +1,240 @@
+{
+  "architectures": {
+    "articulated_6dof": {
+      "id": "articulated_6dof",
+      "name": "6-DOF Articulated Arm",
+      "description": "General-purpose desktop/cobot upper-arm or forearm link with NEMA 17 drive root and 608 bearing wrist.",
+      "defaults": {
+        "architecture": "articulated_6dof",
+        "length_mm": 180.0,
+        "root_width_mm": 38.0,
+        "tip_width_mm": 24.0,
+        "thickness_mm": 20.0,
+        "organic_taper": 0.75,
+        "cable_channel": true,
+        "root_end": {
+          "preset": "nema17",
+          "outer_diameter_mm": 46.0,
+          "bore_diameter_mm": 22.0,
+          "bolt_count": 4,
+          "bolt_pcd_mm": 31.0,
+          "bolt_size": "M3",
+          "use_heat_inserts": true
+        },
+        "tip_end": {
+          "preset": "bearing_608",
+          "outer_diameter_mm": 32.0,
+          "bore_diameter_mm": 22.0,
+          "bolt_count": 0,
+          "bolt_pcd_mm": 26.0,
+          "bolt_size": "M3",
+          "use_heat_inserts": false
+        },
+        "tip_load_n": 25.0,
+        "angular_accel_rad_s2": 15.0,
+        "target_safety_factor": 2.0,
+        "max_deflection_mm": 0.5,
+        "operating_temp_c": 45.0,
+        "material_id": "petg_cf",
+        "print_orientation": "xy_flat",
+        "nozzle_diameter_mm": 0.4,
+        "printer_clearance_mm": 0.15
+      }
+    },
+    "scara": {
+      "id": "scara",
+      "name": "SCARA Forearm",
+      "description": "High-rigidity horizontal pick-and-place link engineered for low vertical deflection and fast angular acceleration.",
+      "defaults": {
+        "architecture": "scara",
+        "length_mm": 240.0,
+        "root_width_mm": 48.0,
+        "tip_width_mm": 30.0,
+        "thickness_mm": 24.0,
+        "organic_taper": 0.65,
+        "cable_channel": true,
+        "root_end": {
+          "preset": "bearing_6805",
+          "outer_diameter_mm": 48.0,
+          "bore_diameter_mm": 37.0,
+          "bolt_count": 4,
+          "bolt_pcd_mm": 42.5,
+          "bolt_size": "M3",
+          "use_heat_inserts": true
+        },
+        "tip_end": {
+          "preset": "bearing_608",
+          "outer_diameter_mm": 32.0,
+          "bore_diameter_mm": 22.0,
+          "bolt_count": 0,
+          "bolt_pcd_mm": 26.0,
+          "bolt_size": "M3",
+          "use_heat_inserts": false
+        },
+        "tip_load_n": 40.0,
+        "angular_accel_rad_s2": 25.0,
+        "target_safety_factor": 2.2,
+        "max_deflection_mm": 0.35,
+        "operating_temp_c": 40.0,
+        "material_id": "pa12_cf",
+        "print_orientation": "xy_flat",
+        "nozzle_diameter_mm": 0.4,
+        "printer_clearance_mm": 0.15
+      }
+    },
+    "delta_rod": {
+      "id": "delta_rod",
+      "name": "Delta Parallel Arm",
+      "description": "Ultra-lightweight high-acceleration link optimized for minimal rotational inertia in parallel delta robots.",
+      "defaults": {
+        "architecture": "delta_rod",
+        "length_mm": 220.0,
+        "root_width_mm": 24.0,
+        "tip_width_mm": 18.0,
+        "thickness_mm": 14.0,
+        "organic_taper": 0.4,
+        "cable_channel": false,
+        "root_end": {
+          "preset": "bearing_608",
+          "outer_diameter_mm": 32.0,
+          "bore_diameter_mm": 22.0,
+          "bolt_count": 0,
+          "bolt_pcd_mm": 26.0,
+          "bolt_size": "M3",
+          "use_heat_inserts": false
+        },
+        "tip_end": {
+          "preset": "bearing_608",
+          "outer_diameter_mm": 32.0,
+          "bore_diameter_mm": 22.0,
+          "bolt_count": 0,
+          "bolt_pcd_mm": 26.0,
+          "bolt_size": "M3",
+          "use_heat_inserts": false
+        },
+        "tip_load_n": 15.0,
+        "angular_accel_rad_s2": 60.0,
+        "target_safety_factor": 2.0,
+        "max_deflection_mm": 0.4,
+        "operating_temp_c": 35.0,
+        "material_id": "petg_cf",
+        "print_orientation": "xy_flat",
+        "nozzle_diameter_mm": 0.4,
+        "printer_clearance_mm": 0.15
+      }
+    },
+    "robot_leg": {
+      "id": "robot_leg",
+      "name": "Quadruped / Bipedal Leg",
+      "description": "High-impact dynamic leg segment with NEMA 23 / quasi-direct-drive hip mount and bionic taper.",
+      "defaults": {
+        "architecture": "robot_leg",
+        "length_mm": 200.0,
+        "root_width_mm": 44.0,
+        "tip_width_mm": 26.0,
+        "thickness_mm": 22.0,
+        "organic_taper": 0.85,
+        "cable_channel": true,
+        "root_end": {
+          "preset": "nema23",
+          "outer_diameter_mm": 78.0,
+          "bore_diameter_mm": 38.1,
+          "bolt_count": 4,
+          "bolt_pcd_mm": 66.7,
+          "bolt_size": "M5",
+          "use_heat_inserts": true
+        },
+        "tip_end": {
+          "preset": "bearing_608",
+          "outer_diameter_mm": 32.0,
+          "bore_diameter_mm": 22.0,
+          "bolt_count": 0,
+          "bolt_pcd_mm": 26.0,
+          "bolt_size": "M3",
+          "use_heat_inserts": false
+        },
+        "tip_load_n": 80.0,
+        "angular_accel_rad_s2": 35.0,
+        "target_safety_factor": 2.5,
+        "max_deflection_mm": 0.6,
+        "operating_temp_c": 50.0,
+        "material_id": "pa12_cf",
+        "print_orientation": "xy_flat",
+        "nozzle_diameter_mm": 0.4,
+        "printer_clearance_mm": 0.15
+      }
+    }
+  },
+  "end_interfaces": {
+    "nema17": {
+      "id": "nema17",
+      "name": "NEMA 17 Stepper",
+      "description": "Standard 42mm stepper motor flange (22mm pilot bore, 4x M3 bolts).",
+      "params": {
+        "preset": "nema17",
+        "outer_diameter_mm": 46.0,
+        "bore_diameter_mm": 22.0,
+        "bolt_count": 4,
+        "bolt_pcd_mm": 31.0,
+        "bolt_size": "M3",
+        "use_heat_inserts": true
+      }
+    },
+    "nema23": {
+      "id": "nema23",
+      "name": "NEMA 23 Stepper",
+      "description": "High-torque 57mm stepper motor flange (38.1mm pilot bore, 4x M5 bolts).",
+      "params": {
+        "preset": "nema23",
+        "outer_diameter_mm": 78.0,
+        "bore_diameter_mm": 38.1,
+        "bolt_count": 4,
+        "bolt_pcd_mm": 66.7,
+        "bolt_size": "M5",
+        "use_heat_inserts": true
+      }
+    },
+    "bearing_608": {
+      "id": "bearing_608",
+      "name": "608 Bearing Housing",
+      "description": "Press-fit housing for 608-2RS bearing (22mm OD, 8mm shaft).",
+      "params": {
+        "preset": "bearing_608",
+        "outer_diameter_mm": 32.0,
+        "bore_diameter_mm": 22.0,
+        "bolt_count": 0,
+        "bolt_pcd_mm": 26.0,
+        "bolt_size": "M3",
+        "use_heat_inserts": false
+      }
+    },
+    "bearing_6805": {
+      "id": "bearing_6805",
+      "name": "6805 Thin-Section Bearing",
+      "description": "Hollow-shaft 6805-2RS bearing housing (37mm OD, 25mm ID) with 4x M3 clamp ring.",
+      "params": {
+        "preset": "bearing_6805",
+        "outer_diameter_mm": 48.0,
+        "bore_diameter_mm": 37.0,
+        "bolt_count": 4,
+        "bolt_pcd_mm": 42.5,
+        "bolt_size": "M3",
+        "use_heat_inserts": true
+      }
+    },
+    "custom": {
+      "id": "custom",
+      "name": "Custom Interface",
+      "description": "Fully customizable bore, outer boss diameter, and bolt pattern.",
+      "params": {
+        "preset": "custom",
+        "outer_diameter_mm": 36.0,
+        "bore_diameter_mm": 16.0,
+        "bolt_count": 4,
+        "bolt_pcd_mm": 26.0,
+        "bolt_size": "M4",
+        "use_heat_inserts": true
+      }
+    }
+  }
+}

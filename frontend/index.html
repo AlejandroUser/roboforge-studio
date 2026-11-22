@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RoboForge Studio — Diseño Generativo CAD</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- HEADER -->
+    <header class="top-header">
+      <div class="header-left">
+        <div class="brand">
+          <div class="brand-logo" aria-hidden="true">
+            <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="2" y="2" width="24" height="24" rx="6" stroke="currentColor" stroke-width="1.6" stroke-opacity="0.35"/>
+              <circle cx="9" cy="19" r="3" stroke="#38bdf8" stroke-width="2"/>
+              <circle cx="19" cy="9" r="2.5" stroke="#10b981" stroke-width="2"/>
+              <path d="M11.2 16.8L17.2 10.8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+              <path d="M19 6.5V4.5M21.5 9H23.5" stroke="#10b981" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="brand-text">
+            <span class="brand-name">RoboForge</span>
+            <span class="brand-tag">STUDIO</span>
+          </div>
+        </div>
+
+        <div class="header-divider"></div>
+
+        <div class="arch-pill" id="header-arch-pill" title="Arquitectura activa">
+          <span class="arch-pill-dot"></span>
+          <span id="header-arch-label">Articulado 6-DOF</span>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <div class="status-indicator" id="status-indicator" data-state="connecting">
+          <span class="status-dot"></span>
+          <span id="status-text">Conectando...</span>
+        </div>
+
+        <button type="button" class="btn-primary" id="btn-generate" title="Generar 4 variantes (Ctrl+Enter)">
+          <svg class="btn-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M10 2.5L11.8 7.2L16.5 9L11.8 10.8L10 15.5L8.2 10.8L3.5 9L8.2 7.2L10 2.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+            <path d="M15.5 14L16.3 16L18.3 16.8L16.3 17.6L15.5 19.6L14.7 17.6L12.7 16.8L14.7 16L15.5 14Z" fill="currentColor"/>
+          </svg>
+          <span>Generar y Optimizar (4 Variantes)</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- MAIN 3-COLUMN STUDIO -->
+    <main class="studio-workspace">
+      <!-- LEFT SIDEBAR: PARAMETERS -->
+      <aside class="sidebar-left" id="controls-panel" aria-label="Parámetros de diseño">
+        <!-- 1. ARQUITECTURA -->
+        <section class="panel-section">
+          <div class="section-header">
+            <span class="section-num">01</span>
+            <h2>Arquitectura del Brazo</h2>
+          </div>
+          <div class="arch-grid" id="arch-preset-grid">
+            <!-- Populated by controls.js -->
+          </div>
+        </section>
+
+        <!-- 2. GEOMETRÍA Y PERFIL ORGÁNICO -->
+        <section class="panel-section">
+          <div class="section-header">
+            <span class="section-num">02</span>
+            <h2>Geometría y Perfil Orgánico</h2>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="length_mm">Longitud L (entre ejes)</label>
+              <span class="readout" id="val-length_mm">180 mm</span>
+            </div>
+            <input type="range" id="length_mm" min="60" max="450" step="5" value="180" />
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="root_width_mm">Ancho Raíz (A)</label>
+              <span class="readout" id="val-root_width_mm">38 mm</span>
+            </div>
+            <input type="range" id="root_width_mm" min="16" max="110" step="1" value="38" />
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="tip_width_mm">Ancho Punta (B)</label>
+              <span class="readout" id="val-tip_width_mm">24 mm</span>
+            </div>
+            <input type="range" id="tip_width_mm" min="12" max="90" step="1" value="24" />
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="thickness_mm">Espesor</label>
+              <span class="readout" id="val-thickness_mm">20 mm</span>
+            </div>
+            <input type="range" id="thickness_mm" min="8" max="60" step="1" value="20" />
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="organic_taper">Nivel Orgánico</label>
+              <span class="readout accent" id="val-organic_taper">75%</span>
+            </div>
+            <input type="range" id="organic_taper" min="0" max="100" step="5" value="75" />
+            <div class="range-hints">
+              <span>Recto (0%)</span>
+              <span>Biónico (100%)</span>
+            </div>
+          </div>
+
+          <label class="toggle-row" for="cable_channel">
+            <span class="toggle-text">
+              <strong>Canal Pasacables Interno</strong>
+              <small>Ruteo protegido para cableado de motor/sensor</small>
+            </span>
+            <span class="switch">
+              <input type="checkbox" id="cable_channel" checked />
+              <span class="switch-track"></span>
+            </span>
+          </label>
+        </section>
+
+        <!-- 3. EXTREMOS A Y B -->
+        <section class="panel-section">
+          <div class="section-header">
+            <span class="section-num">03</span>
+            <h2>Extremos A (Raíz) y B (Punta)</h2>
+          </div>
+
+          <div class="segmented-tabs" role="tablist">
+            <button type="button" class="tab-btn active" data-end-tab="root" role="tab" aria-selected="true">
+              <span>Extremo A (Raíz)</span>
+              <small id="tab-summary-root">NEMA 17</small>
+            </button>
+            <button type="button" class="tab-btn" data-end-tab="tip" role="tab" aria-selected="false">
+              <span>Extremo B (Punta)</span>
+              <small id="tab-summary-tip">Rod. 608</small>
+            </button>
+          </div>
+
+          <!-- ROOT END FORM -->
+          <div class="end-form active" data-end-panel="root">
+            <div class="control-group">
+              <label for="root-preset">Interfaz Predefinida</label>
+              <select id="root-preset" class="select-input">
+                <option value="nema17">NEMA 17 (Motor Paso a Paso)</option>
+                <option value="nema23">NEMA 23 (Motor Industrial)</option>
+                <option value="bearing_608">Rodamiento 608 (Ø22 mm)</option>
+                <option value="bearing_6805">Rodamiento 6805 (Ø37 mm)</option>
+                <option value="custom">Personalizado</option>
+              </select>
+            </div>
+
+            <div class="two-col-grid">
+              <div class="control-group">
+                <label for="root-outer_diameter_mm">Ø Exterior (mm)</label>
+                <input type="number" id="root-outer_diameter_mm" class="num-input" min="14" max="120" step="0.5" value="46" />
+              </div>
+              <div class="control-group">
+                <label for="root-bore_diameter_mm">Ø Agujero (mm)</label>
+                <input type="number" id="root-bore_diameter_mm" class="num-input" min="3" max="90" step="0.5" value="22" />
+              </div>
+            </div>
+
+            <div class="three-col-grid">
+              <div class="control-group">
+                <label for="root-bolt_count">Pernos</label>
+                <input type="number" id="root-bolt_count" class="num-input" min="0" max="8" step="1" value="4" />
+              </div>
+              <div class="control-group">
+                <label for="root-bolt_pcd_mm">PCD (mm)</label>
+                <input type="number" id="root-bolt_pcd_mm" class="num-input" min="10" max="105" step="0.5" value="31" />
+              </div>
+              <div class="control-group">
+                <label for="root-bolt_size">Métrica</label>
+                <select id="root-bolt_size" class="select-input">
+                  <option value="M3" selected>M3</option>
+                  <option value="M4">M4</option>
+                  <option value="M5">M5</option>
+                </select>
+              </div>
+            </div>
+
+            <label class="toggle-row compact" for="root-use_heat_inserts">
+              <span class="toggle-text">
+                <strong>Insertos Térmicos (Latón)</strong>
+              </span>
+              <span class="switch">
+                <input type="checkbox" id="root-use_heat_inserts" checked />
+                <span class="switch-track"></span>
+              </span>
+            </label>
+          </div>
+
+          <!-- TIP END FORM -->
+          <div class="end-form" data-end-panel="tip">
+            <div class="control-group">
+              <label for="tip-preset">Interfaz Predefinida</label>
+              <select id="tip-preset" class="select-input">
+                <option value="nema17">NEMA 17 (Motor Paso a Paso)</option>
+                <option value="nema23">NEMA 23 (Motor Industrial)</option>
+                <option value="bearing_608" selected>Rodamiento 608 (Ø22 mm)</option>
+                <option value="bearing_6805">Rodamiento 6805 (Ø37 mm)</option>
+                <option value="custom">Personalizado</option>
+              </select>
+            </div>
+
+            <div class="two-col-grid">
+              <div class="control-group">
+                <label for="tip-outer_diameter_mm">Ø Exterior (mm)</label>
+                <input type="number" id="tip-outer_diameter_mm" class="num-input" min="14" max="120" step="0.5" value="32" />
+              </div>
+              <div class="control-group">
+                <label for="tip-bore_diameter_mm">Ø Agujero (mm)</label>
+                <input type="number" id="tip-bore_diameter_mm" class="num-input" min="3" max="90" step="0.5" value="22" />
+              </div>
+            </div>
+
+            <div class="three-col-grid">
+              <div class="control-group">
+                <label for="tip-bolt_count">Pernos</label>
+                <input type="number" id="tip-bolt_count" class="num-input" min="0" max="8" step="1" value="0" />
+              </div>
+              <div class="control-group">
+                <label for="tip-bolt_pcd_mm">PCD (mm)</label>
+                <input type="number" id="tip-bolt_pcd_mm" class="num-input" min="10" max="105" step="0.5" value="26" />
+              </div>
+              <div class="control-group">
+                <label for="tip-bolt_size">Métrica</label>
+                <select id="tip-bolt_size" class="select-input">
+                  <option value="M3" selected>M3</option>
+                  <option value="M4">M4</option>
+                  <option value="M5">M5</option>
+                </select>
+              </div>
+            </div>
+
+            <label class="toggle-row compact" for="tip-use_heat_inserts">
+              <span class="toggle-text">
+                <strong>Insertos Térmicos (Latón)</strong>
+              </span>
+              <span class="switch">
+                <input type="checkbox" id="tip-use_heat_inserts" />
+                <span class="switch-track"></span>
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <!-- 4. CARGAS FÍSICAS -->
+        <section class="panel-section">
+          <div class="section-header">
+            <span class="section-num">04</span>
+            <h2>Cargas Físicas y Objetivos</h2>
+          </div>
+
+          <div class="two-col-grid">
+            <div class="control-group">
+              <label for="tip_load_n">Carga en Punta (N)</label>
+              <input type="number" id="tip_load_n" class="num-input" min="1" max="500" step="1" value="25" />
+            </div>
+            <div class="control-group">
+              <label for="angular_accel_rad_s2">Acel. Angular (rad/s²)</label>
+              <input type="number" id="angular_accel_rad_s2" class="num-input" min="0" max="200" step="1" value="15" />
+            </div>
+          </div>
+
+          <div class="three-col-grid">
+            <div class="control-group">
+              <label for="max_deflection_mm">Deflex. Máx (mm)</label>
+              <input type="number" id="max_deflection_mm" class="num-input" min="0.05" max="10" step="0.05" value="0.5" />
+            </div>
+            <div class="control-group">
+              <label for="target_safety_factor">FS Objetivo</label>
+              <input type="number" id="target_safety_factor" class="num-input" min="1.1" max="10" step="0.1" value="2.0" />
+            </div>
+            <div class="control-group">
+              <label for="operating_temp_c">Temp. (°C)</label>
+              <input type="number" id="operating_temp_c" class="num-input" min="-10" max="150" step="1" value="45" />
+            </div>
+          </div>
+        </section>
+
+        <!-- 5. MATERIAL Y MANUFACTURA 3D -->
+        <section class="panel-section">
+          <div class="section-header">
+            <span class="section-num">05</span>
+            <h2>Material y Manufactura 3D</h2>
+          </div>
+
+          <div class="control-group">
+            <label for="material_id">Material de Ingeniería</label>
+            <select id="material_id" class="select-input">
+              <option value="petg_cf">PETG-CF (Cargando catálogo...)</option>
+            </select>
+          </div>
+
+          <div class="material-badge-card" id="material-props-badge">
+            <div class="mat-badge-top">
+              <span class="mat-swatch" id="mat-swatch"></span>
+              <span class="mat-cat" id="mat-category">FDM</span>
+              <span class="mat-cost" id="mat-cost">$45/kg</span>
+            </div>
+            <div class="mat-specs-grid">
+              <div><small>Densidad</small><strong id="mat-density">1.29 g/cm³</strong></div>
+              <div><small>E (XY/Z)</small><strong id="mat-youngs">4200 / 2600 MPa</strong></div>
+              <div><small>Fluencia</small><strong id="mat-yield">58 / 32 MPa</strong></div>
+              <div><small>Temp. Máx</small><strong id="mat-temp">80 °C</strong></div>
+            </div>
+            <p class="mat-notes" id="mat-notes"></p>
+          </div>
+
+          <div class="control-group">
+            <label>Orientación de Impresión</label>
+            <div class="segmented-radio" id="orientation-group">
+              <button type="button" class="radio-pill active" data-orientation="xy_flat">
+                XY Plano
+                <small>Máx. rigidez</small>
+              </button>
+              <button type="button" class="radio-pill" data-orientation="z_vertical">
+                Z Vertical
+                <small>Capas en Z</small>
+              </button>
+            </div>
+          </div>
+
+          <div class="two-col-grid">
+            <div class="control-group">
+              <label for="nozzle_diameter_mm">Boquilla (mm)</label>
+              <select id="nozzle_diameter_mm" class="select-input">
+                <option value="0.4" selected>0.4 mm (Estándar)</option>
+                <option value="0.6">0.6 mm (CF / Rápida)</option>
+                <option value="0.8">0.8 mm (Estructural)</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <div class="control-label-row compact-label">
+                <label for="printer_clearance_mm">Holgura</label>
+                <span class="readout" id="val-printer_clearance_mm">0.15 mm</span>
+              </div>
+              <input type="range" id="printer_clearance_mm" min="0" max="0.5" step="0.05" value="0.15" />
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <!-- CENTER: 3D VIEWPORT -->
+      <section class="viewport-area" aria-label="Visor CAD 3D">
+        <div id="viewport-canvas-container" class="viewport-canvas"></div>
+
+        <!-- TOP-LEFT ACTIVE MODEL HUD -->
+        <div class="viewport-hud-top-left" id="viewport-hud">
+          <div class="hud-variant-title">
+            <span class="hud-dot" id="hud-variant-dot"></span>
+            <strong id="hud-variant-name">Sin modelo cargado</strong>
+          </div>
+          <div class="hud-variant-meta" id="hud-variant-meta">
+            Presiona «Generar y Optimizar» para sintetizar 4 variantes B-Rep
+          </div>
+        </div>
+
+        <!-- TOP-RIGHT VIEWPORT TOOLBAR -->
+        <div class="viewport-toolbar" role="toolbar" aria-label="Controles de cámara">
+          <div class="toolbar-group">
+            <button type="button" class="tool-btn active" data-cam-view="iso" title="Vista Isométrica">Iso</button>
+            <button type="button" class="tool-btn" data-cam-view="top" title="Vista Superior (XY)">Sup</button>
+            <button type="button" class="tool-btn" data-cam-view="front" title="Vista Frontal">Front</button>
+            <button type="button" class="tool-btn" data-cam-view="side" title="Vista Lateral">Lat</button>
+          </div>
+          <div class="toolbar-sep"></div>
+          <div class="toolbar-group">
+            <button type="button" class="tool-btn icon-text" id="btn-wireframe" title="Alternar malla wireframe">
+              <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <path d="M9 2L16 6V12L9 16L2 12V6L9 2Z" stroke="currentColor" stroke-width="1.4"/>
+                <path d="M9 2V16M2 6L16 12M16 6L2 12" stroke="currentColor" stroke-width="1.1" stroke-opacity="0.7"/>
+              </svg>
+              <span>Wire</span>
+            </button>
+            <button type="button" class="tool-btn icon-text" id="btn-autorotate" title="Auto-rotar cámara">
+              <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <path d="M14.5 9A5.5 5.5 0 1 1 12.8 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <path d="M13 2.5V5.5H10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>Rotar</span>
+            </button>
+            <button type="button" class="tool-btn" id="btn-fit-camera" title="Encuadrar modelo">
+              <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <path d="M3 6V3H6M12 3H15V6M15 12V15H12M6 15H3V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- BOTTOM SECTION CUT BAR -->
+        <div class="viewport-section-bar">
+          <button type="button" class="section-toggle-btn" id="btn-section-cut" title="Activar plano de corte en eje X">
+            <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
+              <path d="M9 2V16" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.5 2"/>
+              <path d="M3 5H6V13H3V5Z" stroke="currentColor" stroke-width="1.4"/>
+              <path d="M12 5H15V13H12V5Z" stroke="currentColor" stroke-width="1.4" stroke-opacity="0.4"/>
+            </svg>
+            <span>Corte X</span>
+          </button>
+          <input type="range" id="section-cut-slider" min="0" max="100" step="1" value="50" disabled />
+          <span class="readout" id="val-section-cut">50%</span>
+        </div>
+
+        <!-- BOTTOM-LEFT HINT -->
+        <div class="viewport-hint">
+          <span>Izq: Orbitar</span> · <span>Der: Mover</span> · <span>Rueda: Zoom</span> · <span>Grilla: 10 mm</span>
+        </div>
+
+        <!-- LOADING OVERLAY -->
+        <div class="viewport-loader hidden" id="viewport-loader" role="status" aria-live="polite">
+          <div class="loader-card">
+            <div class="loader-spinner"></div>
+            <h3 id="loader-title">Sintetizando Geometría B-Rep...</h3>
+            <p id="loader-subtitle">Calculando 4 variantes CAD, malla GLB y análisis estructural</p>
+            <div class="loader-progress-track">
+              <div class="loader-progress-bar" id="loader-progress-bar"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT PANEL: COMPARATOR & ALERTS -->
+      <aside class="sidebar-right" aria-label="Comparador de variantes y alertas">
+        <div class="right-header">
+          <div>
+            <h2>Comparador de Variantes</h2>
+            <p class="right-subtitle" id="comparator-subtitle">4 topologías optimizadas · Clic para inspeccionar en 3D</p>
+          </div>
+          <span class="hash-pill hidden" id="design-hash-pill" title="Hash determinista del diseño">#--------</span>
+        </div>
+
+        <!-- GLOBAL ALERTS -->
+        <div class="alerts-container" id="global-alerts"></div>
+
+        <!-- VARIANT CARDS -->
+        <div class="variants-list" id="variants-list">
+          <div class="empty-state">
+            <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+              <rect x="6" y="10" width="36" height="28" rx="6" stroke="currentColor" stroke-width="1.8" stroke-dasharray="4 3"/>
+              <circle cx="17" cy="24" r="4.5" stroke="#38bdf8" stroke-width="1.8"/>
+              <circle cx="31" cy="24" r="3" stroke="#10b981" stroke-width="1.8"/>
+              <path d="M21.5 24H28" stroke="currentColor" stroke-width="1.8"/>
+            </svg>
+            <p>Configura los parámetros del eslabón y ejecuta <strong>Generar y Optimizar</strong> para comparar las 4 variantes.</p>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div class="toast hidden" id="app-toast" role="alert"></div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

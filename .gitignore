@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+exports/
+node_modules/
+dist/
+.pytest_cache/
+*.step
+*.stl
+*.glb
