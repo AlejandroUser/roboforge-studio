@@ -127,6 +127,116 @@ const FALLBACK_MOUNT_DEFAULTS = {
   },
 };
 
+const GEAR_META = {
+  spur_nema17: {
+    label: "Piñón NEMA 17",
+    subtitle: "Involuta 24T · m=2.0 · Ø5 D-shaft",
+    icon: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="6.5" stroke="currentColor" stroke-width="1.7" stroke-dasharray="2.5 1.8"/><circle cx="12" cy="12" r="2.6" stroke="currentColor" stroke-width="1.7"/></svg>`,
+  },
+  spur_heavy: {
+    label: "Engranaje Alto Torque",
+    subtitle: "Involuta 36T · m=2.5 · Ø8 mm",
+    icon: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2"/><circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="1.3"/><circle cx="12" cy="12" r="2" stroke="currentColor" stroke-width="1.6"/></svg>`,
+  },
+  gt2_pulley_20t: {
+    label: "Polea GT2 20T",
+    subtitle: "Correa 2mm · Baja inercia",
+    icon: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="7" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="4.8" stroke="currentColor" stroke-width="1.2" stroke-dasharray="1.8 1.5"/><circle cx="12" cy="12" r="2.2" stroke="currentColor" stroke-width="1.6"/></svg>`,
+  },
+  gt2_pulley_40t: {
+    label: "Polea GT2 40T",
+    subtitle: "Reducción 2:1 · Radios ligeros",
+    icon: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.2" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.4" stroke="currentColor" stroke-width="1.6"/><path d="M12 4V9.6M12 14.4V20M4 12H9.6M14.4 12H20" stroke="currentColor" stroke-width="1.3"/></svg>`,
+  },
+};
+
+const FALLBACK_GEAR_DEFAULTS = {
+  spur_nema17: {
+    preset: "spur_nema17",
+    gear_kind: "spur_involute",
+    teeth: 24,
+    module_mm: 2.0,
+    pressure_angle_deg: 20.0,
+    face_width_mm: 10.0,
+    bore_diameter_mm: 5.0,
+    d_shaft_flat_mm: 0.5,
+    hub_diameter_mm: 16.0,
+    hub_height_mm: 5.0,
+    backlash_mm: 0.15,
+    torque_nm: 1.2,
+    rpm: 120.0,
+    target_safety_factor: 2.0,
+    operating_temp_c: 45.0,
+    material_id: "petg_cf",
+    print_orientation: "xy_flat",
+    nozzle_diameter_mm: 0.4,
+    printer_clearance_mm: 0.15,
+  },
+  spur_heavy: {
+    preset: "spur_heavy",
+    gear_kind: "spur_involute",
+    teeth: 36,
+    module_mm: 2.5,
+    pressure_angle_deg: 20.0,
+    face_width_mm: 16.0,
+    bore_diameter_mm: 8.0,
+    d_shaft_flat_mm: 0.8,
+    hub_diameter_mm: 24.0,
+    hub_height_mm: 8.0,
+    backlash_mm: 0.18,
+    torque_nm: 5.5,
+    rpm: 90.0,
+    target_safety_factor: 2.2,
+    operating_temp_c: 50.0,
+    material_id: "pa12_cf",
+    print_orientation: "xy_flat",
+    nozzle_diameter_mm: 0.4,
+    printer_clearance_mm: 0.15,
+  },
+  gt2_pulley_20t: {
+    preset: "gt2_pulley_20t",
+    gear_kind: "gt2_pulley",
+    teeth: 20,
+    module_mm: 2.0,
+    pressure_angle_deg: 20.0,
+    face_width_mm: 7.5,
+    bore_diameter_mm: 5.0,
+    d_shaft_flat_mm: 0.5,
+    hub_diameter_mm: 14.0,
+    hub_height_mm: 5.0,
+    backlash_mm: 0.12,
+    torque_nm: 0.6,
+    rpm: 300.0,
+    target_safety_factor: 2.0,
+    operating_temp_c: 45.0,
+    material_id: "petg_cf",
+    print_orientation: "xy_flat",
+    nozzle_diameter_mm: 0.4,
+    printer_clearance_mm: 0.15,
+  },
+  gt2_pulley_40t: {
+    preset: "gt2_pulley_40t",
+    gear_kind: "gt2_pulley",
+    teeth: 40,
+    module_mm: 2.0,
+    pressure_angle_deg: 20.0,
+    face_width_mm: 9.0,
+    bore_diameter_mm: 8.0,
+    d_shaft_flat_mm: 0.7,
+    hub_diameter_mm: 20.0,
+    hub_height_mm: 6.0,
+    backlash_mm: 0.12,
+    torque_nm: 1.8,
+    rpm: 150.0,
+    target_safety_factor: 2.0,
+    operating_temp_c: 45.0,
+    material_id: "pa12_cf",
+    print_orientation: "xy_flat",
+    nozzle_diameter_mm: 0.4,
+    printer_clearance_mm: 0.15,
+  },
+};
+
 const FALLBACK_END_PRESETS = {
   nema17: {
     label: "NEMA 17",
@@ -267,14 +377,17 @@ export class ControlsController {
     this.archPresets = structuredClone(FALLBACK_ARCH_DEFAULTS);
     this.endPresets = structuredClone(FALLBACK_END_PRESETS);
     this.mountPresets = structuredClone(FALLBACK_MOUNT_DEFAULTS);
+    this.gearPresets = structuredClone(FALLBACK_GEAR_DEFAULTS);
     this.activeFamily = "links";
     this.currentArchitecture = "articulated_6dof";
     this.currentMountActuator = "nema17";
+    this.currentGearPreset = "spur_nema17";
     this.currentOrientation = "xy_flat";
     this.referenceVolumeCm3 = null;
 
     this._bindStepUpload();
     this._bindSliders();
+    this._bindGearLivePreview();
     this._bindEndTabs();
     this._bindEndControls("root");
     this._bindEndControls("tip");
@@ -282,19 +395,24 @@ export class ControlsController {
     this._bindMaterialSelect();
     this._renderArchitectureGrid();
     this._renderMountPresetGrid();
+    this._renderGearPresetGrid();
   }
 
   setFamily(family) {
-    this.activeFamily = family === "mounts" ? "mounts" : "links";
+    this.activeFamily = ["links", "mounts", "gears"].includes(family) ? family : "links";
     document.getElementById("family-controls-links")?.classList.toggle("hidden", this.activeFamily !== "links");
     document.getElementById("family-controls-mounts")?.classList.toggle("hidden", this.activeFamily !== "mounts");
+    document.getElementById("family-controls-gears")?.classList.toggle("hidden", this.activeFamily !== "gears");
 
     const headerLabel = document.getElementById("header-arch-label");
     if (headerLabel) {
-      headerLabel.textContent =
-        this.activeFamily === "mounts"
-          ? MOUNT_META[this.currentMountActuator]?.label || this.currentMountActuator
-          : ARCH_META[this.currentArchitecture]?.label || this.currentArchitecture;
+      if (this.activeFamily === "mounts") {
+        headerLabel.textContent = MOUNT_META[this.currentMountActuator]?.label || this.currentMountActuator;
+      } else if (this.activeFamily === "gears") {
+        headerLabel.textContent = GEAR_META[this.currentGearPreset]?.label || this.currentGearPreset;
+      } else {
+        headerLabel.textContent = ARCH_META[this.currentArchitecture]?.label || this.currentArchitecture;
+      }
     }
   }
 
@@ -423,6 +541,11 @@ export class ControlsController {
       { id: "mount-base_depth_mm", suffix: " mm", decimals: 0 },
       { id: "mount-shaft_height_mm", suffix: " mm", decimals: 0 },
       { id: "mount-gusset_thickness_mm", suffix: " mm", decimals: 1 },
+      // Transmisión (Engranajes / Poleas GT2)
+      { id: "gear-teeth", suffix: "", decimals: 0 },
+      { id: "gear-module_mm", suffix: " mm", decimals: 1 },
+      { id: "gear-face_width_mm", suffix: " mm", decimals: 1 },
+      { id: "gear-backlash_mm", suffix: " mm", decimals: 2 },
     ];
 
     for (const cfg of sliderConfigs) {
@@ -925,6 +1048,168 @@ export class ControlsController {
       print_orientation: this.currentOrientation,
       nozzle_diameter_mm: clamp(document.getElementById("nozzle_diameter_mm")?.value, 0.2, 1.0, 0.4),
       printer_clearance_mm: clamp(document.getElementById("printer_clearance_mm")?.value, 0, 0.5, 0.15),
+    };
+  }
+
+  _bindGearLivePreview() {
+    const kindEl = document.getElementById("gear-gear_kind");
+    const teethEl = document.getElementById("gear-teeth");
+    const modEl = document.getElementById("gear-module_mm");
+    const update = () => this._updateGearDiameterPreview();
+    kindEl?.addEventListener("change", update);
+    teethEl?.addEventListener("input", update);
+    modEl?.addEventListener("input", update);
+    update();
+  }
+
+  _updateGearDiameterPreview() {
+    const kind = document.getElementById("gear-gear_kind")?.value || "spur_involute";
+    const teeth = clamp(document.getElementById("gear-teeth")?.value, 12, 80, 24);
+    const mod = clamp(document.getElementById("gear-module_mm")?.value, 0.8, 6.0, 2.0);
+    const modGroup = document.getElementById("gear-module-group");
+    if (modGroup) {
+      modGroup.style.opacity = kind === "gt2_pulley" ? "0.45" : "1";
+    }
+
+    let dp = mod * teeth;
+    let dOut = dp + 2 * mod;
+    if (kind === "gt2_pulley") {
+      dp = (2.0 * teeth) / Math.PI;
+      dOut = dp - 0.508 + 2.4;
+    }
+
+    const dpEl = document.getElementById("gear-dp-val");
+    const doEl = document.getElementById("gear-do-val");
+    if (dpEl) dpEl.textContent = `${dp.toFixed(1)} mm`;
+    if (doEl) doEl.textContent = `${dOut.toFixed(1)} mm`;
+  }
+
+  _renderGearPresetGrid() {
+    const grid = document.getElementById("gear-preset-grid");
+    if (!grid) return;
+    grid.innerHTML = "";
+
+    for (const [presetId, meta] of Object.entries(GEAR_META)) {
+      const preset = this.gearPresets[presetId];
+      const title = meta.label || preset?.name;
+      const subtitle = meta.subtitle || preset?.subtitle;
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `arch-card${presetId === this.currentGearPreset ? " active" : ""}`;
+      btn.dataset.gearPreset = presetId;
+      btn.innerHTML = `
+        <div class="arch-card-head">
+          ${meta.icon}
+        </div>
+        <span class="arch-card-title">${title}</span>
+        <span class="arch-card-sub">${subtitle}</span>
+      `;
+      btn.addEventListener("click", () => {
+        this.applyGearPreset(presetId);
+      });
+      grid.appendChild(btn);
+    }
+  }
+
+  setGearPresets(rawPresets) {
+    if (!rawPresets || typeof rawPresets !== "object") return;
+    const entries = Array.isArray(rawPresets)
+      ? rawPresets.map((p) => [p.id || p.preset, p])
+      : Object.entries(rawPresets);
+
+    for (const [key, val] of entries) {
+      if (!key || !val || typeof val !== "object") continue;
+      const flat = val.defaults || val.params || val;
+      this.gearPresets[key] = {
+        ...(this.gearPresets[key] || {}),
+        ...flat,
+        name: GEAR_META[key]?.label || val.name,
+        subtitle: GEAR_META[key]?.subtitle || val.subtitle || val.description,
+      };
+    }
+    this._renderGearPresetGrid();
+  }
+
+  applyGearPreset(presetId) {
+    const preset = this.gearPresets[presetId] || FALLBACK_GEAR_DEFAULTS[presetId];
+    if (!preset) return;
+
+    this.currentGearPreset = presetId;
+
+    document.querySelectorAll("[data-gear-preset]").forEach((card) => {
+      card.classList.toggle("active", card.dataset.gearPreset === presetId);
+    });
+
+    if (this.activeFamily === "gears") {
+      const headerLabel = document.getElementById("header-arch-label");
+      if (headerLabel) {
+        headerLabel.textContent = GEAR_META[presetId]?.label || preset.name || presetId;
+      }
+    }
+
+    this._setInputValue("gear-gear_kind", preset.gear_kind);
+    this._setInputValue("gear-teeth", preset.teeth);
+    this._setInputValue("gear-module_mm", preset.module_mm);
+    this._setInputValue("gear-face_width_mm", preset.face_width_mm);
+    this._setInputValue("gear-bore_diameter_mm", preset.bore_diameter_mm);
+    this._setInputValue("gear-d_shaft_flat_mm", preset.d_shaft_flat_mm);
+    this._setInputValue("gear-hub_diameter_mm", preset.hub_diameter_mm);
+    this._setInputValue("gear-hub_height_mm", preset.hub_height_mm);
+    this._setInputValue("gear-backlash_mm", preset.backlash_mm);
+
+    this._setInputValue("gear-torque_nm", preset.torque_nm);
+    this._setInputValue("gear-rpm", preset.rpm);
+    this._setInputValue("gear-target_safety_factor", preset.target_safety_factor);
+    this._setInputValue("gear-operating_temp_c", preset.operating_temp_c);
+
+    // Compartidos de Material y Manufactura 3D
+    if (preset.material_id && this.materialsMap[preset.material_id]) {
+      this._setInputValue("material_id", preset.material_id);
+      this._renderMaterialBadge(preset.material_id);
+    }
+    if (preset.print_orientation) {
+      this.currentOrientation = preset.print_orientation;
+      document.querySelectorAll("[data-orientation]").forEach((p) => {
+        p.classList.toggle("active", p.dataset.orientation === this.currentOrientation);
+      });
+    }
+    if (preset.nozzle_diameter_mm !== undefined) {
+      this._setInputValue("nozzle_diameter_mm", String(preset.nozzle_diameter_mm));
+    }
+    if (preset.printer_clearance_mm !== undefined) {
+      this._setInputValue("printer_clearance_mm", preset.printer_clearance_mm);
+    }
+
+    this._updateGearDiameterPreview();
+  }
+
+  /**
+   * Construye el payload JSON exacto que espera GearDesignRequest en backend/app/schemas.py.
+   */
+  getGearPayload() {
+    return {
+      preset: this.currentGearPreset,
+      gear_kind: document.getElementById("gear-gear_kind")?.value || "spur_involute",
+      teeth: Math.round(clamp(document.getElementById("gear-teeth")?.value, 12, 80, 24)),
+      module_mm: clamp(document.getElementById("gear-module_mm")?.value, 0.8, 6.0, 2.0),
+      pressure_angle_deg: 20.0,
+      face_width_mm: clamp(document.getElementById("gear-face_width_mm")?.value, 4.0, 35.0, 10.0),
+      bore_diameter_mm: clamp(document.getElementById("gear-bore_diameter_mm")?.value, 3.0, 30.0, 5.0),
+      d_shaft_flat_mm: clamp(document.getElementById("gear-d_shaft_flat_mm")?.value, 0.0, 2.0, 0.5),
+      hub_diameter_mm: clamp(document.getElementById("gear-hub_diameter_mm")?.value, 10.0, 60.0, 16.0),
+      hub_height_mm: clamp(document.getElementById("gear-hub_height_mm")?.value, 0.0, 20.0, 5.0),
+      backlash_mm: clamp(document.getElementById("gear-backlash_mm")?.value, 0.0, 0.5, 0.15),
+
+      torque_nm: clamp(document.getElementById("gear-torque_nm")?.value, 0.05, 50.0, 1.2),
+      rpm: clamp(document.getElementById("gear-rpm")?.value, 1.0, 3000.0, 120.0),
+      target_safety_factor: clamp(document.getElementById("gear-target_safety_factor")?.value, 1.1, 10.0, 2.0),
+      operating_temp_c: clamp(document.getElementById("gear-operating_temp_c")?.value, 10.0, 130.0, 45.0),
+
+      material_id: document.getElementById("material_id")?.value || "petg_cf",
+      print_orientation: this.currentOrientation,
+      nozzle_diameter_mm: clamp(document.getElementById("nozzle_diameter_mm")?.value, 0.2, 1.0, 0.4),
+      printer_clearance_mm: clamp(document.getElementById("printer_clearance_mm")?.value, 0.0, 0.5, 0.15),
     };
   }
 }

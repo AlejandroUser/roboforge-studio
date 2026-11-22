@@ -10,7 +10,14 @@ from typing import Any
 import trimesh
 from build123d import export_step, export_stl
 
-from ..schemas import LinkDesignRequest, MountDesignRequest, MountVariantKind, VariantKind
+from ..schemas import (
+    GearDesignRequest,
+    GearVariantKind,
+    LinkDesignRequest,
+    MountDesignRequest,
+    MountVariantKind,
+    VariantKind,
+)
 
 # Project root: .../roboforge/
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -59,6 +66,22 @@ VARIANT_PBR_STYLES: dict[str, dict[str, Any]] = {
         "metallicFactor": 0.62,
         "roughnessFactor": 0.30,
     },
+    # Family 3: Transmission (Gears & GT2 Pulleys)
+    "gear_solid": {
+        "baseColorFactor": [142, 164, 194, 255],  # Hardened steel-blue
+        "metallicFactor": 0.72,
+        "roughnessFactor": 0.30,
+    },
+    "gear_webbed": {
+        "baseColorFactor": [72, 188, 212, 255],  # Machined cyan-alloy
+        "metallicFactor": 0.68,
+        "roughnessFactor": 0.28,
+    },
+    "gear_spoked": {
+        "baseColorFactor": [236, 178, 72, 255],  # Precision brass-titanium
+        "metallicFactor": 0.70,
+        "roughnessFactor": 0.26,
+    },
 }
 
 
@@ -71,6 +94,12 @@ def compute_design_hash(req: LinkDesignRequest) -> str:
 def compute_mount_design_hash(req: MountDesignRequest) -> str:
     """Compute a deterministic 16-char SHA-256 hex digest for a MountDesignRequest."""
     canonical = "mount:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
+def compute_gear_design_hash(req: GearDesignRequest) -> str:
+    """Compute a deterministic 16-char SHA-256 hex digest for a GearDesignRequest."""
+    canonical = "gear:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
@@ -223,6 +252,47 @@ def load_cached_mount_metadata(
         "mount_standard",
         "mount_gusseted",
         "mount_lightweight",
+    )
+    for vid in expected_variants:
+        if vid not in meta:
+            return None
+        for ext in ("step", "stl", "glb"):
+            fp = out_dir / f"{vid}.{ext}"
+            if not (fp.exists() and fp.stat().st_size > 0):
+                return None
+
+    return meta
+
+
+def export_gear_variants(
+    design_hash: str,
+    variants_data: dict[GearVariantKind, dict[str, Any]],
+    exports_root: Path | None = None,
+) -> dict[GearVariantKind, dict[str, Path]]:
+    """Export all generated gear/pulley CAD variants to .step, .stl, and .glb."""
+    return export_variants(design_hash, variants_data, exports_root=exports_root)  # type: ignore[arg-type,return-value]
+
+
+def load_cached_gear_metadata(
+    design_hash: str,
+    exports_root: Path | None = None,
+) -> dict[GearVariantKind, dict[str, Any]] | None:
+    """Return cached gear metadata if all 3 gear variants and all 9 export files exist."""
+    root = exports_root or EXPORTS_ROOT
+    out_dir = root / design_hash
+    meta_path = out_dir / "metadata.json"
+    if not meta_path.exists():
+        return None
+
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+    expected_variants: tuple[GearVariantKind, ...] = (
+        "gear_solid",
+        "gear_webbed",
+        "gear_spoked",
     )
     for vid in expected_variants:
         if vid not in meta:

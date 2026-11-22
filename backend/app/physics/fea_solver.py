@@ -12,11 +12,14 @@ from scipy.sparse.linalg import spsolve
 
 from ..schemas import (
     FEAResult,
+    GearDesignRequest,
+    GearVariantKind,
     LinkDesignRequest,
     MountDesignRequest,
     MountVariantKind,
     VariantKind,
 )
+from .gear_mechanics import compute_gear_diameters
 
 _GMSH_LOCK = threading.Lock()
 POISSON_RATIO = 0.33
@@ -512,6 +515,99 @@ def run_mount_fea(
         yield_eff_mpa=yield_eff_mpa,
         target_safety_factor=float(req.target_safety_factor),
         max_deflection_mm=float(req.max_deflection_mm),
+        mesh_size_mm=mesh_size_mm,
+        deform_scale=deform_scale,
+        output_glb_path=output_glb_path,
+        design_hash=design_hash,
+        variant_id=variant_id,
+        notes=notes,
+        t0=t0,
+    )
+
+
+def run_gear_fea(
+    step_path: Path,
+    output_glb_path: Path,
+    req: GearDesignRequest,
+    design_hash: str,
+    variant_id: GearVariantKind,
+    material: dict,
+    mesh_size_mm: float = 4.5,
+    load_direction: str = "y_inplane",
+    deform_scale: float = 0.0,
+) -> FEAResult:
+    """
+    Run a real 3D Tet4 Linear Elasticity FEM analysis on an involute gear or GT2
+    pulley STEP file:
+    - Clamps central shaft bore nodes (r = hypot(x, y) <= bore_diameter_mm * 0.65).
+    - Applies tangential tooth load F_t = 2000 * torque_nm / d_p (in -Y for y_inplane
+      or -Z for z_outofplane) on the right outer sector (x >= 0.78 * r_max).
+    """
+    t0 = time.perf_counter()
+    step_path = Path(step_path)
+    output_glb_path = Path(output_glb_path)
+
+    coords, tets, tris = _mesh_step_tet4(step_path, mesh_size_mm=mesh_size_mm)
+    if len(tris) == 0:
+        tris = _extract_boundary_tris_from_tets(tets)
+
+    n_nodes = len(coords)
+
+    if req.print_orientation == "z_vertical":
+        youngs_eff_mpa = float(material["youngs_z_mpa"])
+        yield_eff_mpa = float(material["yield_z_mpa"])
+    else:
+        youngs_eff_mpa = float(material["youngs_xy_mpa"])
+        yield_eff_mpa = float(material["yield_xy_mpa"])
+
+    d_p, _ = compute_gear_diameters(req)
+    f_t_n = (2000.0 * float(req.torque_nm)) / max(d_p, 1.0)
+    max_allowable_deflection = (
+        max(0.20, 0.12 * float(req.module_mm))
+        if req.gear_kind == "spur_involute"
+        else 0.18
+    )
+
+    notes: list[str] = []
+    radii = np.hypot(coords[:, 0], coords[:, 1])
+    r_max = float(np.max(radii))
+
+    # Clamp central shaft bore nodes
+    fixed_nodes = np.where(radii <= float(req.bore_diameter_mm) * 0.65)[0]
+    if len(fixed_nodes) < 8:
+        fixed_nodes = np.argsort(radii)[: max(12, n_nodes // 30)]
+        notes.append(
+            f"Empotramiento del eje aplicado por respaldo en {len(fixed_nodes)} nodos interiores."
+        )
+    else:
+        notes.append(
+            f"Empotramiento real (u=0) en {len(fixed_nodes)} nodos del agujero central del eje."
+        )
+
+    # Apply tangential force on right outer tooth sector (x >= 0.78 * r_max)
+    load_nodes = np.setdiff1d(np.where(coords[:, 0] >= 0.78 * r_max)[0], fixed_nodes)
+    if len(load_nodes) < 4:
+        candidates = np.setdiff1d(np.argsort(coords[:, 0])[::-1], fixed_nodes)
+        load_nodes = candidates[: max(8, n_nodes // 40)]
+
+    load_axis = 2 if load_direction == "z_outofplane" else 1
+    axis_label = "-Z (axial)" if load_axis == 2 else "-Y (tangencial en diente)"
+    notes.append(
+        f"Fuerza tangencial Ft={f_t_n:.1f} N (τ={req.torque_nm:.2f} N·m, dp={d_p:.1f} mm) aplicada en {len(load_nodes)} nodos del sector exterior en dirección {axis_label}."
+    )
+
+    return _solve_tet4_and_export(
+        coords=coords,
+        tets=tets,
+        tris=tris,
+        fixed_nodes=fixed_nodes,
+        load_nodes=load_nodes,
+        load_n=f_t_n,
+        load_axis=load_axis,
+        youngs_eff_mpa=youngs_eff_mpa,
+        yield_eff_mpa=yield_eff_mpa,
+        target_safety_factor=float(req.target_safety_factor),
+        max_deflection_mm=max_allowable_deflection,
         mesh_size_mm=mesh_size_mm,
         deform_scale=deform_scale,
         output_glb_path=output_glb_path,

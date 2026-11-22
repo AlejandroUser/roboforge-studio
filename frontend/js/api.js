@@ -139,6 +139,36 @@ export async function runMountFEA(payload, signal) {
 }
 
 /**
+ * Obtiene presets de Transmisión (Engranajes Involuta y Poleas GT2) desde GET /api/gears/presets.
+ */
+export async function fetchGearPresets() {
+  const raw = await requestJson("/api/gears/presets", { method: "GET" });
+  return raw?.presets || raw?.gears || raw || {};
+}
+
+/**
+ * Envía GearDesignRequest a POST /api/gears/generate y retorna GearGenerateResponse.
+ */
+export async function generateGears(payload, signal) {
+  return requestJson("/api/gears/generate", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    signal,
+  });
+}
+
+/**
+ * Ejecuta validación FEA 3D real para Transmisión vía POST /api/gears/fea.
+ */
+export async function runGearFEA(payload, signal) {
+  return requestJson("/api/gears/fea", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    signal,
+  });
+}
+
+/**
  * Sube un archivo .STEP/.STP a POST /api/analyze-step y retorna StepReferenceAnalysis.
  */
 export async function analyzeStepFile(file) {

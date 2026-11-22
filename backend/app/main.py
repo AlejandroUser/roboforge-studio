@@ -16,18 +16,28 @@ from .cad.exporter import (
     EXPORTS_ROOT,
     PROJECT_ROOT,
     compute_design_hash,
+    compute_gear_design_hash,
     compute_mount_design_hash,
+    export_gear_variants,
     export_mount_variants,
     export_variants,
     get_export_dir,
+    load_cached_gear_metadata,
     load_cached_metadata,
     load_cached_mount_metadata,
 )
+from .cad.gear_variants import generate_all_gear_variants
 from .cad.mount_variants import generate_all_mount_variants
 from .cad.step_analyzer import analyze_step_file
 from .cad.variants import generate_all_variants
 from .physics.dfm_rules import evaluate_global_alerts
-from .physics.fea_solver import run_mount_fea, run_step_fea
+from .physics.fea_solver import run_gear_fea, run_mount_fea, run_step_fea
+from .physics.gear_mechanics import (
+    compute_gear_diameters,
+    evaluate_gear_global_alerts,
+    evaluate_gear_metrics,
+    load_gear_presets,
+)
 from .physics.mechanics import (
     evaluate_variant_metrics,
     load_materials,
@@ -41,6 +51,11 @@ from .physics.mount_mechanics import (
 from .schemas import (
     FEARequest,
     FEAResult,
+    GearDesignRequest,
+    GearFEARequest,
+    GearGenerateResponse,
+    GearVariantKind,
+    GearVariantResult,
     GenerateResponse,
     LinkDesignRequest,
     MountDesignRequest,
@@ -67,6 +82,12 @@ MOUNT_VARIANT_ORDER: tuple[MountVariantKind, ...] = (
     "mount_standard",
     "mount_gusseted",
     "mount_lightweight",
+)
+
+GEAR_VARIANT_ORDER: tuple[GearVariantKind, ...] = (
+    "gear_solid",
+    "gear_webbed",
+    "gear_spoked",
 )
 
 HASH_PATTERN = re.compile(r"^[a-f0-9]{8,64}$")
@@ -447,6 +468,163 @@ def run_mount_fea_validation(fea_req: MountFEARequest) -> FEAResult:
         raise HTTPException(
             status_code=500,
             detail=f"Error en el solver FEA 3D de montura (Gmsh/Tet4): {exc}",
+        ) from exc
+
+
+def _pick_recommended_gear_variant(variants: list[GearVariantResult]) -> GearVariantKind:
+    """Select the optimal transmission variant prioritizing passing requirements and low inertia."""
+    passing = [v for v in variants if v.is_valid_solid and v.metrics.passes_requirements]
+    if passing:
+        best = max(
+            passing,
+            key=lambda v: (v.metrics.stiffness_to_weight_score, -v.metrics.rotational_inertia_kg_cm2),
+        )
+        return best.variant_id
+
+    valid = [v for v in variants if v.is_valid_solid]
+    if valid:
+        best = max(
+            valid,
+            key=lambda v: (v.metrics.safety_factor, v.metrics.stiffness_to_weight_score),
+        )
+        return best.variant_id
+
+    return "gear_webbed"
+
+
+@app.get("/api/gears/presets")
+def get_gear_presets() -> dict[str, Any]:
+    return load_gear_presets()
+
+
+@app.post("/api/gears/generate", response_model=GearGenerateResponse)
+def generate_gear_design(req: GearDesignRequest) -> GearGenerateResponse:
+    materials = load_materials()
+    if req.material_id not in materials:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Material '{req.material_id}' no encontrado en la base de datos.",
+        )
+    material = materials[req.material_id]
+
+    design_hash = compute_gear_design_hash(req)
+    cached_meta = load_cached_gear_metadata(design_hash)
+
+    if cached_meta is not None:
+        variants_meta = cached_meta
+    else:
+        generated = generate_all_gear_variants(req)
+        export_gear_variants(design_hash, generated)
+        variants_meta = {
+            vid: {
+                "name": data["name"],
+                "tagline": data["tagline"],
+                "volume_mm3": data["volume_mm3"],
+                "is_valid": data["is_valid"],
+            }
+            for vid, data in generated.items()
+        }
+
+    pitch_d, outer_d = compute_gear_diameters(req)
+    global_alerts = evaluate_gear_global_alerts(req, material)
+
+    baseline_vol = variants_meta["gear_solid"]["volume_mm3"]
+    baseline_metrics, _ = evaluate_gear_metrics(
+        req=req,
+        variant_id="gear_solid",
+        volume_mm3=baseline_vol,
+        baseline_mass_g=None,
+        material=material,
+    )
+    baseline_mass_g = baseline_metrics.mass_g
+
+    variant_results: list[GearVariantResult] = []
+    for vid in GEAR_VARIANT_ORDER:
+        meta = variants_meta[vid]
+        metrics, alerts = evaluate_gear_metrics(
+            req=req,
+            variant_id=vid,
+            volume_mm3=meta["volume_mm3"],
+            baseline_mass_g=baseline_mass_g,
+            material=material,
+        )
+        variant_results.append(
+            GearVariantResult(
+                variant_id=vid,
+                name=meta["name"],
+                tagline=meta["tagline"],
+                is_valid_solid=bool(meta["is_valid"]),
+                metrics=metrics,
+                glb_url=f"/api/files/{design_hash}/{vid}.glb",
+                step_url=f"/api/files/{design_hash}/{vid}.step",
+                stl_url=f"/api/files/{design_hash}/{vid}.stl",
+                alerts=alerts,
+            )
+        )
+
+    recommended = _pick_recommended_gear_variant(variant_results)
+
+    return GearGenerateResponse(
+        design_hash=design_hash,
+        recommended_variant=recommended,
+        material_name=material.get("name", req.material_id),
+        pitch_diameter_mm=round(pitch_d, 2),
+        outer_diameter_mm=round(outer_d, 2),
+        global_alerts=global_alerts,
+        variants=variant_results,
+    )
+
+
+@app.post("/api/gears/fea", response_model=FEAResult)
+def run_gear_fea_validation(fea_req: GearFEARequest) -> FEAResult:
+    materials = load_materials()
+    if fea_req.request.material_id not in materials:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Material '{fea_req.request.material_id}' no encontrado en la base de datos.",
+        )
+    material = materials[fea_req.request.material_id]
+
+    design_hash = (
+        fea_req.design_hash
+        if HASH_PATTERN.match(fea_req.design_hash)
+        else compute_gear_design_hash(fea_req.request)
+    )
+    out_dir = get_export_dir(design_hash)
+    step_path = out_dir / f"{fea_req.variant_id}.step"
+
+    if not (step_path.exists() and step_path.stat().st_size > 0):
+        generated = generate_all_gear_variants(fea_req.request)
+        export_gear_variants(design_hash, generated)
+
+    if not step_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"No se encontró el archivo .STEP para el engranaje '{fea_req.variant_id}'.",
+        )
+
+    deform_tag = int(round(fea_req.deform_scale))
+    output_glb_path = (
+        out_dir / f"{fea_req.variant_id}_fea_{fea_req.load_direction}_d{deform_tag}.glb"
+    )
+    try:
+        return run_gear_fea(
+            step_path=step_path,
+            output_glb_path=output_glb_path,
+            req=fea_req.request,
+            design_hash=design_hash,
+            variant_id=fea_req.variant_id,
+            material=material,
+            mesh_size_mm=fea_req.mesh_size_mm,
+            load_direction=fea_req.load_direction,
+            deform_scale=fea_req.deform_scale,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error en el solver FEA 3D de transmisión (Gmsh/Tet4): {exc}",
         ) from exc
 
 

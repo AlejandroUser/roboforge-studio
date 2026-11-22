@@ -5,12 +5,15 @@
 import {
   analyzeStepFile,
   checkHealth,
+  fetchGearPresets,
   fetchMaterials,
   fetchMountPresets,
   fetchPresets,
   generateDesign,
+  generateGears,
   generateMounts,
   runFEA,
+  runGearFEA,
   runMountFEA,
 } from "/js/api.js";
 import { Viewport3D } from "/js/viewport.js";
@@ -101,7 +104,7 @@ class RoboForgeApp {
 
   async switchFamily(family) {
     if (this.isGenerating || this.isRunningFea) return;
-    this.activeFamily = family === "mounts" ? "mounts" : "links";
+    this.activeFamily = ["links", "mounts", "gears"].includes(family) ? family : "links";
 
     document.querySelectorAll(".family-tab").forEach((tab) => {
       const isActive = tab.dataset.family === this.activeFamily;
@@ -112,10 +115,13 @@ class RoboForgeApp {
     this.controls.setFamily(this.activeFamily);
 
     if (this.btnGenerateLabel) {
-      this.btnGenerateLabel.textContent =
-        this.activeFamily === "mounts"
-          ? "Generar Monturas (3 Variantes)"
-          : "Generar y Optimizar (5 Variantes)";
+      if (this.activeFamily === "mounts") {
+        this.btnGenerateLabel.textContent = "Generar Monturas (3 Variantes)";
+      } else if (this.activeFamily === "gears") {
+        this.btnGenerateLabel.textContent = "Generar Transmisión (3 Variantes)";
+      } else {
+        this.btnGenerateLabel.textContent = "Generar y Optimizar (5 Variantes)";
+      }
     }
 
     await this.runGeneration();
@@ -202,11 +208,12 @@ class RoboForgeApp {
   async _bootstrapBackendData() {
     this.setStatus("busy", "Conectando...");
     try {
-      const [health, materials, presets, mountPresets] = await Promise.all([
+      const [health, materials, presets, mountPresets, gearPresets] = await Promise.all([
         checkHealth(),
         fetchMaterials(),
         fetchPresets(),
         fetchMountPresets().catch(() => null),
+        fetchGearPresets().catch(() => null),
       ]);
 
       if (materials?.list?.length) {
@@ -218,8 +225,12 @@ class RoboForgeApp {
       if (mountPresets) {
         this.controls.setMountPresets(mountPresets);
       }
+      if (gearPresets) {
+        this.controls.setGearPresets(gearPresets);
+      }
 
-      // Aplicar presets iniciales para sincronizar UI de ambas familias
+      // Aplicar presets iniciales para sincronizar UI de las 3 familias
+      this.controls.applyGearPreset("spur_nema17");
       this.controls.applyMountPreset("nema17");
       this.controls.applyArchitecturePreset("articulated_6dof");
       this.controls.setFamily("links");
@@ -359,19 +370,28 @@ class RoboForgeApp {
 
     try {
       const isMounts = this.activeFamily === "mounts";
-      const loadDirection = this.feaLoadDirection || this.feaLoadDirEl?.value || "y_inplane";
-      const deformScale = Number(this.feaDeformScale ?? this.feaDeformScaleEl?.value ?? 0);
+      const isGears = this.activeFamily === "gears";
+      const loadDirection = this.feaLoadDirection || "y_inplane";
+      const deformScale = Number(this.feaDeformScale ?? 0);
 
       const payload = {
         design_hash: this.currentResponse.design_hash,
         variant_id: this.activeVariant.variant_id,
-        request: isMounts ? this.controls.getMountPayload() : this.controls.getPayload(),
-        mesh_size_mm: isMounts ? 5.5 : 7.0,
+        request: isGears
+          ? this.controls.getGearPayload()
+          : isMounts
+            ? this.controls.getMountPayload()
+            : this.controls.getPayload(),
+        mesh_size_mm: isGears ? 4.5 : isMounts ? 5.5 : 7.0,
         load_direction: loadDirection,
         deform_scale: deformScale,
       };
 
-      const feaResult = isMounts ? await runMountFEA(payload) : await runFEA(payload);
+      const feaResult = isGears
+        ? await runGearFEA(payload)
+        : isMounts
+          ? await runMountFEA(payload)
+          : await runFEA(payload);
       this.feaResultsByVariant.set(this.activeVariant.variant_id, feaResult);
 
       // Cargar malla FEA 3D con vertexColors reales
@@ -464,23 +484,37 @@ class RoboForgeApp {
     this.abortController = new AbortController();
 
     const isMounts = this.activeFamily === "mounts";
-    const payload = isMounts ? this.controls.getMountPayload() : this.controls.getPayload();
+    const isGears = this.activeFamily === "gears";
+    const payload = isGears
+      ? this.controls.getGearPayload()
+      : isMounts
+        ? this.controls.getMountPayload()
+        : this.controls.getPayload();
 
     this.btnGenerate.disabled = true;
-    this.setStatus("busy", isMounts ? "Generando Monturas..." : "Optimizando CAD + SIMP...");
+    this.setStatus(
+      "busy",
+      isGears ? "Generando Transmisión..." : isMounts ? "Generando Monturas..." : "Optimizando CAD + SIMP..."
+    );
     this.showLoader(
-      isMounts
-        ? "Sintetizando Monturas Mecatrónicas (build123d)..."
-        : "Sintetizando Geometría B-Rep + TopOpt SIMP...",
-      isMounts
-        ? "Generando 3 variantes (Estándar, Cartelas, Aligerada), mallas GLB/STL/STEP y análisis estructural"
-        : "Generando 5 variantes topológicas, mallas GLB/STL/STEP y perfil de esfuerzos"
+      isGears
+        ? "Sintetizando Engranajes / Poleas GT2 (build123d)..."
+        : isMounts
+          ? "Sintetizando Monturas Mecatrónicas (build123d)..."
+          : "Sintetizando Geometría B-Rep + TopOpt SIMP...",
+      isGears
+        ? "Generando 3 variantes (Sólida, Alma Rebajada, Radios Biónicos), mallas y cálculo de Lewis"
+        : isMounts
+          ? "Generando 3 variantes (Estándar, Cartelas, Aligerada), mallas GLB/STL/STEP y análisis estructural"
+          : "Generando 5 variantes topológicas, mallas GLB/STL/STEP y perfil de esfuerzos"
     );
 
     try {
-      const response = isMounts
-        ? await generateMounts(payload, this.abortController.signal)
-        : await generateDesign(payload, this.abortController.signal);
+      const response = isGears
+        ? await generateGears(payload, this.abortController.signal)
+        : isMounts
+          ? await generateMounts(payload, this.abortController.signal)
+          : await generateDesign(payload, this.abortController.signal);
       this.currentResponse = response;
 
       // Limpiar caché de modelos y FEA de generaciones anteriores
@@ -498,7 +532,7 @@ class RoboForgeApp {
         response,
         recommended?.variant_id,
         payload.target_safety_factor,
-        payload.max_deflection_mm
+        payload.max_deflection_mm ?? 0.25
       );
 
       if (recommended) {

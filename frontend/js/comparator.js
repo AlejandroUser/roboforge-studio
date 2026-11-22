@@ -12,6 +12,10 @@ const VARIANT_COLORS = {
   mount_standard: "#94a3b8",
   mount_gusseted: "#38bdf8",
   mount_lightweight: "#10b981",
+  // Transmisión (Engranajes / Poleas GT2)
+  gear_solid: "#94a3b8",
+  gear_webbed: "#38bdf8",
+  gear_spoked: "#10b981",
 };
 
 const ALERT_ICONS = {
@@ -56,7 +60,11 @@ export class ComparatorController {
       this.hashPillEl.classList.remove("hidden");
     }
     if (this.subtitleEl && response?.material_name) {
-      this.subtitleEl.textContent = `Material: ${response.material_name} · Clic en tarjeta para ver 3D`;
+      const diaInfo =
+        response.pitch_diameter_mm !== undefined && response.outer_diameter_mm !== undefined
+          ? ` · Øp ${fmt(response.pitch_diameter_mm, 1)} / Øe ${fmt(response.outer_diameter_mm, 1)} mm`
+          : "";
+      this.subtitleEl.textContent = `Material: ${response.material_name}${diaInfo}`;
     }
 
     this._renderGlobalAlerts(response?.global_alerts || []);
@@ -238,6 +246,8 @@ export class ComparatorController {
       const isBionic = v.variant_id === "organic_topopt";
       const isGusseted = v.variant_id === "mount_gusseted";
       const isLightweight = v.variant_id === "mount_lightweight";
+      const isWebbed = v.variant_id === "gear_webbed";
+      const isSpoked = v.variant_id === "gear_spoked";
       const hasRefSavings =
         m.reference_savings_pct !== null &&
         m.reference_savings_pct !== undefined &&
@@ -262,6 +272,8 @@ export class ComparatorController {
             ${isBionic ? `<span class="badge badge-bionic">✦ Biónica SIMP</span>` : ""}
             ${isGusseted ? `<span class="badge badge-gusseted">▲ Con Cartelas</span>` : ""}
             ${isLightweight ? `<span class="badge badge-lightweight">✦ Aligerada</span>` : ""}
+            ${isWebbed ? `<span class="badge badge-webbed">◎ Alma Rebajada</span>` : ""}
+            ${isSpoked ? `<span class="badge badge-spoked">✦ Radios Biónicos</span>` : ""}
             ${isRec ? `<span class="badge badge-recommended">★ Recomendada</span>` : ""}
             ${
               m.passes_requirements

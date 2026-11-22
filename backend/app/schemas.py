@@ -20,6 +20,11 @@ MountActuatorType = Literal["nema17", "nema23", "servo_mg996r", "profile_2020_gu
 MountBaseType = Literal["profile_2020", "profile_2040", "flat_plate"]
 MountVariantKind = Literal["mount_standard", "mount_gusseted", "mount_lightweight"]
 
+# Hito 3C: Familia 3 — Transmisión (Engranajes Involuta y Poleas GT2)
+GearPresetType = Literal["spur_nema17", "spur_heavy", "gt2_pulley_20t", "gt2_pulley_40t"]
+GearKind = Literal["spur_involute", "gt2_pulley"]
+GearVariantKind = Literal["gear_solid", "gear_webbed", "gear_spoked"]
+
 
 class EndInterfaceParams(BaseModel):
     preset: EndPreset = "bearing_608"
@@ -222,5 +227,63 @@ class MountFEARequest(BaseModel):
     variant_id: MountVariantKind
     request: MountDesignRequest
     mesh_size_mm: float = Field(5.5, ge=2.5, le=12.0)
+    load_direction: Literal["y_inplane", "z_outofplane"] = "y_inplane"
+    deform_scale: float = Field(0.0, ge=0.0, le=100.0)
+
+
+# Hito 3C: Familia 3 — Transmisión (Engranajes Involuta y Poleas GT2)
+class GearDesignRequest(BaseModel):
+    preset: GearPresetType = "spur_nema17"
+    gear_kind: GearKind = "spur_involute"
+    teeth: int = Field(24, ge=12, le=80)
+    module_mm: float = Field(2.0, ge=0.8, le=6.0)
+    pressure_angle_deg: float = Field(20.0, ge=14.5, le=25.0)
+    face_width_mm: float = Field(10.0, ge=4.0, le=35.0)
+    bore_diameter_mm: float = Field(5.0, ge=3.0, le=30.0)
+    d_shaft_flat_mm: float = Field(0.5, ge=0.0, le=2.0)
+    hub_diameter_mm: float = Field(16.0, ge=10.0, le=60.0)
+    hub_height_mm: float = Field(5.0, ge=0.0, le=20.0)
+    backlash_mm: float = Field(0.15, ge=0.0, le=0.5)
+
+    # Cargas de transmisión
+    torque_nm: float = Field(1.2, ge=0.05, le=50.0)
+    rpm: float = Field(120.0, ge=1.0, le=3000.0)
+    target_safety_factor: float = Field(2.0, ge=1.1, le=10.0)
+    operating_temp_c: float = Field(45.0, ge=10.0, le=130.0)
+
+    # Material y manufactura 3D
+    material_id: str = "petg_cf"
+    print_orientation: PrintOrientation = "xy_flat"
+    nozzle_diameter_mm: float = Field(0.4, ge=0.2, le=1.0)
+    printer_clearance_mm: float = Field(0.15, ge=0.0, le=0.5)
+
+
+class GearVariantResult(BaseModel):
+    variant_id: GearVariantKind
+    name: str
+    tagline: str
+    is_valid_solid: bool
+    metrics: VariantMetrics
+    glb_url: str
+    step_url: str
+    stl_url: str
+    alerts: list[AlertItem] = Field(default_factory=list)
+
+
+class GearGenerateResponse(BaseModel):
+    design_hash: str
+    recommended_variant: GearVariantKind
+    material_name: str
+    pitch_diameter_mm: float
+    outer_diameter_mm: float
+    global_alerts: list[AlertItem] = Field(default_factory=list)
+    variants: list[GearVariantResult]
+
+
+class GearFEARequest(BaseModel):
+    design_hash: str
+    variant_id: GearVariantKind
+    request: GearDesignRequest
+    mesh_size_mm: float = Field(4.5, ge=2.0, le=10.0)
     load_direction: Literal["y_inplane", "z_outofplane"] = "y_inplane"
     deform_scale: float = Field(0.0, ge=0.0, le=100.0)

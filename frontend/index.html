@@ -47,6 +47,9 @@
           <button type="button" class="family-tab" data-family="mounts" role="tab" aria-selected="false">
             Monturas Mecatrónicas
           </button>
+          <button type="button" class="family-tab" data-family="gears" role="tab" aria-selected="false">
+            Transmisión
+          </button>
         </nav>
 
         <div class="arch-pill" id="header-arch-pill" title="Preset activo">
@@ -480,6 +483,125 @@
             </div>
           </section>
         </div> <!-- /#family-controls-mounts -->
+
+        <!-- FAMILIA 3: TRANSMISIÓN (ENGRANAJES INVOLUTA Y POLEAS GT2) -->
+        <div id="family-controls-gears" class="family-controls hidden">
+          <!-- 01. PRESETS DE TRANSMISIÓN -->
+          <section class="panel-section">
+            <div class="section-header">
+              <span class="section-num">01</span>
+              <h2>Transmisión (Engranaje / Polea)</h2>
+            </div>
+            <div class="arch-grid" id="gear-preset-grid">
+              <!-- Populated by controls.js -->
+            </div>
+          </section>
+
+          <!-- 02. GEOMETRÍA DE ENGRANAJE / POLEA -->
+          <section class="panel-section">
+            <div class="section-header">
+              <span class="section-num">02</span>
+              <h2>Geometría Dentada y Cubo</h2>
+            </div>
+
+            <div class="control-group">
+              <label for="gear-gear_kind">Tipo de Perfil</label>
+              <select id="gear-gear_kind" class="select-input">
+                <option value="spur_involute" selected>Engranaje Involuta (Recto 20°)</option>
+                <option value="gt2_pulley">Polea Dentada GT2 (Paso 2.0 mm)</option>
+              </select>
+            </div>
+
+            <div class="gear-dia-bar" id="gear-dia-preview">
+              <span>Ø Primitivo: <strong id="gear-dp-val">48.0 mm</strong></span>
+              <span>Ø Exterior: <strong id="gear-do-val">52.0 mm</strong></span>
+            </div>
+
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="gear-teeth">Número de Dientes (Z)</label>
+                <span class="readout accent" id="val-gear-teeth">24</span>
+              </div>
+              <input type="range" id="gear-teeth" min="12" max="80" step="1" value="24" />
+            </div>
+
+            <div class="control-group" id="gear-module-group">
+              <div class="control-label-row">
+                <label for="gear-module_mm">Módulo (m)</label>
+                <span class="readout" id="val-gear-module_mm">2.0 mm</span>
+              </div>
+              <input type="range" id="gear-module_mm" min="0.8" max="6.0" step="0.2" value="2.0" />
+            </div>
+
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="gear-face_width_mm">Ancho de Cara</label>
+                <span class="readout" id="val-gear-face_width_mm">10 mm</span>
+              </div>
+              <input type="range" id="gear-face_width_mm" min="4" max="35" step="1" value="10" />
+            </div>
+
+            <div class="two-col-grid">
+              <div class="control-group">
+                <label for="gear-bore_diameter_mm">Ø Eje (mm)</label>
+                <input type="number" id="gear-bore_diameter_mm" class="num-input" min="3" max="30" step="0.5" value="5" />
+              </div>
+              <div class="control-group">
+                <label for="gear-d_shaft_flat_mm">Plano D-Shaft (mm)</label>
+                <input type="number" id="gear-d_shaft_flat_mm" class="num-input" min="0" max="2" step="0.1" value="0.5" />
+              </div>
+            </div>
+
+            <div class="two-col-grid">
+              <div class="control-group">
+                <label for="gear-hub_diameter_mm">Ø Cubo (mm)</label>
+                <input type="number" id="gear-hub_diameter_mm" class="num-input" min="10" max="60" step="1" value="16" />
+              </div>
+              <div class="control-group">
+                <label for="gear-hub_height_mm">Altura Cubo (mm)</label>
+                <input type="number" id="gear-hub_height_mm" class="num-input" min="0" max="20" step="1" value="5" />
+              </div>
+            </div>
+
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="gear-backlash_mm">Backlash FDM (Holgura Diente)</label>
+                <span class="readout" id="val-gear-backlash_mm">0.15 mm</span>
+              </div>
+              <input type="range" id="gear-backlash_mm" min="0" max="0.5" step="0.05" value="0.15" />
+            </div>
+          </section>
+
+          <!-- 03. CARGAS DE TRANSMISIÓN -->
+          <section class="panel-section">
+            <div class="section-header">
+              <span class="section-num">03</span>
+              <h2>Cargas de Transmisión</h2>
+            </div>
+
+            <div class="two-col-grid">
+              <div class="control-group">
+                <label for="gear-torque_nm">Torque (N·m)</label>
+                <input type="number" id="gear-torque_nm" class="num-input" min="0.05" max="50" step="0.1" value="1.2" />
+              </div>
+              <div class="control-group">
+                <label for="gear-rpm">Velocidad (RPM)</label>
+                <input type="number" id="gear-rpm" class="num-input" min="1" max="3000" step="10" value="120" />
+              </div>
+            </div>
+
+            <div class="two-col-grid">
+              <div class="control-group">
+                <label for="gear-target_safety_factor">FS Objetivo</label>
+                <input type="number" id="gear-target_safety_factor" class="num-input" min="1.1" max="10" step="0.1" value="2.0" />
+              </div>
+              <div class="control-group">
+                <label for="gear-operating_temp_c">Temp. (°C)</label>
+                <input type="number" id="gear-operating_temp_c" class="num-input" min="10" max="130" step="1" value="45" />
+              </div>
+            </div>
+          </section>
+        </div> <!-- /#family-controls-gears -->
 
         <!-- 5. MATERIAL Y MANUFACTURA 3D -->
         <section class="panel-section">
