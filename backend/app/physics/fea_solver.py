@@ -10,7 +10,13 @@ import trimesh
 from scipy import sparse
 from scipy.sparse.linalg import spsolve
 
-from ..schemas import FEAResult, LinkDesignRequest, VariantKind
+from ..schemas import (
+    FEAResult,
+    LinkDesignRequest,
+    MountDesignRequest,
+    MountVariantKind,
+    VariantKind,
+)
 
 _GMSH_LOCK = threading.Lock()
 POISSON_RATIO = 0.33
@@ -150,42 +156,34 @@ def _von_mises_colormap(values: np.ndarray, vmax: float) -> np.ndarray:
     return np.column_stack((r, g, b, a)).astype(np.uint8)
 
 
-def run_step_fea(
-    step_path: Path,
+def _solve_tet4_and_export(
+    *,
+    coords: np.ndarray,
+    tets: np.ndarray,
+    tris: np.ndarray,
+    fixed_nodes: np.ndarray,
+    load_nodes: np.ndarray,
+    load_n: float,
+    load_axis: int,
+    youngs_eff_mpa: float,
+    yield_eff_mpa: float,
+    target_safety_factor: float,
+    max_deflection_mm: float,
+    mesh_size_mm: float,
+    deform_scale: float,
     output_glb_path: Path,
-    req: LinkDesignRequest,
     design_hash: str,
-    variant_id: VariantKind,
-    material: dict,
-    mesh_size_mm: float = 7.0,
-    load_direction: str = "y_inplane",
-    deform_scale: float = 0.0,
+    variant_id: str,
+    notes: list[str],
+    t0: float,
 ) -> FEAResult:
     """
-    Run a real 3D Tet4 Linear Elasticity FEM analysis on a STEP file using Gmsh
-    and SciPy sparse direct solver, export a vertex-colored Von Mises GLB mesh,
-    and return an FEAResult.
+    Shared vectorized 3D Tet4 linear elasticity solver, nodal Von Mises post-processor,
+    and vertex-colored GLB exporter (preserving COLOR_0 + optional deform_scale).
     """
-    t0 = time.perf_counter()
-    step_path = Path(step_path)
-    output_glb_path = Path(output_glb_path)
-
-    coords, tets, tris = _mesh_step_tet4(step_path, mesh_size_mm=mesh_size_mm)
-    if len(tris) == 0:
-        tris = _extract_boundary_tris_from_tets(tets)
-
     n_nodes = len(coords)
 
-    # Effective anisotropic material properties
-    if req.print_orientation == "z_vertical":
-        youngs_eff_mpa = float(material["youngs_z_mpa"])
-        yield_eff_mpa = float(material["yield_z_mpa"])
-    else:
-        youngs_eff_mpa = float(material["youngs_xy_mpa"])
-        yield_eff_mpa = float(material["yield_xy_mpa"])
-
     # Vectorized Tet4 shape-function gradients and volumes
-    # X_e[e] = [[1, x0, y0, z0], ..., [1, x3, y3, z3]]
     tet_coords = coords[tets]  # (E, 4, 3)
     ones = np.ones((len(tets), 4, 1), dtype=np.float64)
     x_mat = np.concatenate([ones, tet_coords], axis=2)  # (E, 4, 4)
@@ -202,10 +200,9 @@ def run_step_fea(
     if n_elems == 0:
         raise RuntimeError("No valid positive-volume Tet4 elements found.")
 
-    inv_x = np.linalg.inv(x_mat)  # (E, 4, 4); col i of inv_x is [a_i, dNi/dx, dNi/dy, dNi/dz]
+    inv_x = np.linalg.inv(x_mat)
     grad_n = inv_x[:, 1:4, :].transpose(0, 2, 1)  # (E, 4, 3)
 
-    # Strain-displacement matrix B (E, 6, 12)
     b_mat = np.zeros((n_elems, 6, 12), dtype=np.float64)
     for i in range(4):
         gx = grad_n[:, i, 0]
@@ -226,7 +223,6 @@ def run_step_fea(
     db_mat = np.einsum("ij,ejk->eik", d_mat, b_mat)  # (E, 6, 12)
     ke = np.einsum("eji,ejk->eik", b_mat, db_mat) * vols[:, None, None]  # (E, 12, 12)
 
-    # Global sparse stiffness matrix assembly
     n_dofs = 3 * n_nodes
     edofs = np.empty((n_elems, 12), dtype=np.int32)
     edofs[:, 0::3] = 3 * tets
@@ -237,43 +233,8 @@ def run_step_fea(
     cols = np.broadcast_to(edofs[:, None, :], (n_elems, 12, 12)).ravel()
     k_global = sparse.coo_matrix((ke.ravel(), (rows, cols)), shape=(n_dofs, n_dofs)).tocsr()
 
-    # Boundary conditions: fixed root bore/boss nodes
-    notes: list[str] = []
-    r_root = np.hypot(coords[:, 0], coords[:, 1])
-    fixed_nodes = np.where(r_root <= float(req.root_end.bore_diameter_mm) * 0.65)[0]
-    if len(fixed_nodes) < 8:
-        x_min = float(np.min(coords[:, 0]))
-        x_thresh = x_min + max(6.0, float(req.root_end.outer_diameter_mm) * 0.25)
-        fixed_nodes = np.where(coords[:, 0] <= x_thresh)[0]
-        if len(fixed_nodes) < 8:
-            fixed_nodes = np.argsort(coords[:, 0])[: max(12, n_nodes // 40)]
-        notes.append(
-            f"Empotramiento aplicado por respaldo en los {len(fixed_nodes)} nodos del extremo raíz."
-        )
-    else:
-        notes.append(
-            f"Empotramiento real (u=0) en {len(fixed_nodes)} nodos del alojamiento raíz."
-        )
-
-    # Tip distributed load nodes
-    r_tip = np.hypot(coords[:, 0] - float(req.length_mm), coords[:, 1])
-    load_nodes = np.where(r_tip <= float(req.tip_end.bore_diameter_mm) * 0.65)[0]
-    load_nodes = np.setdiff1d(load_nodes, fixed_nodes)
-    if len(load_nodes) < 4:
-        x_max = float(np.max(coords[:, 0]))
-        x_thresh = x_max - max(6.0, float(req.tip_end.outer_diameter_mm) * 0.25)
-        load_nodes = np.setdiff1d(np.where(coords[:, 0] >= x_thresh)[0], fixed_nodes)
-        if len(load_nodes) < 4:
-            candidates = np.setdiff1d(np.argsort(coords[:, 0])[::-1], fixed_nodes)
-            load_nodes = candidates[: max(8, n_nodes // 50)]
-
     f_vec = np.zeros(n_dofs, dtype=np.float64)
-    load_axis = 2 if load_direction == "z_outofplane" else 1
-    axis_label = "-Z (fuera del plano)" if load_axis == 2 else "-Y (en el plano)"
-    f_vec[3 * load_nodes + load_axis] = -float(req.tip_load_n) / float(len(load_nodes))
-    notes.append(
-        f"Carga de {req.tip_load_n:.1f} N distribuida en {len(load_nodes)} nodos de la punta en dirección {axis_label}."
-    )
+    f_vec[3 * load_nodes + load_axis] = -float(load_n) / float(len(load_nodes))
 
     fixed_dofs = np.concatenate([3 * fixed_nodes, 3 * fixed_nodes + 1, 3 * fixed_nodes + 2])
     free_dofs = np.setdiff1d(np.arange(n_dofs, dtype=np.int32), fixed_dofs)
@@ -289,8 +250,8 @@ def run_step_fea(
     max_displacement_mm = float(np.max(np.linalg.norm(u_nodes, axis=1)))
 
     # Element stress (Voigt 6-component) and Von Mises equivalent stress
-    u_el = u_vec[edofs]  # (E, 12)
-    sigma = np.einsum("eij,ej->ei", db_mat, u_el)  # (E, 6)
+    u_el = u_vec[edofs]
+    sigma = np.einsum("eij,ej->ei", db_mat, u_el)
     sx, sy, sz, txy, tyz, txz = (
         sigma[:, 0],
         sigma[:, 1],
@@ -324,8 +285,8 @@ def run_step_fea(
     p95_von_mises_mpa = float(np.percentile(nodal_vm, 95))
     fea_safety_factor = yield_eff_mpa / max(p95_von_mises_mpa, 1e-6)
     passes_fea = (
-        fea_safety_factor >= req.target_safety_factor
-        and max_displacement_mm <= req.max_deflection_mm
+        fea_safety_factor >= target_safety_factor
+        and max_displacement_mm <= max_deflection_mm
     )
 
     # Export vertex-colored surface mesh to GLB with COLOR_0 preserved
@@ -335,7 +296,9 @@ def run_step_fea(
     surf_faces = inv_idx.reshape((-1, 3))
     surf_vm = nodal_vm[surf_nodes]
     if deform_scale_clamped > 0.0:
-        notes.append(f"Deformación visual amplificada ×{deform_scale_clamped:.0f} sobre la malla 3D.")
+        notes.append(
+            f"Deformación visual amplificada ×{deform_scale_clamped:.0f} sobre la malla 3D."
+        )
 
     color_scale_max = max(p95_von_mises_mpa * 1.35, 0.1)
     vertex_colors = _von_mises_colormap(surf_vm, color_scale_max)
@@ -356,11 +319,11 @@ def run_step_fea(
     )
     if passes_fea:
         notes.append(
-            f"Validación FEA aprobada: FS={fea_safety_factor:.2f} (≥ {req.target_safety_factor:.2f}) y δ={max_displacement_mm:.3f} mm (≤ {req.max_deflection_mm:.2f} mm)."
+            f"Validación FEA aprobada: FS={fea_safety_factor:.2f} (≥ {target_safety_factor:.2f}) y δ={max_displacement_mm:.3f} mm (≤ {max_deflection_mm:.2f} mm)."
         )
     else:
         notes.append(
-            f"Revisar diseño: FS FEA={fea_safety_factor:.2f} (objetivo {req.target_safety_factor:.2f}), δ={max_displacement_mm:.3f} mm (límite {req.max_deflection_mm:.2f} mm)."
+            f"Revisar diseño: FS FEA={fea_safety_factor:.2f} (objetivo {target_safety_factor:.2f}), δ={max_displacement_mm:.3f} mm (límite {max_deflection_mm:.2f} mm)."
         )
 
     return FEAResult(
@@ -378,4 +341,182 @@ def run_step_fea(
         passes_fea=passes_fea,
         fea_glb_url=f"/api/files/{design_hash}/{output_glb_path.name}",
         notes=notes,
+    )
+
+
+def run_step_fea(
+    step_path: Path,
+    output_glb_path: Path,
+    req: LinkDesignRequest,
+    design_hash: str,
+    variant_id: VariantKind,
+    material: dict,
+    mesh_size_mm: float = 7.0,
+    load_direction: str = "y_inplane",
+    deform_scale: float = 0.0,
+) -> FEAResult:
+    """
+    Run a real 3D Tet4 Linear Elasticity FEM analysis on a robotic link STEP file.
+    """
+    t0 = time.perf_counter()
+    step_path = Path(step_path)
+    output_glb_path = Path(output_glb_path)
+
+    coords, tets, tris = _mesh_step_tet4(step_path, mesh_size_mm=mesh_size_mm)
+    if len(tris) == 0:
+        tris = _extract_boundary_tris_from_tets(tets)
+
+    n_nodes = len(coords)
+
+    if req.print_orientation == "z_vertical":
+        youngs_eff_mpa = float(material["youngs_z_mpa"])
+        yield_eff_mpa = float(material["yield_z_mpa"])
+    else:
+        youngs_eff_mpa = float(material["youngs_xy_mpa"])
+        yield_eff_mpa = float(material["yield_xy_mpa"])
+
+    # Boundary conditions: fixed root bore/boss nodes
+    notes: list[str] = []
+    r_root = np.hypot(coords[:, 0], coords[:, 1])
+    fixed_nodes = np.where(r_root <= float(req.root_end.bore_diameter_mm) * 0.65)[0]
+    if len(fixed_nodes) < 8:
+        x_min = float(np.min(coords[:, 0]))
+        x_thresh = x_min + max(6.0, float(req.root_end.outer_diameter_mm) * 0.25)
+        fixed_nodes = np.where(coords[:, 0] <= x_thresh)[0]
+        if len(fixed_nodes) < 8:
+            fixed_nodes = np.argsort(coords[:, 0])[: max(12, n_nodes // 40)]
+        notes.append(
+            f"Empotramiento aplicado por respaldo en los {len(fixed_nodes)} nodos del extremo raíz."
+        )
+    else:
+        notes.append(
+            f"Empotramiento real (u=0) en {len(fixed_nodes)} nodos del alojamiento raíz."
+        )
+
+    # Tip distributed load nodes
+    r_tip = np.hypot(coords[:, 0] - float(req.length_mm), coords[:, 1])
+    load_nodes = np.where(r_tip <= float(req.tip_end.bore_diameter_mm) * 0.65)[0]
+    load_nodes = np.setdiff1d(load_nodes, fixed_nodes)
+    if len(load_nodes) < 4:
+        x_max = float(np.max(coords[:, 0]))
+        x_thresh = x_max - max(6.0, float(req.tip_end.outer_diameter_mm) * 0.25)
+        load_nodes = np.setdiff1d(np.where(coords[:, 0] >= x_thresh)[0], fixed_nodes)
+        if len(load_nodes) < 4:
+            candidates = np.setdiff1d(np.argsort(coords[:, 0])[::-1], fixed_nodes)
+            load_nodes = candidates[: max(8, n_nodes // 50)]
+
+    load_axis = 2 if load_direction == "z_outofplane" else 1
+    axis_label = "-Z (fuera del plano)" if load_axis == 2 else "-Y (en el plano)"
+    notes.append(
+        f"Carga de {req.tip_load_n:.1f} N distribuida en {len(load_nodes)} nodos de la punta en dirección {axis_label}."
+    )
+
+    return _solve_tet4_and_export(
+        coords=coords,
+        tets=tets,
+        tris=tris,
+        fixed_nodes=fixed_nodes,
+        load_nodes=load_nodes,
+        load_n=float(req.tip_load_n),
+        load_axis=load_axis,
+        youngs_eff_mpa=youngs_eff_mpa,
+        yield_eff_mpa=yield_eff_mpa,
+        target_safety_factor=float(req.target_safety_factor),
+        max_deflection_mm=float(req.max_deflection_mm),
+        mesh_size_mm=mesh_size_mm,
+        deform_scale=deform_scale,
+        output_glb_path=output_glb_path,
+        design_hash=design_hash,
+        variant_id=variant_id,
+        notes=notes,
+        t0=t0,
+    )
+
+
+def run_mount_fea(
+    step_path: Path,
+    output_glb_path: Path,
+    req: MountDesignRequest,
+    design_hash: str,
+    variant_id: MountVariantKind,
+    material: dict,
+    mesh_size_mm: float = 5.5,
+    load_direction: str = "y_inplane",
+    deform_scale: float = 0.0,
+) -> FEAResult:
+    """
+    Run a real 3D Tet4 Linear Elasticity FEM analysis on an L-bracket mechatronic
+    mount STEP file:
+    - Clamps bottom face of base plate (z <= min_z + 1.5 mm).
+    - Distributes radial_load_n on the upper zone of the vertical motor faceplate
+      (y <= min_y + wall_thickness_mm + 1.5 mm and z >= min_z + 0.5*(max_z - min_z)).
+    """
+    t0 = time.perf_counter()
+    step_path = Path(step_path)
+    output_glb_path = Path(output_glb_path)
+
+    coords, tets, tris = _mesh_step_tet4(step_path, mesh_size_mm=mesh_size_mm)
+    if len(tris) == 0:
+        tris = _extract_boundary_tris_from_tets(tets)
+
+    n_nodes = len(coords)
+
+    if req.print_orientation == "z_vertical":
+        youngs_eff_mpa = float(material["youngs_z_mpa"])
+        yield_eff_mpa = float(material["yield_z_mpa"])
+    else:
+        youngs_eff_mpa = float(material["youngs_xy_mpa"])
+        yield_eff_mpa = float(material["yield_xy_mpa"])
+
+    notes: list[str] = []
+    min_z = float(np.min(coords[:, 2]))
+    max_z = float(np.max(coords[:, 2]))
+    min_y = float(np.min(coords[:, 1]))
+
+    # Clamp bottom face of base plate
+    fixed_nodes = np.where(coords[:, 2] <= min_z + 1.5)[0]
+    if len(fixed_nodes) < 8:
+        fixed_nodes = np.argsort(coords[:, 2])[: max(12, n_nodes // 30)]
+        notes.append(
+            f"Empotramiento de base aplicado por respaldo en {len(fixed_nodes)} nodos inferiores."
+        )
+    else:
+        notes.append(
+            f"Empotramiento real (u=0) en {len(fixed_nodes)} nodos de la cara inferior de la placa base."
+        )
+
+    # Load upper half of vertical motor plate
+    z_mid = min_z + 0.5 * (max_z - min_z)
+    y_plate_max = min_y + float(req.wall_thickness_mm) + 1.5
+    load_mask = (coords[:, 1] <= y_plate_max) & (coords[:, 2] >= z_mid)
+    load_nodes = np.setdiff1d(np.where(load_mask)[0], fixed_nodes)
+    if len(load_nodes) < 4:
+        candidates = np.setdiff1d(np.argsort(coords[:, 2])[::-1], fixed_nodes)
+        load_nodes = candidates[: max(8, n_nodes // 40)]
+
+    load_axis = 2 if load_direction == "z_outofplane" else 1
+    axis_label = "-Z (vertical / peso motor)" if load_axis == 2 else "-Y (tensión radial)"
+    notes.append(
+        f"Carga radial de {req.radial_load_n:.1f} N distribuida en {len(load_nodes)} nodos de la cara del motor en dirección {axis_label}."
+    )
+
+    return _solve_tet4_and_export(
+        coords=coords,
+        tets=tets,
+        tris=tris,
+        fixed_nodes=fixed_nodes,
+        load_nodes=load_nodes,
+        load_n=float(req.radial_load_n),
+        load_axis=load_axis,
+        youngs_eff_mpa=youngs_eff_mpa,
+        yield_eff_mpa=yield_eff_mpa,
+        target_safety_factor=float(req.target_safety_factor),
+        max_deflection_mm=float(req.max_deflection_mm),
+        mesh_size_mm=mesh_size_mm,
+        deform_scale=deform_scale,
+        output_glb_path=output_glb_path,
+        design_hash=design_hash,
+        variant_id=variant_id,
+        notes=notes,
+        t0=t0,
     )

@@ -16,24 +16,38 @@ from .cad.exporter import (
     EXPORTS_ROOT,
     PROJECT_ROOT,
     compute_design_hash,
+    compute_mount_design_hash,
+    export_mount_variants,
     export_variants,
     get_export_dir,
     load_cached_metadata,
+    load_cached_mount_metadata,
 )
+from .cad.mount_variants import generate_all_mount_variants
 from .cad.step_analyzer import analyze_step_file
 from .cad.variants import generate_all_variants
 from .physics.dfm_rules import evaluate_global_alerts
-from .physics.fea_solver import run_step_fea
+from .physics.fea_solver import run_mount_fea, run_step_fea
 from .physics.mechanics import (
     evaluate_variant_metrics,
     load_materials,
     load_presets,
+)
+from .physics.mount_mechanics import (
+    evaluate_mount_global_alerts,
+    evaluate_mount_metrics,
+    load_mount_presets,
 )
 from .schemas import (
     FEARequest,
     FEAResult,
     GenerateResponse,
     LinkDesignRequest,
+    MountDesignRequest,
+    MountFEARequest,
+    MountGenerateResponse,
+    MountVariantKind,
+    MountVariantResult,
     StepReferenceAnalysis,
     VariantKind,
     VariantResult,
@@ -47,6 +61,12 @@ VARIANT_ORDER: tuple[VariantKind, ...] = (
     "rounded_truss",
     "hollow_cobot",
     "organic_topopt",
+)
+
+MOUNT_VARIANT_ORDER: tuple[MountVariantKind, ...] = (
+    "mount_standard",
+    "mount_gusseted",
+    "mount_lightweight",
 )
 
 HASH_PATTERN = re.compile(r"^[a-f0-9]{8,64}$")
@@ -272,6 +292,161 @@ def run_fea_validation(fea_req: FEARequest) -> FEAResult:
         raise HTTPException(
             status_code=500,
             detail=f"Error en el solver FEA 3D (Gmsh/Tet4): {exc}",
+        ) from exc
+
+
+def _pick_recommended_mount_variant(variants: list[MountVariantResult]) -> MountVariantKind:
+    """Select the optimal mount variant prioritizing passing requirements and stiffness-to-weight."""
+    passing = [v for v in variants if v.is_valid_solid and v.metrics.passes_requirements]
+    if passing:
+        best = max(
+            passing,
+            key=lambda v: (v.metrics.stiffness_to_weight_score, -v.metrics.mass_g),
+        )
+        return best.variant_id
+
+    valid = [v for v in variants if v.is_valid_solid]
+    if valid:
+        best = max(
+            valid,
+            key=lambda v: (v.metrics.safety_factor, v.metrics.stiffness_to_weight_score),
+        )
+        return best.variant_id
+
+    return "mount_gusseted"
+
+
+@app.get("/api/mounts/presets")
+def get_mount_presets() -> dict[str, Any]:
+    return load_mount_presets()
+
+
+@app.post("/api/mounts/generate", response_model=MountGenerateResponse)
+def generate_mount_design(req: MountDesignRequest) -> MountGenerateResponse:
+    materials = load_materials()
+    if req.material_id not in materials:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Material '{req.material_id}' no encontrado en la base de datos.",
+        )
+    material = materials[req.material_id]
+
+    design_hash = compute_mount_design_hash(req)
+    cached_meta = load_cached_mount_metadata(design_hash)
+
+    if cached_meta is not None:
+        variants_meta = cached_meta
+    else:
+        generated = generate_all_mount_variants(req)
+        export_mount_variants(design_hash, generated)
+        variants_meta = {
+            vid: {
+                "name": data["name"],
+                "tagline": data["tagline"],
+                "volume_mm3": data["volume_mm3"],
+                "is_valid": data["is_valid"],
+            }
+            for vid, data in generated.items()
+        }
+
+    global_alerts = evaluate_mount_global_alerts(req, material)
+
+    # Evaluate baseline (mount_standard) first for mass savings comparison
+    baseline_vol = variants_meta["mount_standard"]["volume_mm3"]
+    baseline_metrics, _ = evaluate_mount_metrics(
+        req=req,
+        variant_id="mount_standard",
+        volume_mm3=baseline_vol,
+        baseline_mass_g=None,
+        material=material,
+    )
+    baseline_mass_g = baseline_metrics.mass_g
+
+    variant_results: list[MountVariantResult] = []
+    for vid in MOUNT_VARIANT_ORDER:
+        meta = variants_meta[vid]
+        metrics, alerts = evaluate_mount_metrics(
+            req=req,
+            variant_id=vid,
+            volume_mm3=meta["volume_mm3"],
+            baseline_mass_g=baseline_mass_g,
+            material=material,
+        )
+        variant_results.append(
+            MountVariantResult(
+                variant_id=vid,
+                name=meta["name"],
+                tagline=meta["tagline"],
+                is_valid_solid=bool(meta["is_valid"]),
+                metrics=metrics,
+                glb_url=f"/api/files/{design_hash}/{vid}.glb",
+                step_url=f"/api/files/{design_hash}/{vid}.step",
+                stl_url=f"/api/files/{design_hash}/{vid}.stl",
+                alerts=alerts,
+            )
+        )
+
+    recommended = _pick_recommended_mount_variant(variant_results)
+
+    return MountGenerateResponse(
+        design_hash=design_hash,
+        recommended_variant=recommended,
+        material_name=material.get("name", req.material_id),
+        global_alerts=global_alerts,
+        variants=variant_results,
+    )
+
+
+@app.post("/api/mounts/fea", response_model=FEAResult)
+def run_mount_fea_validation(fea_req: MountFEARequest) -> FEAResult:
+    materials = load_materials()
+    if fea_req.request.material_id not in materials:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Material '{fea_req.request.material_id}' no encontrado en la base de datos.",
+        )
+    material = materials[fea_req.request.material_id]
+
+    design_hash = (
+        fea_req.design_hash
+        if HASH_PATTERN.match(fea_req.design_hash)
+        else compute_mount_design_hash(fea_req.request)
+    )
+    out_dir = get_export_dir(design_hash)
+    step_path = out_dir / f"{fea_req.variant_id}.step"
+
+    if not (step_path.exists() and step_path.stat().st_size > 0):
+        generated = generate_all_mount_variants(fea_req.request)
+        export_mount_variants(design_hash, generated)
+
+    if not step_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"No se encontró el archivo .STEP para la montura '{fea_req.variant_id}'.",
+        )
+
+    deform_tag = int(round(fea_req.deform_scale))
+    output_glb_path = (
+        out_dir / f"{fea_req.variant_id}_fea_{fea_req.load_direction}_d{deform_tag}.glb"
+    )
+    try:
+        return run_mount_fea(
+            step_path=step_path,
+            output_glb_path=output_glb_path,
+            req=fea_req.request,
+            design_hash=design_hash,
+            variant_id=fea_req.variant_id,
+            material=material,
+            mesh_size_mm=fea_req.mesh_size_mm,
+            load_direction=fea_req.load_direction,
+            deform_scale=fea_req.deform_scale,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error en el solver FEA 3D de montura (Gmsh/Tet4): {exc}",
         ) from exc
 
 

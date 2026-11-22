@@ -25,6 +25,108 @@ const ARCH_META = {
   },
 };
 
+const MOUNT_META = {
+  nema17: {
+    label: "NEMA 17 + 2020",
+    subtitle: "Motor paso a paso 42mm",
+    icon: `<svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="2.5" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="1.7"/><circle cx="7.5" cy="7.5" r="1" fill="currentColor"/><circle cx="16.5" cy="7.5" r="1" fill="currentColor"/><circle cx="7.5" cy="16.5" r="1" fill="currentColor"/><circle cx="16.5" cy="16.5" r="1" fill="currentColor"/></svg>`,
+  },
+  nema23: {
+    label: "NEMA 23 Heavy",
+    subtitle: "Alto torque 57mm + 2040",
+    icon: `<svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="1.9"/><circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="1.9"/><circle cx="6.8" cy="6.8" r="1.2" fill="currentColor"/><circle cx="17.2" cy="6.8" r="1.2" fill="currentColor"/><circle cx="6.8" cy="17.2" r="1.2" fill="currentColor"/><circle cx="17.2" cy="17.2" r="1.2" fill="currentColor"/></svg>`,
+  },
+  servo_mg996r: {
+    label: "Servo MG996R",
+    subtitle: "Servo estándar 40×20mm",
+    icon: `<svg viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="18" height="10" rx="2" stroke="currentColor" stroke-width="1.7"/><circle cx="16" cy="12" r="2.2" stroke="currentColor" stroke-width="1.6"/><path d="M6 12H10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+  },
+  profile_2020_gusset: {
+    label: "Escuadra 2020",
+    subtitle: "Unión estructural 90°",
+    icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M5 4V19H20" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 10L14 19" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.5 2"/></svg>`,
+  },
+};
+
+const FALLBACK_MOUNT_DEFAULTS = {
+  nema17: {
+    actuator_type: "nema17",
+    base_type: "profile_2020",
+    wall_thickness_mm: 5.0,
+    base_depth_mm: 42.0,
+    shaft_height_mm: 32.0,
+    gusset_thickness_mm: 4.0,
+    use_heat_inserts: false,
+    ventilation_slots: true,
+    radial_load_n: 35.0,
+    motor_torque_nm: 0.6,
+    target_safety_factor: 2.0,
+    max_deflection_mm: 0.3,
+    motor_temp_c: 58.0,
+    material_id: "petg_cf",
+    print_orientation: "xy_flat",
+    nozzle_diameter_mm: 0.4,
+    printer_clearance_mm: 0.15,
+  },
+  nema23: {
+    actuator_type: "nema23",
+    base_type: "profile_2040",
+    wall_thickness_mm: 7.0,
+    base_depth_mm: 58.0,
+    shaft_height_mm: 42.0,
+    gusset_thickness_mm: 6.0,
+    use_heat_inserts: true,
+    ventilation_slots: true,
+    radial_load_n: 90.0,
+    motor_torque_nm: 2.2,
+    target_safety_factor: 2.2,
+    max_deflection_mm: 0.25,
+    motor_temp_c: 65.0,
+    material_id: "pa12_cf",
+    print_orientation: "xy_flat",
+    nozzle_diameter_mm: 0.6,
+    printer_clearance_mm: 0.15,
+  },
+  servo_mg996r: {
+    actuator_type: "servo_mg996r",
+    base_type: "flat_plate",
+    wall_thickness_mm: 4.5,
+    base_depth_mm: 36.0,
+    shaft_height_mm: 28.0,
+    gusset_thickness_mm: 3.5,
+    use_heat_inserts: true,
+    ventilation_slots: false,
+    radial_load_n: 20.0,
+    motor_torque_nm: 1.1,
+    target_safety_factor: 2.0,
+    max_deflection_mm: 0.35,
+    motor_temp_c: 48.0,
+    material_id: "petg_cf",
+    print_orientation: "xy_flat",
+    nozzle_diameter_mm: 0.4,
+    printer_clearance_mm: 0.15,
+  },
+  profile_2020_gusset: {
+    actuator_type: "profile_2020_gusset",
+    base_type: "profile_2020",
+    wall_thickness_mm: 5.0,
+    base_depth_mm: 36.0,
+    shaft_height_mm: 30.0,
+    gusset_thickness_mm: 4.5,
+    use_heat_inserts: false,
+    ventilation_slots: false,
+    radial_load_n: 60.0,
+    motor_torque_nm: 0.0,
+    target_safety_factor: 2.5,
+    max_deflection_mm: 0.2,
+    motor_temp_c: 35.0,
+    material_id: "petg_cf",
+    print_orientation: "xy_flat",
+    nozzle_diameter_mm: 0.4,
+    printer_clearance_mm: 0.15,
+  },
+};
+
 const FALLBACK_END_PRESETS = {
   nema17: {
     label: "NEMA 17",
@@ -164,7 +266,10 @@ export class ControlsController {
     this.materialsMap = {};
     this.archPresets = structuredClone(FALLBACK_ARCH_DEFAULTS);
     this.endPresets = structuredClone(FALLBACK_END_PRESETS);
+    this.mountPresets = structuredClone(FALLBACK_MOUNT_DEFAULTS);
+    this.activeFamily = "links";
     this.currentArchitecture = "articulated_6dof";
+    this.currentMountActuator = "nema17";
     this.currentOrientation = "xy_flat";
     this.referenceVolumeCm3 = null;
 
@@ -176,6 +281,21 @@ export class ControlsController {
     this._bindOrientationPills();
     this._bindMaterialSelect();
     this._renderArchitectureGrid();
+    this._renderMountPresetGrid();
+  }
+
+  setFamily(family) {
+    this.activeFamily = family === "mounts" ? "mounts" : "links";
+    document.getElementById("family-controls-links")?.classList.toggle("hidden", this.activeFamily !== "links");
+    document.getElementById("family-controls-mounts")?.classList.toggle("hidden", this.activeFamily !== "mounts");
+
+    const headerLabel = document.getElementById("header-arch-label");
+    if (headerLabel) {
+      headerLabel.textContent =
+        this.activeFamily === "mounts"
+          ? MOUNT_META[this.currentMountActuator]?.label || this.currentMountActuator
+          : ARCH_META[this.currentArchitecture]?.label || this.currentArchitecture;
+    }
   }
 
   _bindStepUpload() {
@@ -298,6 +418,11 @@ export class ControlsController {
       { id: "organic_taper", suffix: "%", decimals: 0 },
       { id: "topopt_volume_fraction", suffix: "%", decimals: 0 },
       { id: "printer_clearance_mm", suffix: " mm", decimals: 2 },
+      // Monturas Mecatrónicas
+      { id: "mount-wall_thickness_mm", suffix: " mm", decimals: 1 },
+      { id: "mount-base_depth_mm", suffix: " mm", decimals: 0 },
+      { id: "mount-shaft_height_mm", suffix: " mm", decimals: 0 },
+      { id: "mount-gusset_thickness_mm", suffix: " mm", decimals: 1 },
     ];
 
     for (const cfg of sliderConfigs) {
@@ -676,6 +801,130 @@ export class ControlsController {
         0.75,
         0.52
       ),
+    };
+  }
+
+  _renderMountPresetGrid() {
+    const grid = document.getElementById("mount-preset-grid");
+    if (!grid) return;
+    grid.innerHTML = "";
+
+    for (const [actId, meta] of Object.entries(MOUNT_META)) {
+      const preset = this.mountPresets[actId];
+      const title = meta.label || preset?.name;
+      const subtitle = meta.subtitle || preset?.subtitle;
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `arch-card${actId === this.currentMountActuator ? " active" : ""}`;
+      btn.dataset.mountActuator = actId;
+      btn.innerHTML = `
+        <div class="arch-card-head">
+          ${meta.icon}
+        </div>
+        <span class="arch-card-title">${title}</span>
+        <span class="arch-card-sub">${subtitle}</span>
+      `;
+      btn.addEventListener("click", () => {
+        this.applyMountPreset(actId);
+      });
+      grid.appendChild(btn);
+    }
+  }
+
+  setMountPresets(rawPresets) {
+    if (!rawPresets || typeof rawPresets !== "object") return;
+    const entries = Array.isArray(rawPresets)
+      ? rawPresets.map((p) => [p.id || p.actuator_type, p])
+      : Object.entries(rawPresets);
+
+    for (const [key, val] of entries) {
+      if (!key || !val || typeof val !== "object") continue;
+      const flat = val.defaults || val.params || val;
+      this.mountPresets[key] = {
+        ...(this.mountPresets[key] || {}),
+        ...flat,
+        name: MOUNT_META[key]?.label || val.name,
+        subtitle: MOUNT_META[key]?.subtitle || val.subtitle || val.description,
+      };
+    }
+    this._renderMountPresetGrid();
+  }
+
+  applyMountPreset(actuatorId) {
+    const preset = this.mountPresets[actuatorId] || FALLBACK_MOUNT_DEFAULTS[actuatorId];
+    if (!preset) return;
+
+    this.currentMountActuator = actuatorId;
+
+    document.querySelectorAll("[data-mount-actuator]").forEach((card) => {
+      card.classList.toggle("active", card.dataset.mountActuator === actuatorId);
+    });
+
+    if (this.activeFamily === "mounts") {
+      const headerLabel = document.getElementById("header-arch-label");
+      if (headerLabel) {
+        headerLabel.textContent = MOUNT_META[actuatorId]?.label || preset.name || actuatorId;
+      }
+    }
+
+    this._setInputValue("mount-base_type", preset.base_type);
+    this._setInputValue("mount-wall_thickness_mm", preset.wall_thickness_mm);
+    this._setInputValue("mount-base_depth_mm", preset.base_depth_mm);
+    this._setInputValue("mount-shaft_height_mm", preset.shaft_height_mm);
+    this._setInputValue("mount-gusset_thickness_mm", preset.gusset_thickness_mm);
+    this._setCheckbox("mount-use_heat_inserts", preset.use_heat_inserts);
+    this._setCheckbox("mount-ventilation_slots", preset.ventilation_slots);
+
+    this._setInputValue("mount-radial_load_n", preset.radial_load_n);
+    this._setInputValue("mount-motor_torque_nm", preset.motor_torque_nm);
+    this._setInputValue("mount-motor_temp_c", preset.motor_temp_c);
+    this._setInputValue("mount-max_deflection_mm", preset.max_deflection_mm);
+    this._setInputValue("mount-target_safety_factor", preset.target_safety_factor);
+
+    // Compartidos de Material y Manufactura 3D
+    if (preset.material_id && this.materialsMap[preset.material_id]) {
+      this._setInputValue("material_id", preset.material_id);
+      this._renderMaterialBadge(preset.material_id);
+    }
+    if (preset.print_orientation) {
+      this.currentOrientation = preset.print_orientation;
+      document.querySelectorAll("[data-orientation]").forEach((p) => {
+        p.classList.toggle("active", p.dataset.orientation === this.currentOrientation);
+      });
+    }
+    if (preset.nozzle_diameter_mm !== undefined) {
+      this._setInputValue("nozzle_diameter_mm", String(preset.nozzle_diameter_mm));
+    }
+    if (preset.printer_clearance_mm !== undefined) {
+      this._setInputValue("printer_clearance_mm", preset.printer_clearance_mm);
+    }
+  }
+
+  /**
+   * Construye el payload JSON exacto que espera MountDesignRequest en backend/app/schemas.py.
+   */
+  getMountPayload() {
+    return {
+      actuator_type: this.currentMountActuator,
+      base_type: document.getElementById("mount-base_type")?.value || "profile_2020",
+      wall_thickness_mm: clamp(document.getElementById("mount-wall_thickness_mm")?.value, 2.5, 16, 5.0),
+      base_depth_mm: clamp(document.getElementById("mount-base_depth_mm")?.value, 24, 100, 42.0),
+      shaft_height_mm: clamp(document.getElementById("mount-shaft_height_mm")?.value, 20, 90, 32.0),
+      gusset_thickness_mm: clamp(document.getElementById("mount-gusset_thickness_mm")?.value, 2.0, 14, 4.0),
+      use_heat_inserts: Boolean(document.getElementById("mount-use_heat_inserts")?.checked),
+      ventilation_slots: Boolean(document.getElementById("mount-ventilation_slots")?.checked),
+
+      radial_load_n: clamp(document.getElementById("mount-radial_load_n")?.value, 1, 500, 35.0),
+      motor_torque_nm: clamp(document.getElementById("mount-motor_torque_nm")?.value, 0, 20, 0.6),
+      target_safety_factor: clamp(document.getElementById("mount-target_safety_factor")?.value, 1.1, 10, 2.0),
+      max_deflection_mm: clamp(document.getElementById("mount-max_deflection_mm")?.value, 0.05, 5, 0.3),
+      motor_temp_c: clamp(document.getElementById("mount-motor_temp_c")?.value, 15, 130, 58.0),
+
+      material_id: document.getElementById("material_id")?.value || "petg_cf",
+      print_orientation: this.currentOrientation,
+      nozzle_diameter_mm: clamp(document.getElementById("nozzle_diameter_mm")?.value, 0.2, 1.0, 0.4),
+      printer_clearance_mm: clamp(document.getElementById("printer_clearance_mm")?.value, 0, 0.5, 0.15),
     };
   }
 }

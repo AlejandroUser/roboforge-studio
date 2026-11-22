@@ -15,6 +15,11 @@ VariantKind = Literal[
     "organic_topopt",
 ]
 
+# Hito 3B: Familia 2 — Monturas Mecatrónicas
+MountActuatorType = Literal["nema17", "nema23", "servo_mg996r", "profile_2020_gusset"]
+MountBaseType = Literal["profile_2020", "profile_2040", "flat_plate"]
+MountVariantKind = Literal["mount_standard", "mount_gusseted", "mount_lightweight"]
+
 
 class EndInterfaceParams(BaseModel):
     preset: EndPreset = "bearing_608"
@@ -152,7 +157,7 @@ class FEARequest(BaseModel):
 
 class FEAResult(BaseModel):
     design_hash: str
-    variant_id: VariantKind
+    variant_id: str
     solver_name: str
     node_count: int
     element_count: int
@@ -165,3 +170,57 @@ class FEAResult(BaseModel):
     passes_fea: bool
     fea_glb_url: str
     notes: list[str] = Field(default_factory=list)
+
+
+# Hito 3B: Familia 2 — Monturas Mecatrónicas (NEMA 17/23, Servos, Perfil 2020)
+class MountDesignRequest(BaseModel):
+    actuator_type: MountActuatorType = "nema17"
+    base_type: MountBaseType = "profile_2020"
+    wall_thickness_mm: float = Field(5.0, ge=2.5, le=16.0)
+    base_depth_mm: float = Field(42.0, ge=24.0, le=100.0)
+    shaft_height_mm: float = Field(32.0, ge=20.0, le=90.0)
+    gusset_thickness_mm: float = Field(4.0, ge=2.0, le=14.0)
+    use_heat_inserts: bool = False
+    ventilation_slots: bool = True
+
+    # Cargas y ambiente del motor
+    radial_load_n: float = Field(35.0, ge=1.0, le=500.0)
+    motor_torque_nm: float = Field(0.6, ge=0.0, le=20.0)
+    target_safety_factor: float = Field(2.0, ge=1.1, le=10.0)
+    max_deflection_mm: float = Field(0.3, ge=0.05, le=5.0)
+    motor_temp_c: float = Field(58.0, ge=15.0, le=130.0)
+
+    # Material y manufactura
+    material_id: str = "petg_cf"
+    print_orientation: PrintOrientation = "xy_flat"
+    nozzle_diameter_mm: float = Field(0.4, ge=0.2, le=1.0)
+    printer_clearance_mm: float = Field(0.15, ge=0.0, le=0.5)
+
+
+class MountVariantResult(BaseModel):
+    variant_id: MountVariantKind
+    name: str
+    tagline: str
+    is_valid_solid: bool
+    metrics: VariantMetrics
+    glb_url: str
+    step_url: str
+    stl_url: str
+    alerts: list[AlertItem] = Field(default_factory=list)
+
+
+class MountGenerateResponse(BaseModel):
+    design_hash: str
+    recommended_variant: MountVariantKind
+    material_name: str
+    global_alerts: list[AlertItem] = Field(default_factory=list)
+    variants: list[MountVariantResult]
+
+
+class MountFEARequest(BaseModel):
+    design_hash: str
+    variant_id: MountVariantKind
+    request: MountDesignRequest
+    mesh_size_mm: float = Field(5.5, ge=2.5, le=12.0)
+    load_direction: Literal["y_inplane", "z_outofplane"] = "y_inplane"
+    deform_scale: float = Field(0.0, ge=0.0, le=100.0)

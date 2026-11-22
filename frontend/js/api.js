@@ -109,6 +109,36 @@ export async function runFEA(payload, signal) {
 }
 
 /**
+ * Obtiene presets de Monturas Mecatrónicas desde GET /api/mounts/presets.
+ */
+export async function fetchMountPresets() {
+  const raw = await requestJson("/api/mounts/presets", { method: "GET" });
+  return raw?.presets || raw?.mounts || raw?.actuators || raw || {};
+}
+
+/**
+ * Envía MountDesignRequest a POST /api/mounts/generate y retorna MountGenerateResponse.
+ */
+export async function generateMounts(payload, signal) {
+  return requestJson("/api/mounts/generate", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    signal,
+  });
+}
+
+/**
+ * Ejecuta validación FEA 3D real para Monturas Mecatrónicas vía POST /api/mounts/fea.
+ */
+export async function runMountFEA(payload, signal) {
+  return requestJson("/api/mounts/fea", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    signal,
+  });
+}
+
+/**
  * Sube un archivo .STEP/.STP a POST /api/analyze-step y retorna StepReferenceAnalysis.
  */
 export async function analyzeStepFile(file) {

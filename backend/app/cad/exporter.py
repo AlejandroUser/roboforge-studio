@@ -10,14 +10,14 @@ from typing import Any
 import trimesh
 from build123d import export_step, export_stl
 
-from ..schemas import LinkDesignRequest, VariantKind
+from ..schemas import LinkDesignRequest, MountDesignRequest, MountVariantKind, VariantKind
 
 # Project root: .../roboforge/
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 EXPORTS_ROOT = PROJECT_ROOT / "exports"
 
 # Distinct metallic/engineering PBR appearance per variant
-VARIANT_PBR_STYLES: dict[VariantKind, dict[str, Any]] = {
+VARIANT_PBR_STYLES: dict[str, dict[str, Any]] = {
     "tapered_solid": {
         "baseColorFactor": [132, 162, 198, 255],  # Anodized titanium steel-blue
         "metallicFactor": 0.65,
@@ -43,12 +43,34 @@ VARIANT_PBR_STYLES: dict[VariantKind, dict[str, Any]] = {
         "metallicFactor": 0.68,
         "roughnessFactor": 0.28,
     },
+    # Family 2: Mechatronic Mounts
+    "mount_standard": {
+        "baseColorFactor": [126, 154, 192, 255],  # Anodized slate aluminum
+        "metallicFactor": 0.64,
+        "roughnessFactor": 0.34,
+    },
+    "mount_gusseted": {
+        "baseColorFactor": [62, 176, 206, 255],  # Precision CNC cyan-steel
+        "metallicFactor": 0.66,
+        "roughnessFactor": 0.30,
+    },
+    "mount_lightweight": {
+        "baseColorFactor": [82, 204, 146, 255],  # Bionic anodized emerald-titanium
+        "metallicFactor": 0.62,
+        "roughnessFactor": 0.30,
+    },
 }
 
 
 def compute_design_hash(req: LinkDesignRequest) -> str:
     """Compute a deterministic 16-char SHA-256 hex digest for a LinkDesignRequest."""
     canonical = json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
+def compute_mount_design_hash(req: MountDesignRequest) -> str:
+    """Compute a deterministic 16-char SHA-256 hex digest for a MountDesignRequest."""
+    canonical = "mount:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
@@ -160,6 +182,47 @@ def load_cached_metadata(
         "rounded_truss",
         "hollow_cobot",
         "organic_topopt",
+    )
+    for vid in expected_variants:
+        if vid not in meta:
+            return None
+        for ext in ("step", "stl", "glb"):
+            fp = out_dir / f"{vid}.{ext}"
+            if not (fp.exists() and fp.stat().st_size > 0):
+                return None
+
+    return meta
+
+
+def export_mount_variants(
+    design_hash: str,
+    variants_data: dict[MountVariantKind, dict[str, Any]],
+    exports_root: Path | None = None,
+) -> dict[MountVariantKind, dict[str, Path]]:
+    """Export all generated mount CAD variants to .step, .stl, and .glb."""
+    return export_variants(design_hash, variants_data, exports_root=exports_root)  # type: ignore[arg-type,return-value]
+
+
+def load_cached_mount_metadata(
+    design_hash: str,
+    exports_root: Path | None = None,
+) -> dict[MountVariantKind, dict[str, Any]] | None:
+    """Return cached mount metadata if all 3 mount variants and all 9 export files exist."""
+    root = exports_root or EXPORTS_ROOT
+    out_dir = root / design_hash
+    meta_path = out_dir / "metadata.json"
+    if not meta_path.exists():
+        return None
+
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+    expected_variants: tuple[MountVariantKind, ...] = (
+        "mount_standard",
+        "mount_gusseted",
+        "mount_lightweight",
     )
     for vid in expected_variants:
         if vid not in meta:

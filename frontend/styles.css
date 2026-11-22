@@ -157,6 +157,42 @@ html, body {
   background: var(--border-subtle);
 }
 
+.family-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--bg-root);
+  border: 1px solid var(--border-subtle);
+}
+
+.family-tab {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.family-tab:hover {
+  color: var(--text-primary);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.family-tab.active {
+  background: var(--accent-cyan-dim);
+  border-color: rgba(56, 189, 248, 0.42);
+  color: #f8fafc;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
 .arch-pill {
   display: inline-flex;
   align-items: center;
@@ -274,6 +310,12 @@ html, body {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 12px 14px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.family-controls {
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1049,6 +1091,23 @@ input[type="range"]:disabled {
   font-weight: 600;
 }
 
+.toolbar-select {
+  height: 28px;
+  padding: 0 7px;
+  border-radius: 6px;
+  background: rgba(9, 12, 16, 0.72);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+}
+
+.toolbar-select:focus {
+  border-color: var(--accent-cyan);
+}
+
 .tool-btn.fea-cta:hover:not(:disabled) {
   background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(56, 189, 248, 0.24));
   border-color: #34d399;
@@ -1571,6 +1630,18 @@ input[type="range"]:disabled {
   border-color: rgba(52, 211, 153, 0.45);
   color: #6ee7b7;
   font-family: var(--font-mono);
+}
+
+.badge-gusseted {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #7dd3fc;
+}
+
+.badge-lightweight {
+  background: rgba(16, 185, 129, 0.16);
+  border-color: rgba(16, 185, 129, 0.45);
+  color: #34d399;
 }
 
 /* Telemetry Grid */

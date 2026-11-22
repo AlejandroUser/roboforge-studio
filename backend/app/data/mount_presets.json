@@ -1,0 +1,100 @@
+{
+  "actuators": {
+    "nema17": {
+      "id": "nema17",
+      "name": "NEMA 17 + 2020",
+      "subtitle": "Stepper 42 mm sobre perfil de aluminio 2020",
+      "defaults": {
+        "actuator_type": "nema17",
+        "base_type": "profile_2020",
+        "wall_thickness_mm": 5.0,
+        "base_depth_mm": 42.0,
+        "shaft_height_mm": 32.0,
+        "gusset_thickness_mm": 4.0,
+        "use_heat_inserts": false,
+        "ventilation_slots": true,
+        "radial_load_n": 35.0,
+        "motor_torque_nm": 0.6,
+        "target_safety_factor": 2.0,
+        "max_deflection_mm": 0.3,
+        "motor_temp_c": 58.0,
+        "material_id": "petg_cf",
+        "print_orientation": "xy_flat",
+        "nozzle_diameter_mm": 0.4,
+        "printer_clearance_mm": 0.15
+      }
+    },
+    "nema23": {
+      "id": "nema23",
+      "name": "NEMA 23 Heavy",
+      "subtitle": "Stepper 57 mm de alto par sobre perfil 2040",
+      "defaults": {
+        "actuator_type": "nema23",
+        "base_type": "profile_2040",
+        "wall_thickness_mm": 7.0,
+        "base_depth_mm": 56.0,
+        "shaft_height_mm": 42.0,
+        "gusset_thickness_mm": 5.5,
+        "use_heat_inserts": true,
+        "ventilation_slots": true,
+        "radial_load_n": 95.0,
+        "motor_torque_nm": 2.2,
+        "target_safety_factor": 2.2,
+        "max_deflection_mm": 0.25,
+        "motor_temp_c": 65.0,
+        "material_id": "pa12_cf",
+        "print_orientation": "xy_flat",
+        "nozzle_diameter_mm": 0.4,
+        "printer_clearance_mm": 0.15
+      }
+    },
+    "servo_mg996r": {
+      "id": "servo_mg996r",
+      "name": "Servo MG996R",
+      "subtitle": "Montura para servo estándar 40×20 mm en placa",
+      "defaults": {
+        "actuator_type": "servo_mg996r",
+        "base_type": "flat_plate",
+        "wall_thickness_mm": 4.0,
+        "base_depth_mm": 36.0,
+        "shaft_height_mm": 28.0,
+        "gusset_thickness_mm": 3.5,
+        "use_heat_inserts": true,
+        "ventilation_slots": false,
+        "radial_load_n": 20.0,
+        "motor_torque_nm": 1.1,
+        "target_safety_factor": 2.0,
+        "max_deflection_mm": 0.35,
+        "motor_temp_c": 45.0,
+        "material_id": "petg_cf",
+        "print_orientation": "xy_flat",
+        "nozzle_diameter_mm": 0.4,
+        "printer_clearance_mm": 0.15
+      }
+    },
+    "profile_2020_gusset": {
+      "id": "profile_2020_gusset",
+      "name": "Escuadra 2020",
+      "subtitle": "Conector estructural 90° para chasis de perfil 2020",
+      "defaults": {
+        "actuator_type": "profile_2020_gusset",
+        "base_type": "profile_2020",
+        "wall_thickness_mm": 4.5,
+        "base_depth_mm": 34.0,
+        "shaft_height_mm": 26.0,
+        "gusset_thickness_mm": 4.0,
+        "use_heat_inserts": false,
+        "ventilation_slots": false,
+        "radial_load_n": 60.0,
+        "motor_torque_nm": 0.2,
+        "target_safety_factor": 2.5,
+        "max_deflection_mm": 0.2,
+        "motor_temp_c": 35.0,
+        "material_id": "petg_cf",
+        "print_orientation": "xy_flat",
+        "nozzle_diameter_mm": 0.4,
+        "printer_clearance_mm": 0.15
+      }
+    }
+  }
+}

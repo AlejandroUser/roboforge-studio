@@ -6,9 +6,12 @@ import {
   analyzeStepFile,
   checkHealth,
   fetchMaterials,
+  fetchMountPresets,
   fetchPresets,
   generateDesign,
+  generateMounts,
   runFEA,
+  runMountFEA,
 } from "/js/api.js";
 import { Viewport3D } from "/js/viewport.js";
 import { ControlsController } from "/js/controls.js";
@@ -19,6 +22,7 @@ class RoboForgeApp {
     this.viewport = null;
     this.controls = null;
     this.comparator = null;
+    this.activeFamily = "links";
     this.currentResponse = null;
     this.activeVariant = null;
     this.isGenerating = false;
@@ -30,7 +34,10 @@ class RoboForgeApp {
 
     // UI elements
     this.btnGenerate = document.getElementById("btn-generate");
+    this.btnGenerateLabel = document.getElementById("btn-generate-label");
     this.btnRunFea = document.getElementById("btn-run-fea");
+    this.feaLoadDirEl = document.getElementById("fea-load-dir");
+    this.feaDeformScaleEl = document.getElementById("fea-deform-scale");
     this.btnToggleFeaMesh = document.getElementById("btn-toggle-fea-mesh");
     this.toggleFeaMeshLabel = document.getElementById("toggle-fea-mesh-label");
     this.statusIndicator = document.getElementById("status-indicator");
@@ -75,12 +82,43 @@ class RoboForgeApp {
   _bindHeaderActions() {
     this.btnGenerate?.addEventListener("click", () => this.runGeneration());
 
+    document.querySelectorAll(".family-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const nextFamily = tab.dataset.family;
+        if (nextFamily && nextFamily !== this.activeFamily) {
+          this.switchFamily(nextFamily);
+        }
+      });
+    });
+
     window.addEventListener("keydown", (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
         this.runGeneration();
       }
     });
+  }
+
+  async switchFamily(family) {
+    if (this.isGenerating || this.isRunningFea) return;
+    this.activeFamily = family === "mounts" ? "mounts" : "links";
+
+    document.querySelectorAll(".family-tab").forEach((tab) => {
+      const isActive = tab.dataset.family === this.activeFamily;
+      tab.classList.toggle("active", isActive);
+      tab.setAttribute("aria-selected", String(isActive));
+    });
+
+    this.controls.setFamily(this.activeFamily);
+
+    if (this.btnGenerateLabel) {
+      this.btnGenerateLabel.textContent =
+        this.activeFamily === "mounts"
+          ? "Generar Monturas (3 Variantes)"
+          : "Generar y Optimizar (5 Variantes)";
+    }
+
+    await this.runGeneration();
   }
 
   _bindViewportToolbar() {
@@ -100,7 +138,13 @@ class RoboForgeApp {
       camButtons.forEach((b) => b.classList.toggle("active", b.dataset.camView === "iso"));
     });
 
-    // Real 3D FEA (Gmsh + Tet4) trigger
+    // Real 3D FEA (Gmsh + Tet4) trigger + toolbar selects sync
+    this.feaLoadDirEl?.addEventListener("change", () => {
+      this.feaLoadDirection = this.feaLoadDirEl.value;
+    });
+    this.feaDeformScaleEl?.addEventListener("change", () => {
+      this.feaDeformScale = Number(this.feaDeformScaleEl.value || 0);
+    });
     this.btnRunFea?.addEventListener("click", () => this.runFeaSimulation());
 
     // Toggle between Real 3D FEA mesh and CAD model
@@ -158,10 +202,11 @@ class RoboForgeApp {
   async _bootstrapBackendData() {
     this.setStatus("busy", "Conectando...");
     try {
-      const [health, materials, presets] = await Promise.all([
+      const [health, materials, presets, mountPresets] = await Promise.all([
         checkHealth(),
         fetchMaterials(),
         fetchPresets(),
+        fetchMountPresets().catch(() => null),
       ]);
 
       if (materials?.list?.length) {
@@ -170,9 +215,14 @@ class RoboForgeApp {
       if (presets) {
         this.controls.setPresets(presets);
       }
+      if (mountPresets) {
+        this.controls.setMountPresets(mountPresets);
+      }
 
-      // Aplicar preset inicial para sincronizar UI
+      // Aplicar presets iniciales para sincronizar UI de ambas familias
+      this.controls.applyMountPreset("nema17");
       this.controls.applyArchitecturePreset("articulated_6dof");
+      this.controls.setFamily("links");
 
       const okLabel = health?.status ? "Listo · CAD Kernel" : "Listo";
       this.setStatus("ready", okLabel);
@@ -282,6 +332,8 @@ class RoboForgeApp {
         onChangeOptions: ({ loadDirection, deformScale }) => {
           this.feaLoadDirection = loadDirection;
           this.feaDeformScale = deformScale;
+          if (this.feaLoadDirEl) this.feaLoadDirEl.value = loadDirection;
+          if (this.feaDeformScaleEl) this.feaDeformScaleEl.value = String(deformScale);
           this.runFeaSimulation();
         },
       }
@@ -306,16 +358,20 @@ class RoboForgeApp {
     );
 
     try {
+      const isMounts = this.activeFamily === "mounts";
+      const loadDirection = this.feaLoadDirection || this.feaLoadDirEl?.value || "y_inplane";
+      const deformScale = Number(this.feaDeformScale ?? this.feaDeformScaleEl?.value ?? 0);
+
       const payload = {
         design_hash: this.currentResponse.design_hash,
         variant_id: this.activeVariant.variant_id,
-        request: this.controls.getPayload(),
-        mesh_size_mm: 7.0,
-        load_direction: this.feaLoadDirection || "y_inplane",
-        deform_scale: this.feaDeformScale || 0,
+        request: isMounts ? this.controls.getMountPayload() : this.controls.getPayload(),
+        mesh_size_mm: isMounts ? 5.5 : 7.0,
+        load_direction: loadDirection,
+        deform_scale: deformScale,
       };
 
-      const feaResult = await runFEA(payload);
+      const feaResult = isMounts ? await runMountFEA(payload) : await runFEA(payload);
       this.feaResultsByVariant.set(this.activeVariant.variant_id, feaResult);
 
       // Cargar malla FEA 3D con vertexColors reales
@@ -407,17 +463,24 @@ class RoboForgeApp {
     }
     this.abortController = new AbortController();
 
-    const payload = this.controls.getPayload();
+    const isMounts = this.activeFamily === "mounts";
+    const payload = isMounts ? this.controls.getMountPayload() : this.controls.getPayload();
 
     this.btnGenerate.disabled = true;
-    this.setStatus("busy", "Optimizando CAD + SIMP...");
+    this.setStatus("busy", isMounts ? "Generando Monturas..." : "Optimizando CAD + SIMP...");
     this.showLoader(
-      "Sintetizando Geometría B-Rep + TopOpt SIMP...",
-      "Generando 5 variantes topológicas, mallas GLB/STL/STEP y perfil de esfuerzos"
+      isMounts
+        ? "Sintetizando Monturas Mecatrónicas (build123d)..."
+        : "Sintetizando Geometría B-Rep + TopOpt SIMP...",
+      isMounts
+        ? "Generando 3 variantes (Estándar, Cartelas, Aligerada), mallas GLB/STL/STEP y análisis estructural"
+        : "Generando 5 variantes topológicas, mallas GLB/STL/STEP y perfil de esfuerzos"
     );
 
     try {
-      const response = await generateDesign(payload, this.abortController.signal);
+      const response = isMounts
+        ? await generateMounts(payload, this.abortController.signal)
+        : await generateDesign(payload, this.abortController.signal);
       this.currentResponse = response;
 
       // Limpiar caché de modelos y FEA de generaciones anteriores

@@ -8,6 +8,10 @@ const VARIANT_COLORS = {
   rounded_truss: "#10b981",
   hollow_cobot: "#a78bfa",
   organic_topopt: "#f59e0b",
+  // Monturas Mecatrónicas
+  mount_standard: "#94a3b8",
+  mount_gusseted: "#38bdf8",
+  mount_lightweight: "#10b981",
 };
 
 const ALERT_ICONS = {
@@ -232,6 +236,8 @@ export class ComparatorController {
       card.tabIndex = 0;
 
       const isBionic = v.variant_id === "organic_topopt";
+      const isGusseted = v.variant_id === "mount_gusseted";
+      const isLightweight = v.variant_id === "mount_lightweight";
       const hasRefSavings =
         m.reference_savings_pct !== null &&
         m.reference_savings_pct !== undefined &&
@@ -254,6 +260,8 @@ export class ComparatorController {
           <div class="variant-tagline">${escapeHtml(v.tagline || "")}</div>
           <div class="badge-row">
             ${isBionic ? `<span class="badge badge-bionic">✦ Biónica SIMP</span>` : ""}
+            ${isGusseted ? `<span class="badge badge-gusseted">▲ Con Cartelas</span>` : ""}
+            ${isLightweight ? `<span class="badge badge-lightweight">✦ Aligerada</span>` : ""}
             ${isRec ? `<span class="badge badge-recommended">★ Recomendada</span>` : ""}
             ${
               m.passes_requirements

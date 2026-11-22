@@ -236,17 +236,11 @@ export class Viewport3D {
       obj.userData.originalMaterial = obj.material;
     });
 
-    // Calcular caja original y reorientar si el eslabón viene acostado en XY (build123d extruye en Z)
-    const rawBox = new THREE.Box3().setFromObject(root);
-    const rawSize = new THREE.Vector3();
-    rawBox.getSize(rawSize);
-
-    // En build123d la longitud suele estar en X, ancho en Y, espesor en Z.
-    // Rotar -90° en X coloca el plano XY de impresión sobre el plano horizontal XZ de Three.js (Y hacia arriba).
-    if (rawSize.z > 0 && rawSize.y >= rawSize.z * 0.85) {
-      root.rotation.x = -Math.PI / 2;
-      root.updateMatrixWorld(true);
-    }
+    // Todos los sólidos CAD de build123d/Gmsh vienen en convención Z-up (base en plano XY, altura en Z).
+    // Rotar -90° en X convierte Z-up a Y-up de Three.js para que tanto eslabones como monturas en L
+    // queden apoyados correctamente sobre la grilla horizontal del estudio.
+    root.rotation.x = -Math.PI / 2;
+    root.updateMatrixWorld(true);
 
     const box = new THREE.Box3().setFromObject(root);
     const center = new THREE.Vector3();

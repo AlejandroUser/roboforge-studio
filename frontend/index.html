@@ -40,7 +40,16 @@
 
         <div class="header-divider"></div>
 
-        <div class="arch-pill" id="header-arch-pill" title="Arquitectura activa">
+        <nav class="family-switcher" role="tablist" aria-label="Familia de piezas">
+          <button type="button" class="family-tab active" data-family="links" role="tab" aria-selected="true">
+            Eslabones Robóticos
+          </button>
+          <button type="button" class="family-tab" data-family="mounts" role="tab" aria-selected="false">
+            Monturas Mecatrónicas
+          </button>
+        </nav>
+
+        <div class="arch-pill" id="header-arch-pill" title="Preset activo">
           <span class="arch-pill-dot"></span>
           <span id="header-arch-label">Articulado 6-DOF</span>
         </div>
@@ -52,12 +61,12 @@
           <span id="status-text">Conectando...</span>
         </div>
 
-        <button type="button" class="btn-primary" id="btn-generate" title="Generar 5 variantes (Ctrl+Enter)">
+        <button type="button" class="btn-primary" id="btn-generate" title="Generar variantes (Ctrl+Enter)">
           <svg class="btn-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <path d="M10 2.5L11.8 7.2L16.5 9L11.8 10.8L10 15.5L8.2 10.8L3.5 9L8.2 7.2L10 2.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
             <path d="M15.5 14L16.3 16L18.3 16.8L16.3 17.6L15.5 19.6L14.7 17.6L12.7 16.8L14.7 16L15.5 14Z" fill="currentColor"/>
           </svg>
-          <span>Generar y Optimizar (5 Variantes)</span>
+          <span id="btn-generate-label">Generar y Optimizar (5 Variantes)</span>
         </button>
       </div>
     </header>
@@ -66,6 +75,8 @@
     <main class="studio-workspace">
       <!-- LEFT SIDEBAR: PARAMETERS -->
       <aside class="sidebar-left" id="controls-panel" aria-label="Parámetros de diseño">
+        <!-- FAMILIA 1: ESLABONES ROBÓTICOS -->
+        <div id="family-controls-links" class="family-controls">
         <!-- 0. IMPORTAR .STEP DE REFERENCIA -->
         <section class="panel-section step-import-section">
           <div class="section-header">
@@ -350,6 +361,125 @@
             </div>
           </div>
         </section>
+        </div> <!-- /#family-controls-links -->
+
+        <!-- FAMILIA 2: MONTURAS MECATRÓNICAS -->
+        <div id="family-controls-mounts" class="family-controls hidden">
+          <!-- 01. PRESETS DE MONTURA -->
+          <section class="panel-section">
+            <div class="section-header">
+              <span class="section-num">01</span>
+              <h2>Actuador / Tipo de Montura</h2>
+            </div>
+            <div class="arch-grid" id="mount-preset-grid">
+              <!-- Populated by controls.js -->
+            </div>
+          </section>
+
+          <!-- 02. GEOMETRÍA DE ESCUADRA -->
+          <section class="panel-section">
+            <div class="section-header">
+              <span class="section-num">02</span>
+              <h2>Geometría de Escuadra</h2>
+            </div>
+
+            <div class="control-group">
+              <label for="mount-base_type">Tipo de Base / Anclaje</label>
+              <select id="mount-base_type" class="select-input">
+                <option value="profile_2020" selected>Perfil Aluminio 2020 (Ranura 6mm)</option>
+                <option value="profile_2040">Perfil Aluminio 2040 (Doble Ranura)</option>
+                <option value="flat_plate">Placa Plana Universal (4× M5)</option>
+              </select>
+            </div>
+
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="mount-wall_thickness_mm">Espesor de Pared</label>
+                <span class="readout" id="val-mount-wall_thickness_mm">5.0 mm</span>
+              </div>
+              <input type="range" id="mount-wall_thickness_mm" min="2.5" max="16" step="0.5" value="5.0" />
+            </div>
+
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="mount-base_depth_mm">Profundidad Base</label>
+                <span class="readout" id="val-mount-base_depth_mm">42 mm</span>
+              </div>
+              <input type="range" id="mount-base_depth_mm" min="24" max="100" step="1" value="42" />
+            </div>
+
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="mount-shaft_height_mm">Altura del Eje</label>
+                <span class="readout" id="val-mount-shaft_height_mm">32 mm</span>
+              </div>
+              <input type="range" id="mount-shaft_height_mm" min="20" max="90" step="1" value="32" />
+            </div>
+
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="mount-gusset_thickness_mm">Espesor de Cartelas</label>
+                <span class="readout accent" id="val-mount-gusset_thickness_mm">4.0 mm</span>
+              </div>
+              <input type="range" id="mount-gusset_thickness_mm" min="2" max="14" step="0.5" value="4.0" />
+            </div>
+
+            <label class="toggle-row compact" for="mount-use_heat_inserts">
+              <span class="toggle-text">
+                <strong>Insertos Térmicos (Latón)</strong>
+              </span>
+              <span class="switch">
+                <input type="checkbox" id="mount-use_heat_inserts" />
+                <span class="switch-track"></span>
+              </span>
+            </label>
+
+            <label class="toggle-row compact" for="mount-ventilation_slots">
+              <span class="toggle-text">
+                <strong>Ventilación Térmica</strong>
+                <small>Ranuras de disipación para carcasa del motor</small>
+              </span>
+              <span class="switch">
+                <input type="checkbox" id="mount-ventilation_slots" checked />
+                <span class="switch-track"></span>
+              </span>
+            </label>
+          </section>
+
+          <!-- 03. CARGAS Y TEMPERATURA DEL MOTOR -->
+          <section class="panel-section">
+            <div class="section-header">
+              <span class="section-num">03</span>
+              <h2>Cargas y Temperatura del Motor</h2>
+            </div>
+
+            <div class="two-col-grid">
+              <div class="control-group">
+                <label for="mount-radial_load_n">Carga Radial (N)</label>
+                <input type="number" id="mount-radial_load_n" class="num-input" min="1" max="500" step="1" value="35" />
+              </div>
+              <div class="control-group">
+                <label for="mount-motor_torque_nm">Torque Motor (N·m)</label>
+                <input type="number" id="mount-motor_torque_nm" class="num-input" min="0" max="20" step="0.1" value="0.6" />
+              </div>
+            </div>
+
+            <div class="three-col-grid">
+              <div class="control-group">
+                <label for="mount-motor_temp_c">Temp. Motor (°C)</label>
+                <input type="number" id="mount-motor_temp_c" class="num-input" min="15" max="130" step="1" value="58" />
+              </div>
+              <div class="control-group">
+                <label for="mount-max_deflection_mm">Deflex. (mm)</label>
+                <input type="number" id="mount-max_deflection_mm" class="num-input" min="0.05" max="5" step="0.05" value="0.3" />
+              </div>
+              <div class="control-group">
+                <label for="mount-target_safety_factor">FS Obj.</label>
+                <input type="number" id="mount-target_safety_factor" class="num-input" min="1.1" max="10" step="0.1" value="2.0" />
+              </div>
+            </div>
+          </section>
+        </div> <!-- /#family-controls-mounts -->
 
         <!-- 5. MATERIAL Y MANUFACTURA 3D -->
         <section class="panel-section">
@@ -439,6 +569,15 @@
           </div>
           <div class="toolbar-sep"></div>
           <div class="toolbar-group">
+            <select id="fea-load-dir" class="toolbar-select" title="Dirección de carga FEA 3D">
+              <option value="y_inplane" selected>Carga Y</option>
+              <option value="z_outofplane">Carga Z</option>
+            </select>
+            <select id="fea-deform-scale" class="toolbar-select" title="Escala de deformación visual FEA">
+              <option value="0" selected>Deform. 0×</option>
+              <option value="10">Deform. 10×</option>
+              <option value="25">Deform. 25×</option>
+            </select>
             <button type="button" class="tool-btn icon-text fea-cta" id="btn-run-fea" title="Ejecutar simulación FEA 3D real con Gmsh + Tet4">
               <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
                 <path d="M9 2L15.5 5.8V12.2L9 16L2.5 12.2V5.8L9 2Z" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/>
