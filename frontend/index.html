@@ -52,12 +52,12 @@
           <span id="status-text">Conectando...</span>
         </div>
 
-        <button type="button" class="btn-primary" id="btn-generate" title="Generar 4 variantes (Ctrl+Enter)">
+        <button type="button" class="btn-primary" id="btn-generate" title="Generar 5 variantes (Ctrl+Enter)">
           <svg class="btn-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <path d="M10 2.5L11.8 7.2L16.5 9L11.8 10.8L10 15.5L8.2 10.8L3.5 9L8.2 7.2L10 2.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
             <path d="M15.5 14L16.3 16L18.3 16.8L16.3 17.6L15.5 19.6L14.7 17.6L12.7 16.8L14.7 16L15.5 14Z" fill="currentColor"/>
           </svg>
-          <span>Generar y Optimizar (4 Variantes)</span>
+          <span>Generar y Optimizar (5 Variantes)</span>
         </button>
       </div>
     </header>
@@ -66,6 +66,44 @@
     <main class="studio-workspace">
       <!-- LEFT SIDEBAR: PARAMETERS -->
       <aside class="sidebar-left" id="controls-panel" aria-label="Parámetros de diseño">
+        <!-- 0. IMPORTAR .STEP DE REFERENCIA -->
+        <section class="panel-section step-import-section">
+          <div class="section-header">
+            <span class="section-num">STEP</span>
+            <h2>Pieza .STEP de Referencia</h2>
+          </div>
+
+          <div class="step-dropzone" id="step-dropzone" role="button" tabindex="0" aria-label="Subir archivo .STEP de referencia">
+            <input type="file" id="step-file-input" accept=".step,.stp,.STEP,.STP" class="hidden" />
+            <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 16V4M12 4L7.5 8.5M12 4L16.5 8.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M4 15.5V18C4 19.1 4.9 20 6 20H18C19.1 20 20 19.1 20 18V15.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+            <div class="dropzone-text">
+              <strong>Subir <code>.STEP</code> de Referencia</strong>
+              <small>Arrastra aquí o haz clic para analizar y optimizar</small>
+            </div>
+          </div>
+
+          <div class="step-summary-card hidden" id="step-summary-card">
+            <div class="step-summary-head">
+              <div class="step-file-badge">
+                <span class="step-dot"></span>
+                <strong id="step-filename">pieza.step</strong>
+              </div>
+              <button type="button" class="btn-clear-ref" id="btn-clear-step" title="Limpiar referencia .STEP">
+                Limpiar Referencia
+              </button>
+            </div>
+            <div class="step-metrics-row">
+              <div><small>Caja (L×A×E)</small><strong id="step-bbox">—</strong></div>
+              <div><small>Volumen Ref.</small><strong id="step-volume">—</strong></div>
+              <div><small>Agujeros</small><strong id="step-holes">—</strong></div>
+            </div>
+            <ul class="step-notes-list" id="step-notes"></ul>
+          </div>
+        </section>
+
         <!-- 1. ARQUITECTURA -->
         <section class="panel-section">
           <div class="section-header">
@@ -125,6 +163,18 @@
             <div class="range-hints">
               <span>Recto (0%)</span>
               <span>Biónico (100%)</span>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="topopt_volume_fraction">Fracción de Volumen SIMP (%)</label>
+              <span class="readout accent-amber" id="val-topopt_volume_fraction">52%</span>
+            </div>
+            <input type="range" id="topopt_volume_fraction" min="35" max="70" step="1" value="52" />
+            <div class="range-hints">
+              <span>Ultra-ligero (35%)</span>
+              <span>Rígido (70%)</span>
             </div>
           </div>
 
@@ -389,6 +439,13 @@
           </div>
           <div class="toolbar-sep"></div>
           <div class="toolbar-group">
+            <button type="button" class="tool-btn icon-text" id="btn-heatmap" title="Activar Mapa de Esfuerzos FEA">
+              <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <path d="M9 2.5C9 2.5 5 6.8 5 10.5A4 4 0 0 0 13 10.5C13 6.8 9 2.5 9 2.5Z" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/>
+                <path d="M9 8.2C9 8.2 7.2 9.9 7.2 11.4A1.8 1.8 0 0 0 10.8 11.4C10.8 9.9 9 8.2 9 8.2Z" fill="currentColor"/>
+              </svg>
+              <span>Mapa de Esfuerzos</span>
+            </button>
             <button type="button" class="tool-btn icon-text" id="btn-wireframe" title="Alternar malla wireframe">
               <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
                 <path d="M9 2L16 6V12L9 16L2 12V6L9 2Z" stroke="currentColor" stroke-width="1.4"/>
@@ -408,6 +465,17 @@
                 <path d="M3 6V3H6M12 3H15V6M15 12V15H12M6 15H3V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               </svg>
             </button>
+          </div>
+        </div>
+
+        <!-- FLOATING STRESS HEATMAP LEGEND -->
+        <div class="heatmap-legend hidden" id="heatmap-legend" aria-label="Leyenda de esfuerzos">
+          <div class="heatmap-legend-title">Esfuerzo von Mises (MPa)</div>
+          <div class="heatmap-gradient-bar"></div>
+          <div class="heatmap-ticks">
+            <span>0 MPa</span>
+            <span id="heatmap-mid-label">—</span>
+            <span id="heatmap-max-label">— MPa</span>
           </div>
         </div>
 
@@ -448,7 +516,7 @@
         <div class="right-header">
           <div>
             <h2>Comparador de Variantes</h2>
-            <p class="right-subtitle" id="comparator-subtitle">4 topologías optimizadas · Clic para inspeccionar en 3D</p>
+            <p class="right-subtitle" id="comparator-subtitle">5 topologías optimizadas · Clic para inspeccionar en 3D</p>
           </div>
           <span class="hash-pill hidden" id="design-hash-pill" title="Hash determinista del diseño">#--------</span>
         </div>

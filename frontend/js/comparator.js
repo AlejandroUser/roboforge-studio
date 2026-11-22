@@ -7,6 +7,7 @@ const VARIANT_COLORS = {
   organic_ibeam: "#38bdf8",
   rounded_truss: "#10b981",
   hollow_cobot: "#a78bfa",
+  organic_topopt: "#f59e0b",
 };
 
 const ALERT_ICONS = {
@@ -136,6 +137,18 @@ export class ComparatorController {
       card.dataset.variantId = v.variant_id;
       card.tabIndex = 0;
 
+      const isBionic = v.variant_id === "organic_topopt";
+      const hasRefSavings =
+        m.reference_savings_pct !== null &&
+        m.reference_savings_pct !== undefined &&
+        Number.isFinite(Number(m.reference_savings_pct));
+      const refSavNum = hasRefSavings ? Number(m.reference_savings_pct) : 0;
+      const refSavBadge = hasRefSavings
+        ? `<span class="badge badge-ref-savings">${
+            refSavNum >= 0 ? `−${fmt(refSavNum, 1)}%` : `+${fmt(Math.abs(refSavNum), 1)}%`
+          } vs Ref. .STEP</span>`
+        : "";
+
       card.innerHTML = `
         <div class="variant-card-head">
           <div class="variant-title-row">
@@ -146,6 +159,7 @@ export class ComparatorController {
           </div>
           <div class="variant-tagline">${escapeHtml(v.tagline || "")}</div>
           <div class="badge-row">
+            ${isBionic ? `<span class="badge badge-bionic">✦ Biónica SIMP</span>` : ""}
             ${isRec ? `<span class="badge badge-recommended">★ Recomendada</span>` : ""}
             ${
               m.passes_requirements
@@ -157,6 +171,7 @@ export class ComparatorController {
                 ? `<span class="badge badge-support-free">Sin Soportes</span>`
                 : `<span class="badge badge-supports-req">Requiere Soportes</span>`
             }
+            ${refSavBadge}
           </div>
         </div>
 

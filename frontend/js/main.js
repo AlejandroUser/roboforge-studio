@@ -2,7 +2,13 @@
  * main.js — Orquestador principal de RoboForge Studio
  */
 
-import { checkHealth, fetchMaterials, fetchPresets, generateDesign } from "/js/api.js";
+import {
+  analyzeStepFile,
+  checkHealth,
+  fetchMaterials,
+  fetchPresets,
+  generateDesign,
+} from "/js/api.js";
 import { Viewport3D } from "/js/viewport.js";
 import { ControlsController } from "/js/controls.js";
 import { ComparatorController, VARIANT_COLORS } from "/js/comparator.js";
@@ -29,6 +35,9 @@ class RoboForgeApp {
     this.hudName = document.getElementById("hud-variant-name");
     this.hudMeta = document.getElementById("hud-variant-meta");
     this.toastEl = document.getElementById("app-toast");
+    this.heatmapLegendEl = document.getElementById("heatmap-legend");
+    this.heatmapMidLabel = document.getElementById("heatmap-mid-label");
+    this.heatmapMaxLabel = document.getElementById("heatmap-max-label");
   }
 
   async init() {
@@ -38,6 +47,10 @@ class RoboForgeApp {
     this.controls = new ControlsController({
       onArchitectureChange: () => {
         // El usuario puede ajustar parámetros adicionales o pulsar Generar
+      },
+      onStepFileSelected: (file, validationErr) => this.handleStepUpload(file, validationErr),
+      onClearStepReference: () => {
+        this.showToast("Referencia .STEP eliminada.", false);
       },
     });
 
@@ -77,6 +90,16 @@ class RoboForgeApp {
     document.getElementById("btn-fit-camera")?.addEventListener("click", () => {
       this.viewport.setCameraView("iso", true);
       camButtons.forEach((b) => b.classList.toggle("active", b.dataset.camView === "iso"));
+    });
+
+    // Stress Heatmap toggle
+    const btnHeatmap = document.getElementById("btn-heatmap");
+    btnHeatmap?.addEventListener("click", () => {
+      const next = !this.viewport.heatmapEnabled;
+      const profile = this.activeVariant?.metrics?.stress_profile || null;
+      this.viewport.setStressHeatmap(next, profile);
+      btnHeatmap.classList.toggle("active", next);
+      this._updateHeatmapLegend(next, this.activeVariant);
     });
 
     // Wireframe toggle
@@ -146,6 +169,55 @@ class RoboForgeApp {
     }
   }
 
+  async handleStepUpload(file, validationErr) {
+    if (validationErr) {
+      this.showToast(validationErr, true);
+      return;
+    }
+    if (!file || this.isGenerating) return;
+
+    this.controls.setStepUploadBusy(true);
+    this.setStatus("busy", "Analizando .STEP...");
+    this.showLoader(
+      "Analizando pieza .STEP de referencia...",
+      `Extrayendo volumen, caja envolvente y agujeros de ${file.name}`
+    );
+
+    try {
+      const analysis = await analyzeStepFile(file);
+      this.controls.setStepReference(analysis);
+      this.showToast(
+        `Pieza ${analysis.filename} analizada (${Number(analysis.volume_cm3).toFixed(1)} cm³). Generando 5 variantes...`,
+        false
+      );
+      this.hideLoader();
+      this.controls.setStepUploadBusy(false);
+      await this.runGeneration();
+    } catch (err) {
+      console.error("STEP analyze error:", err);
+      this.setStatus("error", "Error .STEP");
+      this.showToast(`Error analizando .STEP: ${err.message}`, true);
+      this.hideLoader();
+      this.controls.setStepUploadBusy(false);
+    }
+  }
+
+  _updateHeatmapLegend(enabled, variant) {
+    if (!this.heatmapLegendEl) return;
+    if (!enabled) {
+      this.heatmapLegendEl.classList.add("hidden");
+      return;
+    }
+    const maxStress = Number(variant?.metrics?.max_stress_mpa ?? 0);
+    if (this.heatmapMidLabel) {
+      this.heatmapMidLabel.textContent = `${(maxStress / 2).toFixed(1)}`;
+    }
+    if (this.heatmapMaxLabel) {
+      this.heatmapMaxLabel.textContent = `${maxStress.toFixed(1)} MPa`;
+    }
+    this.heatmapLegendEl.classList.remove("hidden");
+  }
+
   async runGeneration() {
     if (this.isGenerating) return;
     this.isGenerating = true;
@@ -158,10 +230,10 @@ class RoboForgeApp {
     const payload = this.controls.getPayload();
 
     this.btnGenerate.disabled = true;
-    this.setStatus("busy", "Optimizando CAD...");
+    this.setStatus("busy", "Optimizando CAD + SIMP...");
     this.showLoader(
-      "Sintetizando Geometría B-Rep (build123d)...",
-      "Generando 4 variantes topológicas, mallas GLB/STL/STEP y cálculo estructural"
+      "Sintetizando Geometría B-Rep + TopOpt SIMP...",
+      "Generando 5 variantes topológicas, mallas GLB/STL/STEP y perfil de esfuerzos"
     );
 
     try {
@@ -186,8 +258,9 @@ class RoboForgeApp {
         await this.selectVariant(recommended, { autoFit: true });
       }
 
-      this.setStatus("ready", "4 variantes listas");
-      this.showToast(`Diseño #${response.design_hash.slice(0, 8)} generado correctamente.`, false);
+      const count = response.variants?.length || 5;
+      this.setStatus("ready", `${count} variantes listas`);
+      this.showToast(`Diseño #${response.design_hash.slice(0, 8)} generado (${count} variantes).`, false);
     } catch (err) {
       if (err.name === "AbortError") return;
       console.error("Generation error:", err);
@@ -227,7 +300,9 @@ class RoboForgeApp {
     }
 
     try {
+      this.viewport.stressProfile = variant.metrics?.stress_profile || null;
       await this.viewport.loadModel(variant.glb_url, { autoFit });
+      this._updateHeatmapLegend(this.viewport.heatmapEnabled, variant);
     } catch (err) {
       console.error("GLB load error:", err);
       this.showToast(`Error cargando modelo 3D: ${err.message}`, true);

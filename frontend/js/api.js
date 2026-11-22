@@ -96,3 +96,35 @@ export async function generateDesign(payload, signal) {
     signal,
   });
 }
+
+/**
+ * Sube un archivo .STEP/.STP a POST /api/analyze-step y retorna StepReferenceAnalysis.
+ */
+export async function analyzeStepFile(file) {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+
+  const response = await fetch(`${API_BASE}/api/analyze-step`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let detail = `Error HTTP ${response.status}`;
+    try {
+      const errBody = await response.json();
+      if (typeof errBody?.detail === "string") {
+        detail = errBody.detail;
+      } else if (Array.isArray(errBody?.detail)) {
+        detail = errBody.detail
+          .map((e) => `${(e.loc || []).slice(1).join(".")}: ${e.msg}`)
+          .join(" | ");
+      }
+    } catch {
+      // ignore json parse error
+    }
+    throw new Error(detail);
+  }
+
+  return response.json();
+}

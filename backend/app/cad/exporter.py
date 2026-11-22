@@ -29,13 +29,18 @@ VARIANT_PBR_STYLES: dict[VariantKind, dict[str, Any]] = {
         "roughnessFactor": 0.32,
     },
     "rounded_truss": {
-        "baseColorFactor": [228, 168, 66, 255],  # Industrial amber-gold titanium
+        "baseColorFactor": [224, 134, 68, 255],  # Industrial bronze-copper alloy
         "metallicFactor": 0.58,
         "roughnessFactor": 0.35,
     },
     "hollow_cobot": {
         "baseColorFactor": [168, 152, 228, 255],  # Satin cobot slate-violet
         "metallicFactor": 0.52,
+        "roughnessFactor": 0.28,
+    },
+    "organic_topopt": {
+        "baseColorFactor": [240, 198, 72, 255],  # Technical titanium-gold SIMP alloy
+        "metallicFactor": 0.68,
         "roughnessFactor": 0.28,
     },
 }
@@ -154,6 +159,7 @@ def load_cached_metadata(
         "organic_ibeam",
         "rounded_truss",
         "hollow_cobot",
+        "organic_topopt",
     )
     for vid in expected_variants:
         if vid not in meta:

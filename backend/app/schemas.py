@@ -7,7 +7,13 @@ from pydantic import BaseModel, Field
 ArmArchitecture = Literal["articulated_6dof", "scara", "delta_rod", "robot_leg"]
 PrintOrientation = Literal["xy_flat", "z_vertical"]
 EndPreset = Literal["nema17", "nema23", "bearing_608", "bearing_6805", "custom"]
-VariantKind = Literal["tapered_solid", "organic_ibeam", "rounded_truss", "hollow_cobot"]
+VariantKind = Literal[
+    "tapered_solid",
+    "organic_ibeam",
+    "rounded_truss",
+    "hollow_cobot",
+    "organic_topopt",
+]
 
 
 class EndInterfaceParams(BaseModel):
@@ -65,6 +71,10 @@ class LinkDesignRequest(BaseModel):
     nozzle_diameter_mm: float = Field(0.4, ge=0.2, le=1.0)
     printer_clearance_mm: float = Field(0.15, ge=0.0, le=0.5)
 
+    # Hito 2: Referencia .STEP opcional y fracción de volumen TopOpt
+    reference_volume_cm3: Optional[float] = Field(None, gt=0.0)
+    topopt_volume_fraction: float = Field(0.52, ge=0.30, le=0.75)
+
 
 class AlertItem(BaseModel):
     level: Literal["info", "warning", "critical"]
@@ -76,6 +86,7 @@ class VariantMetrics(BaseModel):
     volume_cm3: float
     mass_g: float
     mass_savings_pct: float
+    reference_savings_pct: Optional[float] = None
     rotational_inertia_kg_cm2: float
     max_stress_mpa: float
     effective_yield_mpa: float
@@ -86,6 +97,10 @@ class VariantMetrics(BaseModel):
     stiffness_to_weight_score: float
     print_without_supports: bool
     passes_requirements: bool
+    stress_profile: list[float] = Field(
+        default_factory=list,
+        description="Esfuerzo normalizado [0..1] en 12 estaciones de raíz (x=0) a punta (x=L) para mapa de calor 3D",
+    )
 
 
 class VariantResult(BaseModel):
@@ -106,3 +121,20 @@ class GenerateResponse(BaseModel):
     material_name: str
     global_alerts: list[AlertItem] = Field(default_factory=list)
     variants: list[VariantResult]
+
+
+class DetectedHole(BaseModel):
+    center_x_mm: float
+    center_y_mm: float
+    diameter_mm: float
+
+
+class StepReferenceAnalysis(BaseModel):
+    filename: str
+    bbox_length_mm: float
+    bbox_width_mm: float
+    bbox_thickness_mm: float
+    volume_cm3: float
+    detected_holes: list[DetectedHole] = Field(default_factory=list)
+    suggested_request: LinkDesignRequest
+    notes: list[str] = Field(default_factory=list)

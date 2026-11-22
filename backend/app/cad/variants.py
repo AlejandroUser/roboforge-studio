@@ -10,6 +10,7 @@ from build123d import (
     BuildPart,
     BuildSketch,
     Circle,
+    Ellipse,
     Face,
     Line,
     Location,
@@ -24,6 +25,7 @@ from build123d import (
     make_face,
 )
 
+from ..physics.topopt import extract_organic_void_polygons, run_simp_cantilever
 from ..schemas import LinkDesignRequest, VariantKind
 from .base_link import (
     apply_cable_channel,
@@ -306,6 +308,132 @@ def _build_hollow_cobot(req: LinkDesignRequest) -> Part:
     return part
 
 
+def _build_void_face_from_polygon(poly: list[tuple[float, float]]) -> Face | None:
+    """Convert a closed 2D void contour into a smooth build123d Face (Spline with Polygon fallback)."""
+    if len(poly) < 3:
+        return None
+
+    # Deduplicate consecutive / closing duplicate vertices for periodic Spline
+    pts: list[tuple[float, float]] = []
+    for p in poly:
+        if not pts or math.hypot(p[0] - pts[-1][0], p[1] - pts[-1][1]) > 0.25:
+            pts.append((float(p[0]), float(p[1])))
+    if len(pts) >= 2 and math.hypot(pts[0][0] - pts[-1][0], pts[0][1] - pts[-1][1]) <= 0.25:
+        pts.pop()
+    if len(pts) < 3:
+        return None
+
+    # Primary: smooth periodic B-spline loop for organic bionic voids
+    if len(pts) >= 4:
+        try:
+            with BuildSketch(Plane.XY) as sk:
+                with BuildLine():
+                    Spline(pts, periodic=True)
+                make_face()
+            faces = sk.sketch.faces()
+            if faces and faces[0].area > 4.0:
+                return faces[0]
+        except Exception:
+            pass
+
+    # Fallback: filleted polygon
+    try:
+        edge_lens = [
+            math.hypot(
+                pts[(i + 1) % len(pts)][0] - pts[i][0],
+                pts[(i + 1) % len(pts)][1] - pts[i][1],
+            )
+            for i in range(len(pts))
+        ]
+        r_corner = min(2.0, min(edge_lens) * 0.22)
+        with BuildSketch(Plane.XY) as sk:
+            Polygon(*pts, align=None)
+            if r_corner >= 0.35:
+                try:
+                    fillet(sk.vertices(), radius=r_corner)
+                except Exception:
+                    pass
+        faces = sk.sketch.faces()
+        if faces and faces[0].area > 4.0:
+            return faces[0]
+    except Exception:
+        pass
+
+    return None
+
+
+def _build_organic_topopt(req: LinkDesignRequest) -> Part:
+    """Variant 5: Bionic 2D SIMP topology-optimized organic through-voids."""
+    part = create_base_extrusion(req)
+    fillet_r = min(1.8, req.thickness_mm * 0.12)
+    part = safe_fillet(part, get_top_bottom_outer_edges(part, req.thickness_mm), fillet_r)
+
+    x_start, x_end = get_clear_span_bounds(req)
+    span = x_end - x_start
+    hw_fn = make_half_width_fn(req)
+    margin_mm = max(2.8, round_to_nozzle(max(3.2, 6.0 * req.nozzle_diameter_mm), req.nozzle_diameter_mm))
+    cut_height = req.thickness_mm + 4.0
+
+    carved_count = 0
+    if span >= 16.0:
+        try:
+            density_grid = run_simp_cantilever(
+                nx=44,
+                ny=16,
+                volfrac=req.topopt_volume_fraction,
+                penal=3.0,
+                rmin=1.6,
+                n_iter=24,
+            )
+            void_polys = extract_organic_void_polygons(
+                density_grid=density_grid,
+                span_x0=x_start,
+                span_x1=x_end,
+                half_w_fn=hw_fn,
+                margin_mm=margin_mm,
+                threshold=0.42,
+            )
+            for poly in void_polys:
+                face = _build_void_face_from_polygon(poly)
+                if face is None:
+                    continue
+                try:
+                    with BuildPart() as cut_bp:
+                        extrude(face, amount=cut_height / 2.0, both=True)
+                    candidate = part - cut_bp.part
+                    if candidate.is_valid and candidate.volume > 0:
+                        part = candidate
+                        carved_count += 1
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    # Safe organic fallback if SIMP produced no valid voids on an extreme geometry
+    if carved_count == 0 and span >= 16.0:
+        n_ellipses = max(2, min(4, int(span // 32.0) + 1))
+        pitch = span / n_ellipses
+        for i in range(n_ellipses):
+            xm = x_start + (i + 0.5) * pitch
+            rx = max(3.0, pitch * 0.34)
+            ry = max(2.2, hw_fn(xm) - margin_mm)
+            if ry >= 2.2:
+                try:
+                    with BuildSketch(Plane.XY) as sk:
+                        with Location((xm, 0.0)):
+                            Ellipse(rx, ry)
+                    with BuildPart() as cut_bp:
+                        extrude(sk.sketch.faces()[0], amount=cut_height / 2.0, both=True)
+                    candidate = part - cut_bp.part
+                    if candidate.is_valid and candidate.volume > 0:
+                        part = candidate
+                except Exception:
+                    continue
+
+    part = apply_end_features(part, req)
+    return part
+
+
 def _part_metrics(part: Part) -> tuple[float, bool]:
     is_valid = bool(part.is_valid)
     volume_mm3 = float(part.volume) if part.volume and part.volume > 0 else 0.0
@@ -313,7 +441,7 @@ def _part_metrics(part: Part) -> tuple[float, bool]:
 
 
 def generate_all_variants(req: LinkDesignRequest) -> dict[VariantKind, dict[str, Any]]:
-    """Generate all 4 parametric CAD variants and return geometry + metadata."""
+    """Generate all 5 parametric CAD variants and return geometry + metadata."""
     specs: list[tuple[VariantKind, str, str, Any]] = [
         (
             "tapered_solid",
@@ -338,6 +466,12 @@ def generate_all_variants(req: LinkDesignRequest) -> dict[VariantKind, dict[str,
             "Cuerpo Hueco Cobot",
             "Caja de torsión cerrada con ventanas laterales y túnel interno pasacables",
             _build_hollow_cobot,
+        ),
+        (
+            "organic_topopt",
+            "Topología Biónica SIMP",
+            "Vaciados orgánicos optimizados por método SIMP para máxima rigidez por gramo",
+            _build_organic_topopt,
         ),
     ]
 

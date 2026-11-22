@@ -1,21 +1,29 @@
-"""Pytest suite for RoboForge Studio parametric CAD variants and file exporters."""
+"""Pytest suite for RoboForge Studio parametric CAD variants, STEP analyzer, and file exporters."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
+from build123d import export_step
 
 from backend.app.cad.exporter import compute_design_hash, export_variants, load_cached_metadata
-from backend.app.cad.variants import generate_all_variants
+from backend.app.cad.step_analyzer import analyze_step_file
+from backend.app.cad.variants import _build_tapered_solid, generate_all_variants
 from backend.app.schemas import EndInterfaceParams, LinkDesignRequest
 
 
-EXPECTED_VARIANTS = ("tapered_solid", "organic_ibeam", "rounded_truss", "hollow_cobot")
+EXPECTED_VARIANTS = (
+    "tapered_solid",
+    "organic_ibeam",
+    "rounded_truss",
+    "hollow_cobot",
+    "organic_topopt",
+)
 
 
-def test_all_four_variants_build_validly_and_mass_ordering():
-    """All 4 variants must build valid solids with positive volume and genuine mass differences."""
+def test_all_five_variants_build_validly_and_mass_ordering():
+    """All 5 variants must build valid solids with positive volume and genuine mass differences."""
     req = LinkDesignRequest()
     variants = generate_all_variants(req)
 
@@ -32,11 +40,13 @@ def test_all_four_variants_build_validly_and_mass_ordering():
     vol_ibeam = variants["organic_ibeam"]["volume_mm3"]
     vol_truss = variants["rounded_truss"]["volume_mm3"]
     vol_cobot = variants["hollow_cobot"]["volume_mm3"]
+    vol_topopt = variants["organic_topopt"]["volume_mm3"]
 
     # Lightened variants must genuinely remove material compared to the solid baseline
     assert vol_ibeam < vol_solid * 0.92, f"organic_ibeam ({vol_ibeam}) not lighter than solid ({vol_solid})"
     assert vol_truss < vol_solid * 0.90, f"rounded_truss ({vol_truss}) not lighter than solid ({vol_solid})"
     assert vol_cobot < vol_solid * 0.95, f"hollow_cobot ({vol_cobot}) not lighter than solid ({vol_solid})"
+    assert vol_topopt < vol_solid * 0.92, f"organic_topopt ({vol_topopt}) not lighter than solid ({vol_solid})"
 
 
 def test_export_step_stl_glb_and_cache(tmp_path: Path):
@@ -59,6 +69,27 @@ def test_export_step_stl_glb_and_cache(tmp_path: Path):
     cached = load_cached_metadata(design_hash, exports_root=tmp_path)
     assert cached is not None
     assert set(cached.keys()) == set(EXPECTED_VARIANTS)
+
+
+def test_step_analyzer_roundtrip(tmp_path: Path):
+    """Export a known link to .STEP, analyze it, and verify envelope, volume, bores, and suggested request."""
+    req = LinkDesignRequest(length_mm=180.0, thickness_mm=20.0)
+    part = _build_tapered_solid(req)
+    expected_vol_cm3 = part.volume / 1000.0
+
+    step_path = tmp_path / "reference_arm.step"
+    export_step(part, str(step_path))
+
+    analysis = analyze_step_file(step_path, "reference_arm.step")
+
+    assert analysis.filename == "reference_arm.step"
+    assert abs(analysis.volume_cm3 - expected_vol_cm3) < 0.5
+    assert analysis.bbox_length_mm > 200.0
+    assert abs(analysis.bbox_thickness_mm - 20.0) < 0.5
+    assert len(analysis.detected_holes) >= 2
+    assert abs(analysis.suggested_request.length_mm - 180.0) < 1.5
+    assert analysis.suggested_request.reference_volume_cm3 == pytest.approx(analysis.volume_cm3, abs=0.05)
+    assert len(analysis.notes) >= 2
 
 
 @pytest.mark.parametrize(
@@ -95,6 +126,7 @@ def test_export_step_stl_glb_and_cache(tmp_path: Path):
             "tip_width_mm": 36.0,
             "thickness_mm": 32.0,
             "organic_taper": 1.0,
+            "topopt_volume_fraction": 0.45,
             "root_end": EndInterfaceParams(
                 preset="nema23",
                 outer_diameter_mm=68.0,
@@ -108,7 +140,7 @@ def test_export_step_stl_glb_and_cache(tmp_path: Path):
     ],
 )
 def test_edge_case_geometries_build_validly(kwargs):
-    """Short links, straight tapers, and large NEMA23 links must all build validly."""
+    """Short links, straight tapers, and large NEMA23 links must all build validly across 5 variants."""
     req = LinkDesignRequest(**kwargs)
     variants = generate_all_variants(req)
     for vid in EXPECTED_VARIANTS:

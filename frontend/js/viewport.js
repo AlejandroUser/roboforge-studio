@@ -58,6 +58,8 @@ export class Viewport3D {
     this.wireframeEnabled = false;
     this.sectionCutEnabled = false;
     this.sectionCutRatio = 0.5;
+    this.heatmapEnabled = false;
+    this.stressProfile = null;
     this.clipPlaneX = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0);
     this.loadToken = 0;
 
@@ -220,6 +222,7 @@ export class Viewport3D {
         return clone;
       });
       obj.material = Array.isArray(obj.material) ? enhanced : enhanced[0];
+      obj.userData.originalMaterial = obj.material;
     });
 
     // Calcular caja original y reorientar si el eslabón viene acostado en XY (build123d extruye en Z)
@@ -248,11 +251,84 @@ export class Viewport3D {
     return group;
   }
 
+  _stressToRgb(t) {
+    const stops = [
+      [0.0, [0.145, 0.388, 0.922]],  // #2563eb Azul
+      [0.25, [0.024, 0.714, 0.831]], // #06b6d4 Cian
+      [0.5, [0.133, 0.773, 0.369]],  // #22c55e Verde
+      [0.75, [0.918, 0.702, 0.031]], // #eab308 Amarillo
+      [1.0, [0.937, 0.267, 0.267]],  // #ef4444 Rojo
+    ];
+    const clamped = Math.min(Math.max(t, 0), 1);
+    for (let i = 0; i < stops.length - 1; i++) {
+      const [t0, c0] = stops[i];
+      const [t1, c1] = stops[i + 1];
+      if (clamped >= t0 && clamped <= t1) {
+        const f = (clamped - t0) / (t1 - t0);
+        return [
+          c0[0] + (c1[0] - c0[0]) * f,
+          c0[1] + (c1[1] - c0[1]) * f,
+          c0[2] + (c1[2] - c0[2]) * f,
+        ];
+      }
+    }
+    return stops[stops.length - 1][1];
+  }
+
+  _sampleStressProfile(u) {
+    const prof = this.stressProfile;
+    if (!Array.isArray(prof) || prof.length === 0) {
+      return Math.min(Math.max(1 - u, 0), 1);
+    }
+    if (prof.length === 1) return Math.min(Math.max(Number(prof[0]) || 0, 0), 1);
+    const idx = Math.min(Math.max(u, 0), 1) * (prof.length - 1);
+    const i0 = Math.floor(idx);
+    const i1 = Math.min(i0 + 1, prof.length - 1);
+    const frac = idx - i0;
+    const v0 = Number(prof[i0]) || 0;
+    const v1 = Number(prof[i1]) || 0;
+    return Math.min(Math.max(v0 + (v1 - v0) * frac, 0), 1);
+  }
+
+  _applyHeatmapColorsToMesh(mesh, minX, spanX) {
+    const geom = mesh.geometry;
+    const pos = geom?.attributes?.position;
+    if (!pos) return;
+
+    const count = pos.count;
+    let colorAttr = geom.attributes.color;
+    if (!colorAttr || colorAttr.count !== count) {
+      colorAttr = new THREE.BufferAttribute(new Float32Array(count * 3), 3);
+      geom.setAttribute("color", colorAttr);
+    }
+
+    const v = new THREE.Vector3();
+    for (let i = 0; i < count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+      const u = Math.min(Math.max((v.x - minX) / spanX, 0), 1);
+      const stress = this._sampleStressProfile(u);
+      const [r, g, b] = this._stressToRgb(stress);
+      colorAttr.setXYZ(i, r, g, b);
+    }
+    colorAttr.needsUpdate = true;
+
+    if (!mesh.userData.heatmapMaterial) {
+      mesh.userData.heatmapMaterial = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.45,
+        metalness: 0.12,
+      });
+    }
+    mesh.material = mesh.userData.heatmapMaterial;
+  }
+
   _applyMaterialStates() {
     if (!this.activeGroup) return;
 
+    this.activeGroup.updateMatrixWorld(true);
     const minX = this.modelBounds.min.x;
     const maxX = this.modelBounds.max.x;
+    const spanX = Math.max(maxX - minX, 1e-4);
     const pad = 2.0;
     const cutX = minX - pad + (maxX - minX + pad * 2) * this.sectionCutRatio;
     this.clipPlaneX.constant = cutX;
@@ -261,8 +337,16 @@ export class Viewport3D {
 
     this.activeGroup.traverse((obj) => {
       if (!obj.isMesh) return;
+
+      if (this.heatmapEnabled) {
+        this._applyHeatmapColorsToMesh(obj, minX, spanX);
+      } else if (obj.userData.originalMaterial) {
+        obj.material = obj.userData.originalMaterial;
+      }
+
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
       for (const m of mats) {
+        if (!m) continue;
         m.wireframe = this.wireframeEnabled;
         m.clippingPlanes = activePlanes;
         m.clipShadows = this.sectionCutEnabled;
@@ -270,6 +354,14 @@ export class Viewport3D {
         m.needsUpdate = true;
       }
     });
+  }
+
+  setStressHeatmap(enabled, stressProfile = this.stressProfile) {
+    this.heatmapEnabled = Boolean(enabled);
+    if (stressProfile !== undefined) {
+      this.stressProfile = stressProfile;
+    }
+    this._applyMaterialStates();
   }
 
   setWireframe(enabled) {
@@ -330,8 +422,11 @@ export class Viewport3D {
       group.traverse((obj) => {
         if (!obj.isMesh) return;
         obj.geometry?.dispose?.();
-        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-        mats.forEach((m) => m?.dispose?.());
+        const origMats = Array.isArray(obj.userData.originalMaterial)
+          ? obj.userData.originalMaterial
+          : [obj.userData.originalMaterial];
+        origMats.forEach((m) => m?.dispose?.());
+        obj.userData.heatmapMaterial?.dispose?.();
       });
     }
     this.modelCache.clear();

@@ -157,14 +157,18 @@ function clamp(val, min, max, fallback) {
 }
 
 export class ControlsController {
-  constructor({ onArchitectureChange } = {}) {
+  constructor({ onArchitectureChange, onStepFileSelected, onClearStepReference } = {}) {
     this.onArchitectureChange = onArchitectureChange || (() => {});
+    this.onStepFileSelected = onStepFileSelected || (() => {});
+    this.onClearStepReference = onClearStepReference || (() => {});
     this.materialsMap = {};
     this.archPresets = structuredClone(FALLBACK_ARCH_DEFAULTS);
     this.endPresets = structuredClone(FALLBACK_END_PRESETS);
     this.currentArchitecture = "articulated_6dof";
     this.currentOrientation = "xy_flat";
+    this.referenceVolumeCm3 = null;
 
+    this._bindStepUpload();
     this._bindSliders();
     this._bindEndTabs();
     this._bindEndControls("root");
@@ -174,6 +178,117 @@ export class ControlsController {
     this._renderArchitectureGrid();
   }
 
+  _bindStepUpload() {
+    const dropzone = document.getElementById("step-dropzone");
+    const fileInput = document.getElementById("step-file-input");
+    const clearBtn = document.getElementById("btn-clear-step");
+
+    const triggerFile = (file) => {
+      if (!file) return;
+      const lower = file.name.toLowerCase();
+      if (!lower.endsWith(".step") && !lower.endsWith(".stp")) {
+        this.onStepFileSelected(null, "Solo se admiten archivos .STEP o .STP.");
+        return;
+      }
+      this.onStepFileSelected(file, null);
+    };
+
+    dropzone?.addEventListener("click", () => fileInput?.click());
+    dropzone?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        fileInput?.click();
+      }
+    });
+
+    fileInput?.addEventListener("change", () => {
+      const file = fileInput.files?.[0];
+      if (file) triggerFile(file);
+      fileInput.value = "";
+    });
+
+    dropzone?.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropzone.classList.add("dragover");
+    });
+    dropzone?.addEventListener("dragleave", () => {
+      dropzone.classList.remove("dragover");
+    });
+    dropzone?.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropzone.classList.remove("dragover");
+      const file = e.dataTransfer?.files?.[0];
+      if (file) triggerFile(file);
+    });
+
+    clearBtn?.addEventListener("click", () => {
+      this.clearStepReference();
+      this.onClearStepReference();
+    });
+  }
+
+  setStepUploadBusy(busy) {
+    const dropzone = document.getElementById("step-dropzone");
+    dropzone?.classList.toggle("busy", Boolean(busy));
+  }
+
+  setStepReference(analysis) {
+    const card = document.getElementById("step-summary-card");
+    const nameEl = document.getElementById("step-filename");
+    const bboxEl = document.getElementById("step-bbox");
+    const volEl = document.getElementById("step-volume");
+    const holesEl = document.getElementById("step-holes");
+    const notesEl = document.getElementById("step-notes");
+
+    if (!analysis) {
+      this.clearStepReference();
+      return;
+    }
+
+    const refVol = analysis.suggested_request?.reference_volume_cm3 ?? analysis.volume_cm3;
+    this.referenceVolumeCm3 = Number.isFinite(Number(refVol)) && Number(refVol) > 0 ? Number(refVol) : null;
+
+    if (nameEl) nameEl.textContent = analysis.filename || "referencia.step";
+    if (bboxEl) {
+      bboxEl.textContent = `${Math.round(analysis.bbox_length_mm)}×${Math.round(
+        analysis.bbox_width_mm
+      )}×${Math.round(analysis.bbox_thickness_mm)} mm`;
+    }
+    if (volEl) volEl.textContent = `${Number(analysis.volume_cm3 || 0).toFixed(1)} cm³`;
+    if (holesEl) {
+      const holes = analysis.detected_holes || [];
+      if (holes.length) {
+        const diams = holes
+          .slice(0, 2)
+          .map((h) => `Ø${Number(h.diameter_mm).toFixed(1)}`)
+          .join(", ");
+        holesEl.textContent = `${holes.length} (${diams})`;
+      } else {
+        holesEl.textContent = "0";
+      }
+    }
+    if (notesEl) {
+      notesEl.innerHTML = "";
+      for (const note of analysis.notes || []) {
+        const li = document.createElement("li");
+        li.textContent = note;
+        notesEl.appendChild(li);
+      }
+    }
+
+    card?.classList.remove("hidden");
+
+    if (analysis.suggested_request) {
+      this.applyDesignParams(analysis.suggested_request);
+    }
+  }
+
+  clearStepReference() {
+    this.referenceVolumeCm3 = null;
+    const card = document.getElementById("step-summary-card");
+    card?.classList.add("hidden");
+  }
+
   _bindSliders() {
     const sliderConfigs = [
       { id: "length_mm", suffix: " mm", decimals: 0 },
@@ -181,6 +296,7 @@ export class ControlsController {
       { id: "tip_width_mm", suffix: " mm", decimals: 0 },
       { id: "thickness_mm", suffix: " mm", decimals: 0 },
       { id: "organic_taper", suffix: "%", decimals: 0 },
+      { id: "topopt_volume_fraction", suffix: "%", decimals: 0 },
       { id: "printer_clearance_mm", suffix: " mm", decimals: 2 },
     ];
 
@@ -389,7 +505,14 @@ export class ControlsController {
   applyArchitecturePreset(archId) {
     const preset = this.archPresets[archId] || FALLBACK_ARCH_DEFAULTS[archId];
     if (!preset) return;
+    this.applyDesignParams({ ...preset, architecture: archId });
+    this.onArchitectureChange(archId);
+  }
 
+  applyDesignParams(params) {
+    if (!params) return;
+
+    const archId = params.architecture || this.currentArchitecture;
     this.currentArchitecture = archId;
 
     // Actualizar cards activas
@@ -400,50 +523,55 @@ export class ControlsController {
     // Actualizar header pill
     const headerLabel = document.getElementById("header-arch-label");
     if (headerLabel) {
-      headerLabel.textContent = preset.name || ARCH_META[archId]?.label || archId;
+      headerLabel.textContent = ARCH_META[archId]?.label || params.name || archId;
     }
 
     // Geometría
-    this._setInputValue("length_mm", preset.length_mm);
-    this._setInputValue("root_width_mm", preset.root_width_mm);
-    this._setInputValue("tip_width_mm", preset.tip_width_mm);
-    this._setInputValue("thickness_mm", preset.thickness_mm);
-    if (preset.organic_taper !== undefined) {
-      const pct = preset.organic_taper <= 1 ? Math.round(preset.organic_taper * 100) : Math.round(preset.organic_taper);
+    this._setInputValue("length_mm", params.length_mm);
+    this._setInputValue("root_width_mm", params.root_width_mm);
+    this._setInputValue("tip_width_mm", params.tip_width_mm);
+    this._setInputValue("thickness_mm", params.thickness_mm);
+    if (params.organic_taper !== undefined) {
+      const pct = params.organic_taper <= 1 ? Math.round(params.organic_taper * 100) : Math.round(params.organic_taper);
       this._setInputValue("organic_taper", pct);
     }
-    this._setCheckbox("cable_channel", preset.cable_channel);
+    if (params.topopt_volume_fraction !== undefined) {
+      const vfPct =
+        params.topopt_volume_fraction <= 1
+          ? Math.round(params.topopt_volume_fraction * 100)
+          : Math.round(params.topopt_volume_fraction);
+      this._setInputValue("topopt_volume_fraction", vfPct);
+    }
+    this._setCheckbox("cable_channel", params.cable_channel);
 
     // Extremos
-    if (preset.root_end) this._setEndFormValues("root", preset.root_end);
-    if (preset.tip_end) this._setEndFormValues("tip", preset.tip_end);
+    if (params.root_end) this._setEndFormValues("root", params.root_end);
+    if (params.tip_end) this._setEndFormValues("tip", params.tip_end);
 
     // Cargas
-    this._setInputValue("tip_load_n", preset.tip_load_n);
-    this._setInputValue("angular_accel_rad_s2", preset.angular_accel_rad_s2);
-    this._setInputValue("max_deflection_mm", preset.max_deflection_mm);
-    this._setInputValue("target_safety_factor", preset.target_safety_factor);
-    this._setInputValue("operating_temp_c", preset.operating_temp_c);
+    this._setInputValue("tip_load_n", params.tip_load_n);
+    this._setInputValue("angular_accel_rad_s2", params.angular_accel_rad_s2);
+    this._setInputValue("max_deflection_mm", params.max_deflection_mm);
+    this._setInputValue("target_safety_factor", params.target_safety_factor);
+    this._setInputValue("operating_temp_c", params.operating_temp_c);
 
     // Material y manufactura
-    if (preset.material_id && this.materialsMap[preset.material_id]) {
-      this._setInputValue("material_id", preset.material_id);
-      this._renderMaterialBadge(preset.material_id);
+    if (params.material_id && this.materialsMap[params.material_id]) {
+      this._setInputValue("material_id", params.material_id);
+      this._renderMaterialBadge(params.material_id);
     }
-    if (preset.print_orientation) {
-      this.currentOrientation = preset.print_orientation;
+    if (params.print_orientation) {
+      this.currentOrientation = params.print_orientation;
       document.querySelectorAll("[data-orientation]").forEach((p) => {
         p.classList.toggle("active", p.dataset.orientation === this.currentOrientation);
       });
     }
-    if (preset.nozzle_diameter_mm !== undefined) {
-      this._setInputValue("nozzle_diameter_mm", String(preset.nozzle_diameter_mm));
+    if (params.nozzle_diameter_mm !== undefined) {
+      this._setInputValue("nozzle_diameter_mm", String(params.nozzle_diameter_mm));
     }
-    if (preset.printer_clearance_mm !== undefined) {
-      this._setInputValue("printer_clearance_mm", preset.printer_clearance_mm);
+    if (params.printer_clearance_mm !== undefined) {
+      this._setInputValue("printer_clearance_mm", params.printer_clearance_mm);
     }
-
-    this.onArchitectureChange(archId);
   }
 
   _setInputValue(id, value) {
@@ -540,6 +668,14 @@ export class ControlsController {
       print_orientation: this.currentOrientation,
       nozzle_diameter_mm: clamp(document.getElementById("nozzle_diameter_mm")?.value, 0.2, 1.0, 0.4),
       printer_clearance_mm: clamp(document.getElementById("printer_clearance_mm")?.value, 0, 0.5, 0.15),
+
+      reference_volume_cm3: this.referenceVolumeCm3,
+      topopt_volume_fraction: clamp(
+        Number(document.getElementById("topopt_volume_fraction")?.value || 52) / 100,
+        0.3,
+        0.75,
+        0.52
+      ),
     };
   }
 }

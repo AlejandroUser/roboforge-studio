@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import time
+
+import numpy as np
 import pytest
 
 from app.physics.dfm_rules import evaluate_global_alerts
@@ -8,6 +11,7 @@ from app.physics.mechanics import (
     load_materials,
     load_presets,
 )
+from app.physics.topopt import extract_organic_void_polygons, run_simp_cantilever
 from app.schemas import EndInterfaceParams, LinkDesignRequest
 
 
@@ -178,14 +182,77 @@ def test_stiffness_to_weight_score_and_all_variants():
     assert m_ibeam.mass_savings_pct == pytest.approx(35.0, abs=0.2)
     assert m_ibeam.stiffness_to_weight_score > m_solid.stiffness_to_weight_score
 
-    # Ensure all 4 variants evaluate cleanly with positive engineering metrics
-    for variant_id in ("tapered_solid", "organic_ibeam", "rounded_truss", "hollow_cobot"):
+    # Ensure all 5 variants evaluate cleanly with positive engineering metrics
+    for variant_id in (
+        "tapered_solid",
+        "organic_ibeam",
+        "rounded_truss",
+        "hollow_cobot",
+        "organic_topopt",
+    ):
         m, _ = evaluate_variant_metrics(req, variant_id, 60_000.0, m_solid.mass_g, petg_cf)
         assert m.mass_g > 0
         assert m.rotational_inertia_kg_cm2 > 0
         assert m.dynamic_torque_nm > 0
         assert m.estimated_cost_usd > 0
         assert m.stiffness_to_weight_score > 0
+        assert len(m.stress_profile) == 12
+        assert all(0.0 <= s <= 1.0 for s in m.stress_profile)
+        assert m.stress_profile[0] > m.stress_profile[-1]
+        assert m.stress_profile[-1] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_organic_topopt_metrics_and_reference_savings():
+    materials = load_materials()
+    petg_cf = materials["petg_cf"]
+
+    req_no_ref = LinkDesignRequest(material_id="petg_cf", topopt_volume_fraction=0.52)
+    m_truss, _ = evaluate_variant_metrics(req_no_ref, "rounded_truss", 55_000.0, None, petg_cf)
+    m_topopt, _ = evaluate_variant_metrics(req_no_ref, "organic_topopt", 55_000.0, None, petg_cf)
+
+    assert m_topopt.print_without_supports is True
+    assert m_topopt.reference_savings_pct is None
+    assert m_topopt.stiffness_to_weight_score > m_truss.stiffness_to_weight_score
+    assert m_topopt.max_stress_mpa < m_truss.max_stress_mpa
+
+    req_with_ref = req_no_ref.model_copy(update={"reference_volume_cm3": 100.0})
+    m_ref, _ = evaluate_variant_metrics(req_with_ref, "organic_topopt", 60_000.0, None, petg_cf)
+    assert m_ref.reference_savings_pct == pytest.approx(40.0, abs=0.2)
+
+
+def test_simp_cantilever_convergence_and_void_polygons():
+    t0 = time.perf_counter()
+    grid = run_simp_cantilever(nx=44, ny=16, volfrac=0.52, penal=3.0, rmin=1.6, n_iter=24)
+    elapsed = time.perf_counter() - t0
+
+    assert elapsed < 1.2
+    assert grid.shape == (16, 44)
+    assert float(grid.min()) >= 0.001 - 1e-6
+    assert float(grid.max()) <= 1.0 + 1e-6
+    assert float(grid.mean()) == pytest.approx(0.52, abs=0.03)
+    # Clear solid/void separation and vertical symmetry
+    assert np.any(grid < 0.2)
+    assert np.any(grid > 0.8)
+    assert np.allclose(grid, grid[::-1, :], atol=1e-6)
+
+    span_x0, span_x1 = 30.0, 150.0
+    margin_mm = 3.2
+    half_w_fn = lambda x: 19.0 - 0.045 * (x - span_x0)
+
+    polygons = extract_organic_void_polygons(
+        grid,
+        span_x0=span_x0,
+        span_x1=span_x1,
+        half_w_fn=half_w_fn,
+        margin_mm=margin_mm,
+        threshold=0.42,
+    )
+    assert len(polygons) >= 3
+    for poly in polygons:
+        assert len(poly) >= 4
+        for x, y in poly:
+            assert span_x0 - 1e-3 <= x <= span_x1 + 1e-3
+            assert abs(y) <= half_w_fn(x) - margin_mm + 1e-3
 
 
 def test_dfm_geometry_and_nozzle_alerts():

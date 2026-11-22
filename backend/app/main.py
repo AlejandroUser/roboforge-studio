@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import re
+import tempfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,6 +19,7 @@ from .cad.exporter import (
     export_variants,
     load_cached_metadata,
 )
+from .cad.step_analyzer import analyze_step_file
 from .cad.variants import generate_all_variants
 from .physics.dfm_rules import evaluate_global_alerts
 from .physics.mechanics import (
@@ -28,6 +30,7 @@ from .physics.mechanics import (
 from .schemas import (
     GenerateResponse,
     LinkDesignRequest,
+    StepReferenceAnalysis,
     VariantKind,
     VariantResult,
 )
@@ -39,6 +42,7 @@ VARIANT_ORDER: tuple[VariantKind, ...] = (
     "organic_ibeam",
     "rounded_truss",
     "hollow_cobot",
+    "organic_topopt",
 )
 
 HASH_PATTERN = re.compile(r"^[a-f0-9]{8,64}$")
@@ -78,6 +82,43 @@ def get_materials() -> dict[str, Any]:
 @app.get("/api/presets")
 def get_presets() -> dict[str, Any]:
     return load_presets()
+
+
+@app.post("/api/analyze-step", response_model=StepReferenceAnalysis)
+async def analyze_step_upload(file: UploadFile = File(...)) -> StepReferenceAnalysis:
+    filename = file.filename or "referencia.step"
+    ext = Path(filename).suffix.lower()
+    if ext not in {".step", ".stp"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato no soportado. Sube un archivo .STEP o .STP válido.",
+        )
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="El archivo .STEP está vacío.")
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="El archivo .STEP excede el límite de 25 MB.")
+
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+        return analyze_step_file(tmp_path, filename)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"No se pudo analizar la geometría del archivo .STEP: {exc}",
+        ) from exc
+    finally:
+        if tmp_path is not None and tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
 
 
 def _pick_recommended_variant(variants: list[VariantResult]) -> VariantKind:

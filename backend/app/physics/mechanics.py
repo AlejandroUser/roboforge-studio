@@ -18,10 +18,12 @@ KT_BY_VARIANT: dict[VariantKind, float] = {
     "organic_ibeam": 1.25,
     "rounded_truss": 1.35,
     "hollow_cobot": 1.18,
+    "organic_topopt": 1.22,
 }
 
-# Shear efficiency factor for diagonal truss members
+# Shear efficiency factors for lattice / topology-optimized ribs
 TRUSS_SHEAR_EFFICIENCY = 0.82
+TOPOPT_SHEAR_EFFICIENCY = 0.91
 
 
 @lru_cache(maxsize=1)
@@ -73,6 +75,7 @@ def _section_moment_of_inertia(
     h_mm: np.ndarray,
     nozzle_mm: float,
     cable_channel: bool,
+    topopt_volfrac: float = 0.52,
 ) -> np.ndarray:
     """
     Second moment of area I(x) in mm^4 for each structural variant.
@@ -94,6 +97,14 @@ def _section_moment_of_inertia(
         inertia = TRUSS_SHEAR_EFFICIENCY * (
             b_mm * (np.power(h_mm, 3) - np.power(inner_h, 3))
         ) / 12.0
+    elif variant_id == "organic_topopt":
+        # SIMP concentrates material along outer load paths and principal-stress ribs
+        chord_ratio = 0.14 + 0.18 * float(np.clip(topopt_volfrac, 0.30, 0.75))
+        t_c = np.minimum(h_mm * 0.34, np.maximum(t_min, chord_ratio * h_mm))
+        inner_h = np.maximum(0.0, h_mm - 2.0 * t_c)
+        inertia = TOPOPT_SHEAR_EFFICIENCY * (
+            b_mm * (np.power(h_mm, 3) - np.power(inner_h, 3))
+        ) / 12.0
     elif variant_id == "hollow_cobot":
         t_wall = np.minimum(
             np.minimum(b_mm * 0.28, h_mm * 0.28),
@@ -106,7 +117,7 @@ def _section_moment_of_inertia(
         raise ValueError(f"Unsupported variant_id: {variant_id}")
 
     # Internal cable routing slightly reduces core inertia near the neutral axis
-    if cable_channel and variant_id != "rounded_truss":
+    if cable_channel and variant_id not in ("rounded_truss", "organic_topopt"):
         inertia = inertia * 0.96
 
     return np.maximum(inertia, 1e-3)
@@ -130,7 +141,7 @@ def _print_without_supports(
 ) -> bool:
     if material.get("category") == "cnc":
         return True
-    if variant_id == "tapered_solid":
+    if variant_id in ("tapered_solid", "organic_topopt"):
         return True
     if variant_id in ("organic_ibeam", "rounded_truss"):
         return req.print_orientation == "xy_flat"
@@ -175,6 +186,13 @@ def evaluate_variant_metrics(
     else:
         mass_savings_pct = 0.0
 
+    reference_savings_pct: float | None = None
+    if req.reference_volume_cm3 is not None and req.reference_volume_cm3 > 0.0:
+        reference_savings_pct = round(
+            ((req.reference_volume_cm3 - volume_cm3) / req.reference_volume_cm3) * 100.0,
+            1,
+        )
+
     # Anisotropic mechanical properties based on build orientation
     if req.print_orientation == "z_vertical":
         youngs_eff_mpa = float(material["youngs_z_mpa"])
@@ -206,6 +224,7 @@ def evaluate_variant_metrics(
         h_mm=h_profile,
         nozzle_mm=float(req.nozzle_diameter_mm),
         cable_channel=req.cable_channel,
+        topopt_volfrac=float(req.topopt_volume_fraction),
     )
 
     # Bending moment M(s) in N*mm at distance s from tip
@@ -216,11 +235,20 @@ def evaluate_variant_metrics(
     integrand = (m_profile * s) / (youngs_eff_mpa * i_profile)
     tip_deflection_mm = _simpson_integrate(integrand, ds)
 
-    # Maximum bending stress at root (s = L, last element)
-    m_max_n_mm = float(m_profile[-1])
-    i_root_mm4 = float(i_profile[-1])
+    # Maximum bending stress at root (s = L, last element) and 12-station normalized stress profile
     kt = KT_BY_VARIANT[variant_id]
-    max_stress_mpa = kt * (m_max_n_mm * (float(req.root_width_mm) / 2.0)) / i_root_mm4
+    sigma_profile_s = kt * (m_profile * (h_profile / 2.0)) / i_profile
+    max_stress_mpa = float(sigma_profile_s[-1])
+    sigma_peak = float(np.max(sigma_profile_s))
+    sigma_norm_s = np.clip(sigma_profile_s / max(sigma_peak, 1e-9), 0.0, 1.0)
+    # Map from s (tip->root) to x (root->tip) at 12 evenly spaced stations
+    x_from_root = length_mm - s[::-1]
+    sigma_root_to_tip = sigma_norm_s[::-1]
+    x_stations = np.linspace(0.0, length_mm, 12)
+    stress_profile = [
+        round(float(val), 3)
+        for val in np.interp(x_stations, x_from_root, sigma_root_to_tip)
+    ]
 
     safety_factor = yield_eff_mpa / max(max_stress_mpa, 1e-6)
 
@@ -305,6 +333,7 @@ def evaluate_variant_metrics(
         volume_cm3=round(volume_cm3, 2),
         mass_g=round(mass_g, 2),
         mass_savings_pct=round(mass_savings_pct, 1),
+        reference_savings_pct=reference_savings_pct,
         rotational_inertia_kg_cm2=round(rotational_inertia_kg_cm2, 2),
         max_stress_mpa=round(max_stress_mpa, 2),
         effective_yield_mpa=round(yield_eff_mpa, 2),
@@ -315,5 +344,6 @@ def evaluate_variant_metrics(
         stiffness_to_weight_score=round(stiffness_to_weight_score, 2),
         print_without_supports=no_supports,
         passes_requirements=passes_requirements,
+        stress_profile=stress_profile,
     )
     return metrics, alerts
