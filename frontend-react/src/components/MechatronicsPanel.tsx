@@ -686,6 +686,16 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
               </div>
 
               <div className="dl-row modular-dl-row">
+                {files?.stl_parts_zip && (
+                  <a
+                    className="dl-link dl-zip"
+                    href={files.stl_parts_zip}
+                    download
+                    title="Todas las piezas imprimibles separadas y planas en .STL (listo para SatelLite / Chitubox / Cura / Bambu)"
+                  >
+                    ★ Piezas Separadas (.STL · ZIP)
+                  </a>
+                )}
                 {calibrationStlUrl && (
                   <a
                     className="dl-link dl-zip"
@@ -702,6 +712,24 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
                   </a>
                 )}
               </div>
+
+              {/* Individual flat-oriented .STL buttons per printable part */}
+              {files && Object.keys(files).some((k) => k.startsWith("part_stl_")) && (
+                <div style={{ marginTop: 6 }}>
+                  <small style={{ color: "#94a3b8", display: "block", marginBottom: 4 }}>
+                    Descargar pieza individual (.STL plano sobre Z=0):
+                  </small>
+                  <div className="dl-row">
+                    {Object.entries(files)
+                      .filter(([k]) => k.startsWith("part_stl_"))
+                      .map(([k, url]) => (
+                        <a key={k} className="dl-link" href={url} download>
+                          {k.replace(/^part_stl_/, "")}.stl
+                        </a>
+                      ))}
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <div className="mech-empty">

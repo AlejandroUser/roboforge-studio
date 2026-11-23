@@ -267,6 +267,19 @@ def generate_print_readiness_pack(
     total_filament_g = 0.0
     total_hours = 0.0
 
+    # 2b. Export individual flat-oriented .STL per printable part + arm_stl_parts_pack.zip
+    # (ideal for Elegoo SatelLite, Chitubox, Lychee, Cura, and single-part re-prints)
+    stl_parts_zip_path = output_dir / "arm_stl_parts_pack.zip"
+    with zipfile.ZipFile(stl_parts_zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf_stl:
+        for part_name, mesh, _, _ in oriented_items:
+            safe_part = "".join(c if (c.isalnum() or c == "_") else "_" for c in part_name).strip("_") or "part"
+            part_stl_name = f"part_{safe_part}.stl"
+            part_stl_path = output_dir / part_stl_name
+            mesh.export(str(part_stl_path), file_type="stl")
+            exported_files[f"part_stl_{safe_part}"] = part_stl_path
+            zf_stl.write(part_stl_path, arcname=part_stl_name)
+    exported_files["stl_parts_zip"] = stl_parts_zip_path
+
     for p_idx, p_items in enumerate(plates_meshes, start=1):
         plate_filename = f"build_plate_{p_idx}.3mf"
         plate_path = output_dir / plate_filename
