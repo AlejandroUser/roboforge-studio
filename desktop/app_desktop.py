@@ -16,6 +16,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# Direct import ensures PyInstaller traces the entire FastAPI + CAD + Physics backend
+from backend.app.main import app as roboforge_app  # noqa: E402
+
 
 def _find_free_port(preferred: int = 8765) -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -26,7 +29,7 @@ def _find_free_port(preferred: int = 8765) -> int:
         return int(s.getsockname()[1])
 
 
-def _wait_for_server(url: str, timeout_s: float = 20.0) -> bool:
+def _wait_for_server(url: str, timeout_s: float = 25.0) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         try:
@@ -42,23 +45,24 @@ def main() -> None:
     port = _find_free_port(8765)
     base_url = f"http://127.0.0.1:{port}"
 
+    # log_config=None prevents uvicorn from calling sys.stdout.isatty() in PyInstaller --windowed mode
     config = uvicorn.Config(
-        "backend.app.main:app",
+        roboforge_app,
         host="127.0.0.1",
         port=port,
         log_level="warning",
+        log_config=None,
     )
     server = uvicorn.Server(config)
 
     server_thread = threading.Thread(target=server.run, daemon=True)
     server_thread.start()
 
-    if not _wait_for_server(base_url, timeout_s=20.0):
-        print("Error: el servidor interno de RoboForge Studio no respondió a tiempo.", file=sys.stderr)
+    if not _wait_for_server(base_url, timeout_s=25.0):
         sys.exit(1)
 
-    window = webview.create_window(
-        title="RoboForge Studio — Ingeniería Computacional CAD",
+    webview.create_window(
+        title="RoboForge Studio Pro v2.0 — Ingeniería Computacional CAD",
         url=base_url,
         width=1480,
         height=920,
