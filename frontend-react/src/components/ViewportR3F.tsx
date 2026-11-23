@@ -66,12 +66,14 @@ function LoadedModel({
 
         root.traverse((obj: any) => {
           if (!obj.isMesh) return;
+          if (obj.geometry && !obj.geometry.attributes?.normal) {
+            obj.geometry.computeVertexNormals();
+          }
           if (isFeaMesh || obj.geometry?.attributes?.color) {
-            obj.material = new THREE.MeshStandardMaterial({
+            obj.geometry?.computeVertexNormals?.();
+            obj.material = new THREE.MeshBasicMaterial({
               color: 0xffffff,
               vertexColors: true,
-              roughness: 0.42,
-              metalness: 0.12,
               side: THREE.DoubleSide,
             });
           }
@@ -170,15 +172,19 @@ function SecondaryGhostModel({
       root.position.y -= box.min.y;
       const mat = new THREE.MeshStandardMaterial({
         color: colorHex,
-        metalness: 0.25,
-        roughness: 0.45,
+        emissive: colorHex,
+        emissiveIntensity: 0.22,
+        metalness: 0.15,
+        roughness: 0.55,
         transparent: true,
         opacity,
         depthWrite: opacity > 0.5,
         side: THREE.DoubleSide,
       });
       root.traverse((obj: any) => {
-        if (obj.isMesh) obj.material = mat;
+        if (!obj.isMesh) return;
+        obj.geometry?.computeVertexNormals?.();
+        obj.material = mat;
       });
       const wrap = new THREE.Group();
       wrap.position.z = offsetZ;
