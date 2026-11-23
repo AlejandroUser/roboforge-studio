@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 import urllib.request
+import webbrowser
 from pathlib import Path
 
 import uvicorn
@@ -42,7 +43,8 @@ def _wait_for_server(url: str, timeout_s: float = 25.0) -> bool:
 
 
 def main() -> None:
-    port = _find_free_port(8765)
+    web_mode = "--web" in sys.argv
+    port = _find_free_port(8000 if web_mode else 8765)
     base_url = f"http://127.0.0.1:{port}"
 
     # log_config=None prevents uvicorn from calling sys.stdout.isatty() in PyInstaller --windowed mode
@@ -58,11 +60,27 @@ def main() -> None:
     server_thread = threading.Thread(target=server.run, daemon=True)
     server_thread.start()
 
-    if not _wait_for_server(base_url, timeout_s=25.0):
+    if not _wait_for_server(base_url, timeout_s=30.0):
         sys.exit(1)
 
+    if web_mode:
+        print(f"[RoboForge] Servidor listo en {base_url} (Ctrl+C para cerrar)")
+        webbrowser.open(base_url)
+        try:
+            while server_thread.is_alive():
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            server.should_exit = True
+            server_thread.join(timeout=3.0)
+        return
+
+    # Enable file downloads (.STL, .3MF, .STEP, .ZIP, .INO, .MD) inside pywebview/WebView2
+    webview.settings["ALLOW_DOWNLOADS"] = True
+
     webview.create_window(
-        title="RoboForge Studio Pro v2.0 — Ingeniería Computacional CAD",
+        title="RoboForge Studio Pro v7.0 — Ingeniería Computacional CAD",
         url=base_url,
         width=1480,
         height=920,
