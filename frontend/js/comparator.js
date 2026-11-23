@@ -140,6 +140,15 @@ export class ComparatorController {
           <span class="metric-val">${fmt(feaResult.max_displacement_mm, 2)}</span>
           <span class="metric-sub">mm máx.</span>
         </div>
+        ${
+          feaResult.first_natural_freq_hz != null
+            ? `<div class="metric-cell">
+          <span class="metric-label">Modal f₁</span>
+          <span class="metric-val ${feaResult.first_natural_freq_hz >= 45 ? "good" : "warn"}">${fmt(feaResult.first_natural_freq_hz, 1)} Hz</span>
+          <span class="metric-sub">${feaResult.is_orthotropic ? "Ortotrópico 6×6" : "Isotrópico"}</span>
+        </div>`
+            : ""
+        }
       </div>
 
       <div class="fea-card-actions" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">

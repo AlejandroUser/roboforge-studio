@@ -96,6 +96,7 @@ class RoboForgeApp {
     });
 
     this._bindHeaderActions();
+    this._bindProjectPersistence();
     this._bindViewportToolbar();
     this._bindProfileModal();
     this._bindCopilot();
@@ -198,6 +199,56 @@ class RoboForgeApp {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
         this.runGeneration();
+      }
+    });
+  }
+
+  _bindProjectPersistence() {
+    const btnSave = document.getElementById("btn-save-project");
+    const btnOpen = document.getElementById("btn-open-project");
+    const fileInput = document.getElementById("project-file-input");
+
+    btnSave?.addEventListener("click", () => {
+      const project = {
+        format: "roboforge-project",
+        version: "2.0",
+        saved_at: new Date().toISOString(),
+        active_family: this.activeFamily,
+        links: this.controls.getPayload(),
+        mounts: this.controls.getMountPayload(),
+        gears: this.controls.getGearPayload(),
+        arm: this.controls.getArmPayload(),
+      };
+      const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `roboforge_${this.activeFamily}_${Date.now()}.rforge`;
+      a.click();
+      URL.revokeObjectURL(url);
+      this.showToast("Proyecto guardado en formato .rforge", false);
+    });
+
+    btnOpen?.addEventListener("click", () => fileInput?.click());
+    fileInput?.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      fileInput.value = "";
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (data.format !== "roboforge-project") {
+          throw new Error("Archivo .rforge inválido");
+        }
+        if (data.links) this.controls.applyDesignParams(data.links);
+        if (data.mounts) this.controls.applyMountPreset(data.mounts.actuator_type || "nema17");
+        if (data.gears) this.controls.applyGearPreset(data.gears.preset || "spur_nema17");
+        if (data.arm) this.controls.applyArmPreset(data.arm.preset || "parol6_desktop");
+        const targetFam = data.active_family || "links";
+        await this.switchFamily(targetFam);
+        this.showToast(`Proyecto ${file.name} cargado correctamente.`, false);
+      } catch (err) {
+        this.showToast(`No se pudo abrir el proyecto: ${err.message}`, true);
       }
     });
   }

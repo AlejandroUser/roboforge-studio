@@ -178,6 +178,8 @@ class FEAResult(BaseModel):
     effective_yield_mpa: float
     fea_safety_factor: float
     passes_fea: bool
+    is_orthotropic: bool = True
+    first_natural_freq_hz: Optional[float] = None
     fea_glb_url: str
     notes: list[str] = Field(default_factory=list)
 

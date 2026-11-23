@@ -135,6 +135,57 @@ def _elasticity_matrix_3d(youngs_mpa: float, nu: float = POISSON_RATIO) -> np.nd
     return d_mat
 
 
+def _orthotropic_elasticity_matrix_3d(
+    youngs_xy_mpa: float,
+    youngs_z_mpa: float,
+    print_orientation: str = "xy_flat",
+    nu_xy: float = POISSON_RATIO,
+) -> tuple[np.ndarray, bool]:
+    """
+    Transversely isotropic (orthotropic) 3D stiffness tensor D (6x6, MPa)
+    for layered FDM/anisotropic materials.
+    - xy_flat: layers in XY plane, weak build axis along Z.
+    - z_vertical: weak build axis aligned with X (longitudinal span).
+    Falls back cleanly to isotropic if E_xy == E_z.
+    """
+    e_p = max(float(youngs_xy_mpa), 100.0)
+    e_t = max(float(youngs_z_mpa), 100.0)
+    if abs(e_p - e_t) / max(e_p, e_t) < 0.02:
+        return _elasticity_matrix_3d(e_p, nu_xy), False
+
+    # Thermodynamically stable out-of-plane Poisson ratio
+    nu_pt = min(0.30, 0.42 * np.sqrt(e_p / e_t) * (e_t / e_p))
+    nu_tp = nu_pt * (e_t / e_p)
+    g_p = e_p / (2.0 * (1.0 + nu_xy))
+    g_t = (e_p * e_t) / (e_p + e_t + 2.0 * nu_pt * e_t)
+
+    # Compliance matrix S in Voigt order [xx, yy, zz, xy, yz, xz] (Z = weak axis)
+    s_mat = np.zeros((6, 6), dtype=np.float64)
+    s_mat[0, 0] = 1.0 / e_p
+    s_mat[1, 1] = 1.0 / e_p
+    s_mat[2, 2] = 1.0 / e_t
+    s_mat[0, 1] = s_mat[1, 0] = -nu_xy / e_p
+    s_mat[0, 2] = s_mat[2, 0] = -nu_tp / e_t
+    s_mat[1, 2] = s_mat[2, 1] = -nu_tp / e_t
+    s_mat[3, 3] = 1.0 / g_p
+    s_mat[4, 4] = 1.0 / g_t
+    s_mat[5, 5] = 1.0 / g_t
+
+    d_mat = np.linalg.inv(s_mat)
+
+    # If printed vertically along X, swap X <-> Z in Voigt indices:
+    # [xx, yy, zz, xy, yz, xz] -> [zz, yy, xx, yz, xy, xz] (perm = [2, 1, 0, 4, 3, 5])
+    if print_orientation == "z_vertical":
+        perm = [2, 1, 0, 4, 3, 5]
+        d_mat = d_mat[np.ix_(perm, perm)]
+
+    # Verify positive definiteness
+    if np.min(np.linalg.eigvalsh(0.5 * (d_mat + d_mat.T))) <= 0.0:
+        return _elasticity_matrix_3d(min(e_p, e_t), nu_xy), False
+
+    return d_mat, True
+
+
 def _von_mises_colormap(values: np.ndarray, vmax: float) -> np.ndarray:
     """
     Map scalar stress values in [0, vmax] to RGBA uint8 colors along the
@@ -179,6 +230,10 @@ def _solve_tet4_and_export(
     variant_id: str,
     notes: list[str],
     t0: float,
+    youngs_xy_mpa: float | None = None,
+    youngs_z_mpa: float | None = None,
+    density_g_cm3: float = 1.29,
+    print_orientation: str = "xy_flat",
 ) -> FEAResult:
     """
     Shared vectorized 3D Tet4 linear elasticity solver, nodal Von Mises post-processor,
@@ -222,7 +277,9 @@ def _solve_tet4_and_export(
         b_mat[:, 5, c0] = gz
         b_mat[:, 5, c2] = gx
 
-    d_mat = _elasticity_matrix_3d(youngs_eff_mpa, POISSON_RATIO)
+    e_xy = float(youngs_xy_mpa) if youngs_xy_mpa is not None else float(youngs_eff_mpa)
+    e_z = float(youngs_z_mpa) if youngs_z_mpa is not None else float(youngs_eff_mpa)
+    d_mat, is_orthotropic = _orthotropic_elasticity_matrix_3d(e_xy, e_z, print_orientation, POISSON_RATIO)
     db_mat = np.einsum("ij,ejk->eik", d_mat, b_mat)  # (E, 6, 12)
     ke = np.einsum("eji,ejk->eik", b_mat, db_mat) * vols[:, None, None]  # (E, 12, 12)
 
@@ -248,6 +305,25 @@ def _solve_tet4_and_export(
 
     if not np.all(np.isfinite(u_vec)):
         raise RuntimeError("FEM linear system produced non-finite displacements.")
+
+    # 3D Modal Analysis: 1st natural frequency (Hz) using lumped nodal mass matrix
+    # Consistent units: mm, N, MPa (N/mm²), mass in tonne (1 g/cm³ = 1e-9 tonne/mm³)
+    first_natural_freq_hz: float | None = None
+    try:
+        from scipy.sparse.linalg import eigsh
+
+        rho_tonne_mm3 = max(float(density_g_cm3), 0.1) * 1e-9
+        nodal_mass = np.zeros(n_nodes, dtype=np.float64)
+        elem_node_mass = (vols * rho_tonne_mm3) / 4.0
+        for k in range(4):
+            np.add.at(nodal_mass, tets[:, k], elem_node_mass)
+        m_diag = np.repeat(np.maximum(nodal_mass, 1e-18), 3)
+        m_ff = sparse.diags(m_diag[free_dofs], format="csc")
+        eigvals, _ = eigsh(k_ff, k=1, M=m_ff, sigma=0.0, which="LM", tol=1e-2, maxiter=200)
+        if len(eigvals) > 0 and np.isfinite(eigvals[0]) and eigvals[0] > 0.0:
+            first_natural_freq_hz = round(float(np.sqrt(eigvals[0]) / (2.0 * np.pi)), 1)
+    except Exception:
+        first_natural_freq_hz = None
 
     u_nodes = u_vec.reshape((n_nodes, 3))
     max_displacement_mm = float(np.max(np.linalg.norm(u_nodes, axis=1)))
@@ -317,9 +393,21 @@ def _solve_tet4_and_export(
     mesh.export(str(output_glb_path), file_type="glb")
 
     solve_time_s = time.perf_counter() - t0
-    notes.append(
-        f"Malla Tet4 generada con Gmsh (h={mesh_size_mm:.1f} mm, E={youngs_eff_mpa:.0f} MPa, ν={POISSON_RATIO})."
+    tensor_label = (
+        f"tensor ortotrópico 6×6 (Exy={e_xy:.0f} / Ez={e_z:.0f} MPa, {print_orientation})"
+        if is_orthotropic
+        else f"tensor isotrópico (E={e_xy:.0f} MPa)"
     )
+    notes.append(f"Malla Tet4 Gmsh (h={mesh_size_mm:.1f} mm, {tensor_label}).")
+    if first_natural_freq_hz is not None:
+        if first_natural_freq_hz < 45.0:
+            notes.append(
+                f"⚠ Análisis Modal: 1ª frecuencia natural baja ({first_natural_freq_hz:.1f} Hz < 45 Hz) — riesgo de resonancia con motores paso a paso."
+            )
+        else:
+            notes.append(
+                f"Análisis Modal: 1ª frecuencia natural f₁ = {first_natural_freq_hz:.1f} Hz (rigidez dinámica saludable)."
+            )
     if passes_fea:
         notes.append(
             f"Validación FEA aprobada: FS={fea_safety_factor:.2f} (≥ {target_safety_factor:.2f}) y δ={max_displacement_mm:.3f} mm (≤ {max_deflection_mm:.2f} mm)."
@@ -332,7 +420,11 @@ def _solve_tet4_and_export(
     return FEAResult(
         design_hash=design_hash,
         variant_id=variant_id,
-        solver_name="Gmsh Tet4 + SciPy Sparse 3D Linear Elasticity FEM",
+        solver_name=(
+            "Gmsh Tet4 + FEM 3D Ortotrópico 6×6 + Modal"
+            if is_orthotropic
+            else "Gmsh Tet4 + FEM 3D Isotrópico + Modal"
+        ),
         node_count=int(n_nodes),
         element_count=int(n_elems),
         solve_time_s=round(solve_time_s, 3),
@@ -342,6 +434,8 @@ def _solve_tet4_and_export(
         effective_yield_mpa=round(yield_eff_mpa, 2),
         fea_safety_factor=round(fea_safety_factor, 2),
         passes_fea=passes_fea,
+        is_orthotropic=is_orthotropic,
+        first_natural_freq_hz=first_natural_freq_hz,
         fea_glb_url=f"/api/files/{design_hash}/{output_glb_path.name}",
         notes=notes,
     )
@@ -424,6 +518,10 @@ def run_step_fea(
         load_axis=load_axis,
         youngs_eff_mpa=youngs_eff_mpa,
         yield_eff_mpa=yield_eff_mpa,
+        youngs_xy_mpa=float(material["youngs_xy_mpa"]),
+        youngs_z_mpa=float(material["youngs_z_mpa"]),
+        density_g_cm3=float(material.get("density_g_cm3", 1.29)),
+        print_orientation=req.print_orientation,
         target_safety_factor=float(req.target_safety_factor),
         max_deflection_mm=float(req.max_deflection_mm),
         mesh_size_mm=mesh_size_mm,
@@ -513,6 +611,10 @@ def run_mount_fea(
         load_axis=load_axis,
         youngs_eff_mpa=youngs_eff_mpa,
         yield_eff_mpa=yield_eff_mpa,
+        youngs_xy_mpa=float(material["youngs_xy_mpa"]),
+        youngs_z_mpa=float(material["youngs_z_mpa"]),
+        density_g_cm3=float(material.get("density_g_cm3", 1.29)),
+        print_orientation=req.print_orientation,
         target_safety_factor=float(req.target_safety_factor),
         max_deflection_mm=float(req.max_deflection_mm),
         mesh_size_mm=mesh_size_mm,
@@ -606,6 +708,10 @@ def run_gear_fea(
         load_axis=load_axis,
         youngs_eff_mpa=youngs_eff_mpa,
         yield_eff_mpa=yield_eff_mpa,
+        youngs_xy_mpa=float(material["youngs_xy_mpa"]),
+        youngs_z_mpa=float(material["youngs_z_mpa"]),
+        density_g_cm3=float(material.get("density_g_cm3", 1.29)),
+        print_orientation=req.print_orientation,
         target_safety_factor=float(req.target_safety_factor),
         max_deflection_mm=max_allowable_deflection,
         mesh_size_mm=mesh_size_mm,

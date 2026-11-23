@@ -67,6 +67,14 @@
           <span id="status-text">Conectando...</span>
         </div>
 
+        <button type="button" class="tool-btn" id="btn-save-project" title="Guardar proyecto completo (.rforge)">
+          Guardar .rforge
+        </button>
+        <button type="button" class="tool-btn" id="btn-open-project" title="Abrir proyecto guardado (.rforge)">
+          Abrir
+        </button>
+        <input type="file" id="project-file-input" accept=".rforge,.json" hidden />
+
         <button type="button" class="btn-primary" id="btn-generate" title="Generar variantes (Ctrl+Enter)">
           <svg class="btn-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <path d="M10 2.5L11.8 7.2L16.5 9L11.8 10.8L10 15.5L8.2 10.8L3.5 9L8.2 7.2L10 2.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
