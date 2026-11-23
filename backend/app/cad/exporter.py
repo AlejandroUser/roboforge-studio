@@ -329,19 +329,38 @@ def build_arm_manufacturing_zip(
     included_files: list[Path],
     zip_filename: str = "arm_manufacturing_pack.zip",
 ) -> Path:
-    """Package individual part STEP/3MF files, full arm STEP, URDF, MuJoCo XML, and BOM CSV into a ZIP."""
+    """Package individual part STEP/3MF files, full arm STEP, URDF, MuJoCo XML, electronics & BOM into a clean ZIP."""
     out_dir.mkdir(parents=True, exist_ok=True)
     zip_path = out_dir / zip_filename
     seen_names: set[str] = set()
 
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        included_list: list[str] = []
         for fp in included_files:
             if not (fp.exists() and fp.is_file() and fp.stat().st_size > 0):
+                continue
+            # Avoid nesting the separate 3D-parts ZIP inside the manufacturing ZIP
+            if fp.name == "arm_stl_parts_pack.zip" or fp.name == zip_filename:
                 continue
             arcname = fp.name
             if arcname in seen_names:
                 continue
             seen_names.add(arcname)
             zf.write(fp, arcname=arcname)
+            included_list.append(arcname)
+
+        readme_lines = [
+            "# Kit de Manufactura e Ingeniería — RoboForge Studio Pro v7.0",
+            "",
+            "Este paquete contiene los archivos CAD editables (`.STEP`), simulación (`.URDF`/`.XML`),",
+            "electrónica (`.SVG`/`.YML`/`.INO`/`.JSON`), lista de compras (`BOM .CSV`) y guía de impresión.",
+            "",
+            "*(Para imprimir pieza por pieza en SatelLite / Chitubox / Cura, usa también el paquete dedicado `arm_stl_parts_pack.zip`.)*",
+            "",
+            "## Archivos incluidos",
+            *[f"- `{name}`" for name in sorted(included_list)],
+            "",
+        ]
+        zf.writestr("00_LEEME_KIT_MANUFACTURA.md", "\n".join(readme_lines))
 
     return zip_path

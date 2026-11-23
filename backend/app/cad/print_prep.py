@@ -266,19 +266,16 @@ def generate_print_readiness_pack(
     plate_infos: list[PrintPlateInfo] = []
     total_filament_g = 0.0
     total_hours = 0.0
+    individual_stl_entries: list[tuple[str, Path, tuple[float, float, float]]] = []
 
-    # 2b. Export individual flat-oriented .STL per printable part + arm_stl_parts_pack.zip
-    # (ideal for Elegoo SatelLite, Chitubox, Lychee, Cura, and single-part re-prints)
-    stl_parts_zip_path = output_dir / "arm_stl_parts_pack.zip"
-    with zipfile.ZipFile(stl_parts_zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf_stl:
-        for part_name, mesh, _, _ in oriented_items:
-            safe_part = "".join(c if (c.isalnum() or c == "_") else "_" for c in part_name).strip("_") or "part"
-            part_stl_name = f"part_{safe_part}.stl"
-            part_stl_path = output_dir / part_stl_name
-            mesh.export(str(part_stl_path), file_type="stl")
-            exported_files[f"part_stl_{safe_part}"] = part_stl_path
-            zf_stl.write(part_stl_path, arcname=part_stl_name)
-    exported_files["stl_parts_zip"] = stl_parts_zip_path
+    # 2b. Export individual flat-oriented .STL per printable part
+    for part_name, mesh, size, _ in oriented_items:
+        safe_part = "".join(c if (c.isalnum() or c == "_") else "_" for c in part_name).strip("_") or "part"
+        part_stl_name = f"part_{safe_part}.stl"
+        part_stl_path = output_dir / part_stl_name
+        mesh.export(str(part_stl_path), file_type="stl")
+        exported_files[f"part_stl_{safe_part}"] = part_stl_path
+        individual_stl_entries.append((part_name, part_stl_path, size))
 
     for p_idx, p_items in enumerate(plates_meshes, start=1):
         plate_filename = f"build_plate_{p_idx}.3mf"
@@ -360,6 +357,38 @@ def generate_print_readiness_pack(
     guide_path = output_dir / "PRINT_GUIDE.md"
     guide_path.write_text(guide_md, encoding="utf-8")
     exported_files["print_guide_md"] = guide_path
+
+    # 5. Build cleanly organized 3D-Printing Parts Pack ZIP (separated from Manufacturing/Engineering Kit)
+    parts_table_rows = "\n".join(
+        f"| `{fp.name}` | {sx:.1f} × {sy:.1f} × {sz:.1f} mm | Plana sobre `Z = 0` |"
+        for _, fp, (sx, sy, sz) in individual_stl_entries
+    )
+    parts_readme = f"""# Paquete de Piezas para Impresión 3D — RoboForge Studio Pro v7.0
+
+## Estructura de Carpetas
+- **`01_CALIBRACION_15MIN/`** — Imprime primero `calibration_fit_test.stl` (66 × 34 × 7 mm) para validar tornillos M3/M4 y ejes antes de imprimir el brazo.
+- **`02_PIEZAS_STL_SEPARADAS/`** — Las {len(individual_stl_entries)} piezas imprimibles individuales en `.STL` ya orientadas planas sobre `Z = 0` (listo para **SatelLite, Chitubox, Lychee, Cura, Bambu Studio, PrusaSlicer**).
+- **`03_PLATOS_3MF_SLICER/`** — Platos multi-objeto `.3MF` empaquetados para cama `{printer_name}` ({bed_x:.0f} × {bed_y:.0f} mm) + `PRINT_GUIDE.md`.
+
+## Piezas Incluidas ({len(individual_stl_entries)} archivos .STL)
+| Archivo | Dimensiones (X × Y × Z) | Orientación |
+| :--- | :---: | :--- |
+{parts_table_rows}
+"""
+    stl_parts_zip_path = output_dir / "arm_stl_parts_pack.zip"
+    with zipfile.ZipFile(stl_parts_zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf_stl:
+        zf_stl.writestr("00_ORDEN_DE_IMPRESION.md", parts_readme)
+        if cal_path.exists():
+            zf_stl.write(cal_path, arcname=f"01_CALIBRACION_15MIN/{cal_path.name}")
+        for _, fp, _ in individual_stl_entries:
+            if fp.exists():
+                zf_stl.write(fp, arcname=f"02_PIEZAS_STL_SEPARADAS/{fp.name}")
+        for pi in plate_infos:
+            p_fp = output_dir / pi.filename
+            if p_fp.exists():
+                zf_stl.write(p_fp, arcname=f"03_PLATOS_3MF_SLICER/{pi.filename}")
+        zf_stl.write(guide_path, arcname="03_PLATOS_3MF_SLICER/PRINT_GUIDE.md")
+    exported_files["stl_parts_zip"] = stl_parts_zip_path
 
     summary = PrintReadinessSummary(
         fits_bed=fits_bed,

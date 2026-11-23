@@ -691,9 +691,9 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
                     className="dl-link dl-zip"
                     href={files.stl_parts_zip}
                     download
-                    title="Todas las piezas imprimibles separadas y planas en .STL (listo para SatelLite / Chitubox / Cura / Bambu)"
+                    title="ZIP organizado en carpetas: 01_CALIBRACION_15MIN, 02_PIEZAS_STL_SEPARADAS y 03_PLATOS_3MF_SLICER"
                   >
-                    ★ Piezas Separadas (.STL · ZIP)
+                    ★ Paquete Piezas 3D (.STL + .3MF)
                   </a>
                 )}
                 {calibrationStlUrl && (
@@ -713,20 +713,61 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
                 )}
               </div>
 
-              {/* Individual flat-oriented .STL buttons per printable part */}
+              {/* Individual flat-oriented .STL buttons per printable part with clean Spanish labels */}
               {files && Object.keys(files).some((k) => k.startsWith("part_stl_")) && (
-                <div style={{ marginTop: 6 }}>
-                  <small style={{ color: "#94a3b8", display: "block", marginBottom: 4 }}>
-                    Descargar pieza individual (.STL plano sobre Z=0):
-                  </small>
-                  <div className="dl-row">
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "8px 9px",
+                    borderRadius: 8,
+                    background: "rgba(15, 23, 42, 0.55)",
+                    border: "1px solid rgba(148, 163, 184, 0.18)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <strong style={{ fontSize: 11.5, color: "#e2e8f0" }}>
+                      Piezas Individuales (.STL · Planas Z=0)
+                    </strong>
+                    <span style={{ fontSize: 10.5, color: "#94a3b8" }}>
+                      {Object.keys(files).filter((k) => k.startsWith("part_stl_")).length} archivos
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 5,
+                    }}
+                  >
                     {Object.entries(files)
                       .filter(([k]) => k.startsWith("part_stl_"))
-                      .map(([k, url]) => (
-                        <a key={k} className="dl-link" href={url} download>
-                          {k.replace(/^part_stl_/, "")}.stl
-                        </a>
-                      ))}
+                      .map(([k, url]) => {
+                        const raw = k.replace(/^part_stl_/, "");
+                        const niceLabels: Record<string, string> = {
+                          base_pedestal: "Pedestal Base",
+                          shoulder_mount: "Montura Hombro",
+                          shoulder_gear: "Engranaje Hombro",
+                          elbow_gear: "Engranaje Codo",
+                          clevis_shoulder: "Horquilla Hombro",
+                          clevis_elbow: "Horquilla Codo",
+                          upper_arm_link: "Brazo Superior",
+                          forearm_link: "Antebrazo",
+                          wrist_tube: "Tubo Muñeca",
+                          wrist_j4_roll: "Muñeca J4 Roll",
+                          wrist_j5_pitch: "Muñeca J5 Pitch",
+                          wrist_j6_flange: "Brida J6 TCP",
+                          tcp_flange: "Brida TCP",
+                          gripper_base: "Pinza Base",
+                          gripper_finger_left: "Dedo Izquierdo",
+                          gripper_finger_right: "Dedo Derecho",
+                        };
+                        const label = niceLabels[raw] || raw.replace(/_/g, " ");
+                        return (
+                          <a key={k} className="dl-link" href={url} download title={`Descargar part_${raw}.stl`}>
+                            {label} (.STL)
+                          </a>
+                        );
+                      })}
                   </div>
                 </div>
               )}

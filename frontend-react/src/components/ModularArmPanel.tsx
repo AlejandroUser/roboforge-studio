@@ -191,64 +191,107 @@ export const ModularArmPanel: React.FC<ModularArmPanelProps> = ({
             </div>
           )}
 
-          {/* Downloads: Kit Manufactura .ZIP + STEP/URDF/XML/BOM */}
-          <div className="dl-row modular-dl-row">
-            {zipUrl && (
-              <a
-                className="dl-link dl-zip"
-                href={zipUrl}
-                download
-                title="Descargar Kit completo de manufactura (STEPs + 3MFs + STLs separados + URDF + MuJoCo + BOM)"
-              >
-                ★ Kit Manufactura (.ZIP)
-              </a>
-            )}
-            {result.files?.stl_parts_zip && (
-              <a
-                className="dl-link dl-zip"
-                href={result.files.stl_parts_zip}
-                download
-                title="Piezas imprimibles separadas y planas en .STL (listo para SatelLite / Chitubox / Cura)"
-              >
-                Piezas .STL (.ZIP)
-              </a>
-            )}
-            {result.files?.step && (
-              <a className="dl-link" href={result.files.step} download>
-                .STEP
-              </a>
-            )}
-            {result.files?.urdf && (
-              <a className="dl-link" href={result.files.urdf} download>
-                .URDF
-              </a>
-            )}
-            {result.files?.mujoco && (
-              <a className="dl-link" href={result.files.mujoco} download>
-                .XML
-              </a>
-            )}
-            {result.files?.bom_csv && (
-              <a className="dl-link" href={result.files.bom_csv} download>
-                BOM .CSV
-              </a>
-            )}
-            {result.files?.cnc_dxf && (
-              <a className="dl-link" href={result.files.cnc_dxf} download title="Placas 2.5D CNC Aluminio 6061 (.DXF)">
-                CNC .DXF
-              </a>
-            )}
-            {result.files?.lerobot_json && (
-              <a className="dl-link" href={result.files.lerobot_json} download title="Perfil calibrado HuggingFace LeRobot">
-                LeRobot .JSON
-              </a>
-            )}
-            {result.files?.firmware_ino && (
-              <a className="dl-link" href={result.files.firmware_ino} download title="Sketch Arduino UNO + PCA9685">
-                .INO
-              </a>
-            )}
+          {/* Bloque 1: Kit de Manufactura (Ingeniería, CAD editable, Electrónica, BOM y Simulación) */}
+          <div
+            style={{
+              marginTop: 8,
+              padding: "8px 9px",
+              borderRadius: 8,
+              background: "rgba(15, 23, 42, 0.55)",
+              border: "1px solid rgba(56, 189, 248, 0.22)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <strong style={{ fontSize: 11.5, color: "#e2e8f0" }}>Kit de Manufactura (CAD · BOM · Electrónica)</strong>
+            </div>
+            <div className="dl-row modular-dl-row">
+              {zipUrl && (
+                <a
+                  className="dl-link dl-zip"
+                  href={zipUrl}
+                  download
+                  title="Kit completo de ingeniería: .STEP editable, Esquemático .SVG, Firmware .INO/.JSON, BOM .CSV, URDF y MuJoCo"
+                >
+                  ★ Descargar Kit Manufactura (.ZIP)
+                </a>
+              )}
+              {result.files?.step && (
+                <a className="dl-link" href={result.files.step} download>
+                  .STEP
+                </a>
+              )}
+              {result.files?.urdf && (
+                <a className="dl-link" href={result.files.urdf} download>
+                  .URDF
+                </a>
+              )}
+              {result.files?.mujoco && (
+                <a className="dl-link" href={result.files.mujoco} download>
+                  .XML
+                </a>
+              )}
+              {result.files?.bom_csv && (
+                <a className="dl-link" href={result.files.bom_csv} download>
+                  BOM .CSV
+                </a>
+              )}
+              {result.files?.cnc_dxf && (
+                <a className="dl-link" href={result.files.cnc_dxf} download title="Placas 2.5D CNC Aluminio 6061 (.DXF)">
+                  CNC .DXF
+                </a>
+              )}
+              {result.files?.lerobot_json && (
+                <a className="dl-link" href={result.files.lerobot_json} download title="Perfil calibrado HuggingFace LeRobot">
+                  LeRobot .JSON
+                </a>
+              )}
+              {result.files?.firmware_ino && (
+                <a className="dl-link" href={result.files.firmware_ino} download title="Sketch Arduino UNO + PCA9685">
+                  .INO
+                </a>
+              )}
+            </div>
           </div>
+
+          {/* Bloque 2: Archivos de Piezas Separados para Impresión 3D */}
+          {(result.files?.stl_parts_zip || result.files?.calibration_stl) && (
+            <div
+              style={{
+                marginTop: 7,
+                padding: "8px 9px",
+                borderRadius: 8,
+                background: "rgba(16, 185, 129, 0.08)",
+                border: "1px solid rgba(16, 185, 129, 0.30)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <strong style={{ fontSize: 11.5, color: "#6ee7b7" }}>Archivos de Piezas (Impresión 3D)</strong>
+                <span style={{ fontSize: 10.5, color: "#94a3b8" }}>Separadas · Planas Z=0</span>
+              </div>
+              <div className="dl-row modular-dl-row">
+                {result.files?.stl_parts_zip && (
+                  <a
+                    className="dl-link dl-zip"
+                    href={result.files.stl_parts_zip}
+                    download
+                    title="ZIP organizado en carpetas: 01_CALIBRACION_15MIN, 02_PIEZAS_STL_SEPARADAS y 03_PLATOS_3MF_SLICER"
+                  >
+                    ★ Paquete Piezas 3D (.STL + .3MF)
+                  </a>
+                )}
+                {result.files?.calibration_stl && (
+                  <a
+                    className="dl-link"
+                    href={result.files.calibration_stl}
+                    download
+                    title="Cupón de calibración de tolerancias M3/M4/608 imprimible en 15 minutos"
+                  >
+                    Test Tolerancias (.STL)
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
