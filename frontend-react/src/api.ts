@@ -51,6 +51,25 @@ export const api = {
     reqJson<ModularArmResponse>("/api/arm/assemble", { method: "POST", body: JSON.stringify(body) }),
   getMechatronicsCatalog: () =>
     reqJson<MechatronicsCatalog>("/api/mechatronics/catalog"),
+  exportFirmwareIno: async (body: {
+    arm_name: string;
+    poses: Array<{
+      j0_base: number;
+      j1_shoulder: number;
+      j2_elbow: number;
+      j3_wrist: number;
+      gripper_pct: number;
+    }>;
+    speed_ms?: number;
+  }): Promise<string> => {
+    const res = await fetch("/api/arm/firmware-ino", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.text();
+  },
 
   runFea: (family: "links" | "mounts" | "gears", body: any) => {
     const endpoint =

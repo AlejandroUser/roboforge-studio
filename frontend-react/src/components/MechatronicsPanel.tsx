@@ -252,6 +252,10 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
   const circuitSvgUrl = files?.circuit_svg;
   const harnessYmlUrl = files?.harness_yml;
   const masterBomCsvUrl = files?.master_bom_csv;
+  const firmwareInoUrl = files?.firmware_ino;
+
+  const formatVoltage = (v: number) =>
+    Number.isInteger(v) ? `${v.toFixed(0)} V DC` : `${v.toFixed(1)} V DC`;
 
   return (
     <div className="mech-card">
@@ -422,7 +426,7 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
               <div className="metrics-grid">
                 <div className="metric-box">
                   <span>Voltaje</span>
-                  <strong>{pb.system_voltage_v.toFixed(0)} V DC</strong>
+                  <strong>{formatVoltage(pb.system_voltage_v)}</strong>
                 </div>
                 <div className="metric-box">
                   <span>Corriente</span>
@@ -478,6 +482,11 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
                 {harnessYmlUrl && (
                   <a className="dl-link" href={harnessYmlUrl} download>
                     WireViz .YML
+                  </a>
+                )}
+                {firmwareInoUrl && (
+                  <a className="dl-link dl-zip" href={firmwareInoUrl} download>
+                    Firmware .INO
                   </a>
                 )}
               </div>

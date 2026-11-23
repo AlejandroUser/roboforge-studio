@@ -29,18 +29,25 @@ const SEMANTIC_PART_KEYS = [
   "horn_25t_j1",
   "horn_25t_j2",
   "horn_25t_j3",
+  "clevis_shoulder",
+  "clevis_elbow",
   "gripper_assembly",
+  "gripper_base",
+  "gripper_finger_left",
+  "gripper_finger_right",
 ] as const;
 
 const FALLBACK_EXPLODE_VECTORS: Record<string, [number, number, number]> = {
   base_pedestal: [0, 0, -45],
   controller_box: [-75, 0, -25],
   shoulder_mount: [0, -35, 0],
+  clevis_shoulder: [0, 0, 20],
   shoulder_gear: [0, -60, 15],
   motor_j1_shoulder: [0, -90, 10],
   bearing_j1: [0, -45, 25],
   horn_25t_j1: [0, -72, 15],
   upper_arm_link: [35, 0, 35],
+  clevis_elbow: [55, 0, 48],
   elbow_gear: [55, 45, 50],
   motor_j2_elbow: [55, 80, 50],
   bearing_j2: [55, 30, 50],
@@ -52,12 +59,17 @@ const FALLBACK_EXPLODE_VECTORS: Record<string, [number, number, number]> = {
   horn_25t_j3: [130, 48, 80],
   tcp_flange: [165, 0, 95],
   gripper_assembly: [185, 0, 100],
+  gripper_base: [175, 0, 95],
+  gripper_finger_left: [195, -24, 100],
+  gripper_finger_right: [195, 24, 100],
   fasteners_kit: [0, 75, 15],
 };
 
 const PART_LABELS_ES: Record<string, string> = {
   base_pedestal: "Pedestal Base",
   shoulder_mount: "Montura Hombro",
+  clevis_shoulder: "Horquilla Hombro",
+  clevis_elbow: "Horquilla Codo",
   shoulder_gear: "Transmisión Hombro",
   upper_arm_link: "Brazo Superior",
   elbow_gear: "Transmisión Codo",
@@ -76,6 +88,9 @@ const PART_LABELS_ES: Record<string, string> = {
   horn_25t_j2: "Horn Aluminio 25T J2",
   horn_25t_j3: "Horn Aluminio 25T J3",
   gripper_assembly: "Pinza / Garra Robótica",
+  gripper_base: "Base de Pinza",
+  gripper_finger_left: "Dedo Pinza Izq.",
+  gripper_finger_right: "Dedo Pinza Der.",
 };
 
 function resolveSemanticKey(obj: THREE.Object3D | null): string | null {
@@ -102,7 +117,13 @@ export interface ViewportR3FProps {
   meshOpacity: number;
   family: FamilyId;
   loadDirection: "y_inplane" | "z_outofplane";
-  armAngles?: { shoulder: number; elbow: number; wrist: number };
+  armAngles?: {
+    baseYaw?: number;
+    shoulder: number;
+    elbow: number;
+    wrist: number;
+    gripperOpenPct?: number;
+  };
   armReachMm?: number;
   armBaseHeightMm?: number;
   selectedArmNode?: string | null;
@@ -208,7 +229,13 @@ function LoadedModel({
   wireframe: boolean;
   showEdges: boolean;
   meshOpacity: number;
-  armAngles?: { shoulder: number; elbow: number; wrist: number };
+  armAngles?: {
+    baseYaw?: number;
+    shoulder: number;
+    elbow: number;
+    wrist: number;
+    gripperOpenPct?: number;
+  };
   selectedArmNode?: string | null;
   hoveredArmPart?: string | null;
   explodeVectors?: Record<string, number[]> | null;
@@ -233,6 +260,26 @@ function LoadedModel({
       (gltf) => {
         if (cancelled) return;
         const root = gltf.scene;
+
+        // In arm mode, group all mobile nodes under a vertical-axis turret pivot so J0 Base Yaw
+        // rotates the entire arm at 60 FPS while base_pedestal & controller_box remain fixed.
+        if (family === "arm") {
+          const turretPivot = new THREE.Group();
+          turretPivot.name = "__turret_yaw_pivot";
+          const children = [...root.children];
+          for (const child of children) {
+            const lower = (child.name || "").toLowerCase();
+            const isStaticBase =
+              lower.includes("base_pedestal") || lower.includes("controller_box");
+            if (!isStaticBase) {
+              turretPivot.add(child);
+            }
+          }
+          if (turretPivot.children.length > 0) {
+            root.add(turretPivot);
+          }
+        }
+
         root.rotation.x = -Math.PI / 2;
         root.updateMatrixWorld(true);
 
@@ -325,17 +372,18 @@ function LoadedModel({
     });
   }, [sceneObj, wireframe, meshOpacity, selectedArmNode, hoveredArmPart]);
 
-  // 60 FPS client-side Exploded View (Despiece 3D) along explode_vectors
+  // 60 FPS client-side Exploded View (Despiece 3D) + Gripper Open/Close (0-100%)
   useEffect(() => {
     if (!sceneObj || family !== "arm") return;
     const vecMap: Record<string, number[]> = {
       ...FALLBACK_EXPLODE_VECTORS,
       ...(explodeVectors || {}),
     };
+    const gripOffsetMm = ((armAngles?.gripperOpenPct ?? 50) / 100) * 14.0;
 
     const displaced = new Set<THREE.Object3D>();
     sceneObj.traverse((obj: any) => {
-      if (!obj.name || !obj.userData?.basePosition) return;
+      if (!obj.name || obj.name === "__turret_yaw_pivot" || !obj.userData?.basePosition) return;
       // Avoid double-offsetting a child whose ancestor was already exploded
       let anc: THREE.Object3D | null = obj.parent;
       while (anc) {
@@ -353,18 +401,26 @@ function LoadedModel({
           }
         }
       }
-      if (!vec || vec.length < 3) return;
 
       const base = obj.userData.basePosition as THREE.Vector3;
-      obj.position.set(
-        base.x + vec[0] * explodeFactor,
-        base.y + vec[1] * explodeFactor,
-        base.z + vec[2] * explodeFactor
-      );
-      displaced.add(obj);
+      const ex = vec && vec.length >= 3 ? vec[0] * explodeFactor : 0;
+      const ey = vec && vec.length >= 3 ? vec[1] * explodeFactor : 0;
+      const ez = vec && vec.length >= 3 ? vec[2] * explodeFactor : 0;
+
+      let gripY = 0;
+      if (lower.includes("gripper_finger_left")) {
+        gripY = -gripOffsetMm;
+      } else if (lower.includes("gripper_finger_right")) {
+        gripY = gripOffsetMm;
+      }
+
+      if (vec || gripY !== 0) {
+        obj.position.set(base.x + ex, base.y + ey + gripY, base.z + ez);
+        displaced.add(obj);
+      }
     });
     sceneObj.updateMatrixWorld(true);
-  }, [sceneObj, family, explodeFactor, explodeVectors]);
+  }, [sceneObj, family, explodeFactor, explodeVectors, armAngles?.gripperOpenPct]);
 
   // Apply / remove technical CAD Edges (28 deg threshold), skipped for FEA or >40k triangles
   useEffect(() => {
@@ -401,9 +457,13 @@ function LoadedModel({
     };
   }, [sceneObj, showEdges, wireframe, isFeaMesh, meshOpacity]);
 
-  // 60 FPS real-time GPU FK for hierarchical arm_assembly.glb
+  // 60 FPS real-time GPU FK for J0 Base Yaw + hierarchical arm_assembly.glb
   useEffect(() => {
     if (!sceneObj || !armAngles) return;
+    const turret = sceneObj.getObjectByName("__turret_yaw_pivot");
+    if (turret) {
+      turret.rotation.set(0, 0, THREE.MathUtils.degToRad(armAngles.baseYaw || 0));
+    }
     const j1 = sceneObj.getObjectByName("joint_shoulder");
     const j2 = sceneObj.getObjectByName("joint_elbow");
     const j3 = sceneObj.getObjectByName("joint_wrist");
@@ -411,9 +471,9 @@ function LoadedModel({
       j1.rotation.set(0, -THREE.MathUtils.degToRad(armAngles.shoulder), 0);
       j2.rotation.set(0, -THREE.MathUtils.degToRad(armAngles.elbow), 0);
       j3.rotation.set(0, -THREE.MathUtils.degToRad(armAngles.wrist), 0);
-      sceneObj.updateMatrixWorld(true);
     }
-  }, [sceneObj, armAngles?.shoulder, armAngles?.elbow, armAngles?.wrist]);
+    sceneObj.updateMatrixWorld(true);
+  }, [sceneObj, armAngles?.baseYaw, armAngles?.shoulder, armAngles?.elbow, armAngles?.wrist]);
 
   if (!sceneObj) return null;
   return (

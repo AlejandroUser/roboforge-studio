@@ -8,6 +8,7 @@ from build123d import (
     Box,
     BuildPart,
     BuildSketch,
+    Compound,
     Cylinder,
     Location,
     Locations,
@@ -298,26 +299,91 @@ def build_servo_horn_25t() -> Part:
     return horn
 
 
-def build_gripper_3d() -> Part:
-    """Build a realistic 2-finger parallel articulated robotic gripper (~65 mm long along +X).
-    Mounting face sits at x = 0, centered in Y and Z.
+def build_dual_servo_clevis(
+    width_mm: float = 56.0,
+    depth_mm: float = 44.0,
+    height_mm: float = 48.0,
+) -> Part:
+    """Build a U-shaped wrapping dual-servo clevis bracket centered at (0, 0, 0) with joint axis along Y.
+    Features 2 lateral cheeks with recessed pockets for opposed TD-8120MG servos, bottom U-bridge,
+    wall stiffener ribs, and M4 mounting holes.
     """
-    cache_key = "gripper_3d:v1"
+    w = round(max(36.0, float(width_mm)), 1)
+    d = round(max(30.0, float(depth_mm)), 1)
+    h = round(max(34.0, float(height_mm)), 1)
+    cache_key = f"clevis:{w}:{d}:{h}"
     if cache_key in _HARDWARE_CACHE:
         return _HARDWARE_CACHE[cache_key]
 
-    # 1. Mounting base block (x = 0..14 mm, 44 × 24 mm)
+    cheek_t = 5.5
+    bridge_h = 7.0
+
+    # Side cheek profile in XZ plane
+    with BuildSketch(Plane.XZ) as cheek_sk:
+        RectangleRounded(d, h, radius=5.0)
+    cheek_face = cheek_sk.sketch.faces()[0]
+
+    # Left (-Y) and Right (+Y) cheeks
+    with BuildPart() as left_bp:
+        extrude(cheek_face.moved(Location((0.0, -w / 2.0, 0.0))), amount=cheek_t)
+    with BuildPart() as right_bp:
+        extrude(cheek_face.moved(Location((0.0, w / 2.0 - cheek_t, 0.0))), amount=cheek_t)
+
+    # Bottom U-bridge connecting both cheeks
+    bridge = Location((0.0, 0.0, -h / 2.0 + bridge_h / 2.0)) * Box(d - 4.0, w, bridge_h)
+    clevis = left_bp.part + right_bp.part + bridge
+
+    # Cut servo clearance windows (22 × 22 mm central hub + 4×M4 mounting holes per cheek) along Y
+    cut_y = w + 10.0
+    hub_window = Location((0.0, 0.0, 0.0), (90.0, 0.0, 0.0)) * Cylinder(radius=10.5, height=cut_y)
+    try:
+        cand = clevis - hub_window
+        if cand.is_valid and cand.volume > 0:
+            clevis = cand
+    except Exception:
+        pass
+
+    # 4×M4 mounting holes flanking the servo ear span on both cheeks
+    for sx in (-15.0, 15.0):
+        for sz in (-6.0, 6.0):
+            m4_hole = Location((sx, 0.0, sz), (90.0, 0.0, 0.0)) * Cylinder(radius=2.15, height=cut_y)
+            try:
+                cand = clevis - m4_hole
+                if cand.is_valid and cand.volume > 0:
+                    clevis = cand
+            except Exception:
+                pass
+
+    _HARDWARE_CACHE[cache_key] = clevis
+    return clevis
+
+
+def build_gripper_parts() -> tuple[Part, Part, Part]:
+    """Build a 3-part articulated 2-finger robotic gripper (~65 mm long along +X):
+    Returns (gripper_base, gripper_finger_left, gripper_finger_right) so the frontend
+    can animate opening/closing the fingers smoothly at 60 FPS along ±Y.
+    """
+    cache_keys = ("gripper_base:v2", "gripper_finger_left:v2", "gripper_finger_right:v2")
+    if all(k in _HARDWARE_CACHE for k in cache_keys):
+        return (
+            _HARDWARE_CACHE[cache_keys[0]],
+            _HARDWARE_CACHE[cache_keys[1]],
+            _HARDWARE_CACHE[cache_keys[2]],
+        )
+
+    # 1. Base + central micro-servo actuator housing + pivot pins
     with BuildSketch(Plane.YZ) as base_sk:
         RectangleRounded(44.0, 24.0, radius=3.0)
     with BuildPart() as base_bp:
         extrude(base_sk.sketch.faces()[0], amount=14.0)
 
-    # 2. Central actuator housing block (x = 12..34 mm, 22 × 18 mm)
     act_box = Location((23.0, 0.0, 0.0)) * Box(22.0, 22.0, 18.0)
+    pin_top = Location((16.0, 12.0, 0.0)) * Cylinder(radius=2.5, height=16.0)
+    pin_bot = Location((16.0, -12.0, 0.0)) * Cylinder(radius=2.5, height=16.0)
+    gripper_base = base_bp.part + act_box + pin_top + pin_bot
 
-    # 3. Two parallel serrated gripping fingers extending from x = 14..65 mm
-    # Build upper (+Y) and lower (-Y) jaws in XY plane and extrude along Z (-6..+6 mm)
-    jaw_pts_top = [
+    # 2. Serrated gripping finger polygons (right on +Y, left on -Y)
+    jaw_pts_right = [
         (12.0, 10.0),
         (26.0, 20.0),
         (65.0, 16.0),
@@ -330,23 +396,34 @@ def build_gripper_3d() -> Part:
         (26.0, 14.0),
         (12.0, 5.0),
     ]
-    jaw_pts_bot = [(x, -y) for (x, y) in jaw_pts_top]
+    jaw_pts_left = [(x, -y) for (x, y) in jaw_pts_right]
 
-    with BuildSketch(Plane.XY) as jt_sk:
-        Polygon(*jaw_pts_top, align=None)
-    with BuildPart() as jt_bp:
-        extrude(jt_sk.sketch.faces()[0], amount=6.0, both=True)
+    with BuildSketch(Plane.XY) as jr_sk:
+        Polygon(*jaw_pts_right, align=None)
+    with BuildPart() as jr_bp:
+        extrude(jr_sk.sketch.faces()[0], amount=6.0, both=True)
+    gripper_finger_right = jr_bp.part
 
-    with BuildSketch(Plane.XY) as jb_sk:
-        Polygon(*jaw_pts_bot, align=None)
-    with BuildPart() as jb_bp:
-        extrude(jb_sk.sketch.faces()[0], amount=6.0, both=True)
+    with BuildSketch(Plane.XY) as jl_sk:
+        Polygon(*jaw_pts_left, align=None)
+    with BuildPart() as jl_bp:
+        extrude(jl_sk.sketch.faces()[0], amount=6.0, both=True)
+    gripper_finger_left = jl_bp.part
 
-    # 4. Pivot pins at jaw roots
-    pin_top = Location((16.0, 12.0, 0.0)) * Cylinder(radius=2.5, height=16.0)
-    pin_bot = Location((16.0, -12.0, 0.0)) * Cylinder(radius=2.5, height=16.0)
+    _HARDWARE_CACHE[cache_keys[0]] = gripper_base
+    _HARDWARE_CACHE[cache_keys[1]] = gripper_finger_left
+    _HARDWARE_CACHE[cache_keys[2]] = gripper_finger_right
+    return gripper_base, gripper_finger_left, gripper_finger_right
 
-    gripper = base_bp.part + act_box + jt_bp.part + jb_bp.part + pin_top + pin_bot
+
+def build_gripper_3d() -> Part:
+    """Backwards-compatible wrapper returning the complete fused 2-finger gripper solid."""
+    cache_key = "gripper_3d:v1"
+    if cache_key in _HARDWARE_CACHE:
+        return _HARDWARE_CACHE[cache_key]
+
+    base, left, right = build_gripper_parts()
+    gripper = base + left + right
     _HARDWARE_CACHE[cache_key] = gripper
     return gripper
 

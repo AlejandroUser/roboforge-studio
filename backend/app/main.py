@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import tempfile
 from pathlib import Path
@@ -9,8 +10,9 @@ from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from .cad.arm_assembly import (
     build_and_export_arm_assembly,
@@ -50,6 +52,7 @@ from .physics.arm_kinematics import evaluate_arm_assembly, load_arm_presets
 from .physics.copilot import analyze_2d_blueprint, run_closed_loop_copilot
 from .physics.dfm_rules import evaluate_global_alerts
 from .physics.fea_solver import run_gear_fea, run_mount_fea, run_step_fea
+from .physics.firmware_gen import generate_arduino_pca9685_ino
 from .physics.gear_mechanics import (
     compute_gear_diameters,
     evaluate_gear_global_alerts,
@@ -135,7 +138,7 @@ GEAR_VARIANT_ORDER: tuple[GearVariantKind, ...] = (
 )
 
 HASH_PATTERN = re.compile(r"^(?:[a-f0-9]{8,64}|ref_[a-f0-9]{12}|gyr_[a-f0-9]{12})$")
-FILENAME_PATTERN = re.compile(r"^[a-z0-9_]+\.(glb|step|stl|3mf|urdf|xml|csv|zip|svg|yml)$")
+FILENAME_PATTERN = re.compile(r"^[a-z0-9_]+\.(glb|step|stl|3mf|urdf|xml|csv|zip|svg|yml|ino)$")
 
 MEDIA_TYPES: dict[str, str] = {
     ".glb": "model/gltf-binary",
@@ -148,6 +151,7 @@ MEDIA_TYPES: dict[str, str] = {
     ".zip": "application/zip",
     ".svg": "image/svg+xml",
     ".yml": "text/yaml; charset=utf-8",
+    ".ino": "text/plain; charset=utf-8",
 }
 
 app = FastAPI(
@@ -863,6 +867,45 @@ def get_mechatronics_catalog_endpoint() -> dict[str, Any]:
     return get_mechatronics_catalog()
 
 
+class FirmwarePoseInput(BaseModel):
+    j0_base: float = 0.0
+    j1_shoulder: float = 35.0
+    j2_elbow: float = -55.0
+    j3_wrist: float = 20.0
+    gripper_pct: float = 50.0
+
+
+class FirmwareInoRequest(BaseModel):
+    arm_name: str = "Brazo Robótico Arduino 5.0"
+    poses: list[FirmwarePoseInput] = Field(default_factory=list)
+    speed_ms: int = Field(18, ge=4, le=120)
+
+
+@app.post("/api/arm/firmware-ino")
+def generate_arm_firmware_ino(req: FirmwareInoRequest) -> PlainTextResponse:
+    ino_code = generate_arduino_pca9685_ino(
+        arm_name=req.arm_name,
+        poses=[p.model_dump() for p in req.poses],
+        speed_ms=req.speed_ms,
+    )
+    return PlainTextResponse(
+        content=ino_code,
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="brazo_5_0_secuencia.ino"'},
+    )
+
+
+@app.get("/api/arm/database")
+def get_arm_database() -> dict[str, Any]:
+    db_path = Path(__file__).resolve().parent / "data" / "arm_database.json"
+    if not db_path.exists():
+        return {"arms": []}
+    try:
+        return json.loads(db_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"arms": []}
+
+
 @app.post("/api/arm/auto-match")
 def auto_match_modular_arm(req: ModularArmRequest) -> dict[str, Any]:
     matched_req, notes = auto_match_interfaces(req)
@@ -964,19 +1007,44 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
         encoding="utf-8",
     )
 
-    # Package full manufacturing kit ZIP (individual part STEP/3MF + full STEP + URDF + MuJoCo + BOM + v4.0 Mechatronics)
+    zip_included_files: list[Path] = [
+        *cad_res["individual_files"],
+        cad_res["step_path"],
+        urdf_path,
+        mujoco_path,
+        bom_csv_path,
+        circuit_svg_path,
+        harness_yml_path,
+        master_bom_csv_path,
+    ]
+    firmware_ino_path: Path | None = None
+    if mechatronics.bus_architecture == "arduino_pca9685_i2c":
+        firmware_ino_path = out_dir / "brazo_5_0_secuencia.ino"
+        default_pose = {
+            "j0_base": 0.0,
+            "j1_shoulder": float(effective_req.joint_angles_deg[0]),
+            "j2_elbow": float(effective_req.joint_angles_deg[1]),
+            "j3_wrist": float(effective_req.joint_angles_deg[2]),
+            "gripper_pct": 60.0,
+        }
+        firmware_ino_path.write_text(
+            generate_arduino_pca9685_ino(
+                arm_name="Brazo Robótico Arduino 5.0",
+                poses=[
+                    default_pose,
+                    {"j0_base": -40.0, "j1_shoulder": 20.0, "j2_elbow": -40.0, "j3_wrist": 15.0, "gripper_pct": 15.0},
+                    {"j0_base": 40.0, "j1_shoulder": 45.0, "j2_elbow": -65.0, "j3_wrist": 25.0, "gripper_pct": 85.0},
+                ],
+                speed_ms=18,
+            ),
+            encoding="utf-8",
+        )
+        zip_included_files.append(firmware_ino_path)
+
+    # Package full manufacturing kit ZIP (individual part STEP/3MF + full STEP + URDF + MuJoCo + BOM + v4.0/v4.2 Mechatronics)
     zip_path = build_arm_manufacturing_zip(
         out_dir=out_dir,
-        included_files=[
-            *cad_res["individual_files"],
-            cad_res["step_path"],
-            urdf_path,
-            mujoco_path,
-            bom_csv_path,
-            circuit_svg_path,
-            harness_yml_path,
-            master_bom_csv_path,
-        ],
+        included_files=zip_included_files,
         zip_filename="arm_manufacturing_pack.zip",
     )
 
@@ -992,6 +1060,8 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
         "master_bom_csv": f"/api/files/{design_hash}/arm_master_bom.csv",
         "zip": f"/api/files/{design_hash}/{zip_path.name}",
     }
+    if firmware_ino_path is not None:
+        files["firmware_ino"] = f"/api/files/{design_hash}/{firmware_ino_path.name}"
 
     return ModularArmResponse(
         design_hash=design_hash,

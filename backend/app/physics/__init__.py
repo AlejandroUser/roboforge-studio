@@ -8,6 +8,7 @@ from .arm_kinematics import evaluate_arm_assembly, load_arm_presets
 from .copilot import run_closed_loop_copilot
 from .dfm_rules import evaluate_global_alerts
 from .fea_solver import run_gear_fea, run_mount_fea, run_step_fea
+from .firmware_gen import generate_arduino_pca9685_ino
 from .gear_mechanics import (
     compute_gear_diameters,
     evaluate_gear_global_alerts,
@@ -76,4 +77,5 @@ __all__ = [
     "generate_circuit_schematic_svg",
     "generate_wireviz_yaml",
     "master_bom_to_csv",
+    "generate_arduino_pca9685_ino",
 ]

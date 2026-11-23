@@ -33,7 +33,9 @@ from .gear_variants import _build_gear_solid, _build_gear_spoked, _build_gear_we
 from .hardware_parts import (
     build_ball_bearing,
     build_controller_box,
+    build_dual_servo_clevis,
     build_gripper_3d,
+    build_gripper_parts,
     build_iso4762_screw,
     build_motor_3d,
     build_servo_3d,
@@ -643,7 +645,7 @@ def export_bom_csv(bom: list[BOMItem], output_path: Path) -> Path:
 
 def compute_modular_arm_hash(req: ModularArmRequest) -> str:
     """Compute a deterministic 16-char SHA-256 hex digest for a ModularArmRequest."""
-    canonical = "modarm:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
+    canonical = "modarm_v42:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
@@ -864,6 +866,13 @@ def build_modular_arm_assembly(
         or _is_rc_servo(j2_motor_id)
         or _is_rc_servo(j3_motor_id)
     )
+    is_direct_servo_mode = (
+        bus_arch == "arduino_pca9685_i2c"
+        or (
+            _is_rc_servo(j1_motor_id)
+            and (getattr(j1_spec, "reducer_id", "direct") or "direct") == "direct"
+        )
+    )
 
     # Motors: local motor faceplate is z=0, body extends along -Z, shaft along +Z.
     # Rotate -90° around X -> local +Z maps to +Y (shaft points into joint along +Y, body along -Y).
@@ -943,12 +952,29 @@ def build_modular_arm_assembly(
             )
         )
 
-    # Optional 2-finger Robotic Gripper replacing TCP flange for RC Servo / Arduino 5.0 arms
-    gripper_placed: Part | None = None
+    # Optional 3-part Articulated Robotic Gripper + Dual-Servo Wrapping Clevises for Direct-Drive Servo / Arduino 5.0 arms
+    gripper_parts_placed: tuple[Part, Part, Part] | None = None
     if use_rc_servos:
-        gripper_local = Location((max(10.0, req.wrist_mm - 6.0), 0.0, 0.0)) * build_gripper_3d()
-        gripper_placed = Location(p2_fore) * (
-            Location((0.0, 0.0, 0.0), (0.0, -a3_deg, 0.0)) * gripper_local
+        g_base_raw, g_left_raw, g_right_raw = build_gripper_parts()
+        g_shift = Location((max(10.0, req.wrist_mm - 6.0), 0.0, 0.0))
+        g_pose = Location(p2_fore) * Location((0.0, 0.0, 0.0), (0.0, -a3_deg, 0.0)) * g_shift
+        gripper_parts_placed = (
+            g_pose * g_base_raw,
+            g_pose * g_left_raw,
+            g_pose * g_right_raw,
+        )
+
+    clevis_shoulder_placed: Part | None = None
+    clevis_elbow_placed: Part | None = None
+    if is_direct_servo_mode:
+        clevis_sh_w = max(46.0, upper_t + 26.0)
+        clevis_el_w = max(44.0, upper_t + forearm_t + 16.0)
+        clevis_shoulder_placed = Location((0.0, 0.0, float(req.base_height_mm))) * build_dual_servo_clevis(
+            width_mm=clevis_sh_w, depth_mm=44.0, height_mm=46.0
+        )
+        clevis_elbow_placed = Location((p1[0], y_forearm * 0.45, p1[2])) * (
+            Location((0.0, 0.0, 0.0), (0.0, -a1_deg, 0.0))
+            * build_dual_servo_clevis(width_mm=clevis_el_w, depth_mm=40.0, height_mm=42.0)
         )
 
     # Real Ball Bearings seated coaxially in shoulder, elbow, and wrist bores
@@ -1052,16 +1078,12 @@ def build_modular_arm_assembly(
         individual_files.extend([s_path, m_path])
 
     # 4. Export combined assembly STEP, STL, and semantic multi-node GLB
-    end_effector_solid: Part = gripper_placed if gripper_placed is not None else tcp_flange_placed
     compound_children: list[Part | Compound] = [
         base_raw,
         shoulder_mount_placed,
-        shoulder_gear_placed,
         upper_arm_placed,
-        elbow_gear_placed,
         forearm_placed,
         wrist_tube_placed,
-        end_effector_solid,
         joint_hw_shoulder,
         joint_hw_elbow,
         joint_hw_wrist,
@@ -1074,6 +1096,16 @@ def build_modular_arm_assembly(
         fasteners_kit,
         controller_box_placed,
     ]
+    if is_direct_servo_mode and clevis_shoulder_placed is not None and clevis_elbow_placed is not None:
+        compound_children.extend([clevis_shoulder_placed, clevis_elbow_placed])
+    else:
+        compound_children.extend([shoulder_gear_placed, elbow_gear_placed])
+
+    if gripper_parts_placed is not None:
+        compound_children.extend(list(gripper_parts_placed))
+    else:
+        compound_children.append(tcp_flange_placed)
+
     for _, h_solid, _ in horn_nodes:
         compound_children.append(h_solid)
 
@@ -1093,18 +1125,9 @@ def build_modular_arm_assembly(
         node_specs: list[tuple[str, Part | Compound, list[int], float, float]] = [
             ("base_pedestal", base_raw, [68, 82, 102, 255], 0.72, 0.32),
             ("shoulder_mount", shoulder_mount_placed, [92, 134, 182, 255], 0.78, 0.28),
-            ("shoulder_gear", shoulder_gear_placed, [224, 174, 72, 255], 0.74, 0.28),
             ("upper_arm_link", upper_arm_placed, link_rgba, 0.52, 0.32),
-            ("elbow_gear", elbow_gear_placed, [196, 152, 68, 255], 0.74, 0.28),
             ("forearm_link", forearm_placed, link_rgba, 0.52, 0.32),
             ("wrist_tube", wrist_tube_placed, link_rgba, 0.55, 0.30),
-            (
-                "gripper_assembly" if gripper_placed is not None else "tcp_flange",
-                end_effector_solid,
-                [56, 62, 74, 255] if gripper_placed is not None else [242, 182, 58, 255],
-                0.65 if gripper_placed is not None else 0.80,
-                0.34 if gripper_placed is not None else 0.26,
-            ),
             ("joint_hw_shoulder", joint_hw_shoulder, [42, 48, 62, 255], 0.78, 0.28),
             ("joint_hw_elbow", joint_hw_elbow, [42, 48, 62, 255], 0.78, 0.28),
             ("joint_hw_wrist", joint_hw_wrist, [42, 48, 62, 255], 0.78, 0.28),
@@ -1118,6 +1141,23 @@ def build_modular_arm_assembly(
             ("fasteners_kit", fasteners_kit, [110, 118, 128, 255], 0.88, 0.26),
             ("controller_box", controller_box_placed, [34, 62, 56, 255], 0.42, 0.48),
         ]
+        # Direct-drive servo mode: wrapping dual-servo clevises instead of spur gears
+        if is_direct_servo_mode and clevis_shoulder_placed is not None and clevis_elbow_placed is not None:
+            node_specs.append(("clevis_shoulder", clevis_shoulder_placed, [52, 72, 98, 255], 0.48, 0.38))
+            node_specs.append(("clevis_elbow", clevis_elbow_placed, [52, 72, 98, 255], 0.48, 0.38))
+        else:
+            node_specs.append(("shoulder_gear", shoulder_gear_placed, [224, 174, 72, 255], 0.74, 0.28))
+            node_specs.append(("elbow_gear", elbow_gear_placed, [196, 152, 68, 255], 0.74, 0.28))
+
+        # End effector: 3-part articulated gripper (60 FPS open/close) or ISO TCP flange
+        if gripper_parts_placed is not None:
+            g_base, g_left, g_right = gripper_parts_placed
+            node_specs.append(("gripper_base", g_base, [44, 52, 64, 255], 0.45, 0.40))
+            node_specs.append(("gripper_finger_left", g_left, [120, 134, 150, 255], 0.72, 0.30))
+            node_specs.append(("gripper_finger_right", g_right, [120, 134, 150, 255], 0.72, 0.30))
+        else:
+            node_specs.append(("tcp_flange", tcp_flange_placed, [242, 182, 58, 255], 0.80, 0.26))
+
         # v4.1 Red anodized 25T aluminum servo horns
         for h_name, h_solid, _ in horn_nodes:
             node_specs.append((h_name, h_solid, [220, 38, 38, 255], 0.88, 0.24))
@@ -1141,8 +1181,10 @@ def build_modular_arm_assembly(
         "base_pedestal": [0.0, 0.0, -40.0],
         "shoulder_mount": [0.0, -52.0, 0.0],
         "shoulder_gear": [0.0, 56.0, 0.0],
+        "clevis_shoulder": [0.0, 0.0, 26.0],
         "upper_arm_link": [round(32.0 * u1_x, 2), 0.0, round(32.0 * u1_z, 2)],
         "elbow_gear": [round(32.0 * u1_x, 2), -56.0, round(32.0 * u1_z, 2)],
+        "clevis_elbow": [round(32.0 * u1_x, 2), 18.0, round(32.0 * u1_z + 24.0, 2)],
         "forearm_link": [round(32.0 * u1_x + 42.0 * u2_x, 2), 48.0, round(32.0 * u1_z + 42.0 * u2_z, 2)],
         "wrist_tube": [
             round(32.0 * u1_x + 42.0 * u2_x + 36.0 * u3_x, 2),
@@ -1150,7 +1192,9 @@ def build_modular_arm_assembly(
             round(32.0 * u1_z + 42.0 * u2_z + 36.0 * u3_z, 2),
         ],
         "tcp_flange": tcp_explode,
-        "gripper_assembly": tcp_explode,
+        "gripper_base": tcp_explode,
+        "gripper_finger_left": [tcp_explode[0], round(tcp_explode[1] - 24.0, 2), tcp_explode[2]],
+        "gripper_finger_right": [tcp_explode[0], round(tcp_explode[1] + 24.0, 2), tcp_explode[2]],
         "joint_hw_shoulder": [0.0, -22.0, 0.0],
         "joint_hw_elbow": [round(32.0 * u1_x, 2), 20.0, round(32.0 * u1_z, 2)],
         "joint_hw_wrist": [round(32.0 * u1_x + 42.0 * u2_x, 2), 76.0, round(32.0 * u1_z + 42.0 * u2_z, 2)],

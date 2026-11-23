@@ -1,4 +1,4 @@
-"""Pytest suite for Brazo Robótico Arduino 5.0 (FABRI Creator) 3D CAD: Dual Servos, 25T Horns & Gripper."""
+"""Pytest suite for Brazo Robótico Arduino 5.0 (v4.2): Dual-Servo Clevises, Direct-Drive Mode & 3-Part Gripper."""
 
 from __future__ import annotations
 
@@ -9,30 +9,37 @@ import zipfile
 import trimesh
 
 from backend.app.cad.hardware_parts import (
+    build_dual_servo_clevis,
     build_gripper_3d,
+    build_gripper_parts,
     build_servo_3d,
     build_servo_horn_25t,
 )
 from backend.app.schemas import JointActuatorSpec, MechatronicsConfig, ModularArmRequest
 
 
-def test_servo_horn_and_gripper_solids_valid():
-    """TD-8120MG servo, 25T aluminum horn, and 2-finger gripper must all build valid 3D solids."""
+def test_servo_horn_clevis_and_3part_gripper_solids_valid():
+    """TD-8120MG servo, 25T horn, dual-servo clevis, and 3-part gripper must all build valid 3D solids."""
     servo = build_servo_3d("servo_td8120mg")
-    assert servo.is_valid
-    assert servo.volume > 20_000.0
+    assert servo.is_valid and servo.volume > 20_000.0
 
     horn = build_servo_horn_25t()
-    assert horn.is_valid
-    assert horn.volume > 800.0
+    assert horn.is_valid and horn.volume > 800.0
 
-    gripper = build_gripper_3d()
-    assert gripper.is_valid
-    assert gripper.volume > 10_000.0
+    clevis = build_dual_servo_clevis()
+    assert clevis.is_valid and clevis.volume > 15_000.0
+
+    g_base, g_left, g_right = build_gripper_parts()
+    assert g_base.is_valid and g_base.volume > 5_000.0
+    assert g_left.is_valid and g_left.volume > 1_000.0
+    assert g_right.is_valid and g_right.volume > 1_000.0
+
+    gripper_fused = build_gripper_3d()
+    assert gripper_fused.is_valid and gripper_fused.volume > 10_000.0
 
 
-def test_fabri_arm_5_full_assembly_dual_servos_horns_gripper_and_pca9685():
-    """Full Brazo Arduino 5.0 assembly must include dual servos, red 25T horns, gripper, PCA9685 SVG, and exact BOM."""
+def test_fabri_arm_5_direct_drive_clevises_3part_gripper_and_no_spur_gears():
+    """Direct-drive Brazo 5.0 must mount dual-servo clevises, 3-part gripper, red 25T horns, and omit spur gears."""
     from fastapi.testclient import TestClient
 
     from backend.app.main import app
@@ -76,7 +83,7 @@ def test_fabri_arm_5_full_assembly_dual_servos_horns_gripper_and_pca9685():
     assert resp.status_code == 200, resp.text
     data = resp.json()
 
-    # 1. Verify GLB contains dual servo motors, red 25T horns, and 2-finger gripper
+    # 1. Verify GLB contains dual servos, wrapping clevises, red 25T horns, 3-part gripper, and NO spur gears
     r_glb = client.get(data["files"]["glb"])
     assert r_glb.status_code == 200
     scene = trimesh.load(io.BytesIO(r_glb.content), file_type="glb", force="scene")
@@ -86,20 +93,26 @@ def test_fabri_arm_5_full_assembly_dual_servos_horns_gripper_and_pca9685():
         "motor_j1_shoulder",
         "motor_j2_elbow",
         "motor_j3_wrist",
+        "clevis_shoulder",
+        "clevis_elbow",
         "horn_25t_j1",
         "horn_25t_j2",
         "horn_25t_j3",
-        "gripper_assembly",
+        "gripper_base",
+        "gripper_finger_left",
+        "gripper_finger_right",
     ):
         assert expected_node in nodes, f"Missing Brazo 5.0 node '{expected_node}' in GLB: {sorted(nodes)}"
         assert expected_node in data["explode_vectors"], f"Missing explode vector for '{expected_node}'"
 
+    # Spur gears MUST be omitted in direct-drive servo mode
+    assert "shoulder_gear" not in nodes, "shoulder_gear should be omitted in direct-drive servo mode"
+    assert "elbow_gear" not in nodes, "elbow_gear should be omitted in direct-drive servo mode"
+
     # Dual parallel J1 servo mesh must have roughly 2x the volume of a single servo
     j1_mesh = scene.geometry["motor_j1_shoulder"]
     j3_mesh = scene.geometry["motor_j3_wrist"]
-    assert j1_mesh.volume > j3_mesh.volume * 1.7, (
-        f"Expected dual J1 servo volume ({j1_mesh.volume:.0f}) > 1.7x single J3 servo ({j3_mesh.volume:.0f})"
-    )
+    assert j1_mesh.volume > j3_mesh.volume * 1.7
 
     # 2. Verify PCA9685 + Arduino UNO SVG schematic
     r_svg = client.get(data["files"]["circuit_svg"])
@@ -109,7 +122,7 @@ def test_fabri_arm_5_full_assembly_dual_servos_horns_gripper_and_pca9685():
     svg_root = ET.fromstring(r_svg.text)
     assert svg_root.tag.endswith("svg")
 
-    # 3. Verify Master BOM includes 8× TD-8120MG servos & 8× 25T aluminum horns
+    # 3. Verify Master BOM includes TD-8120MG servos & 25T aluminum horns
     mech = data["mechatronics"]
     assert mech is not None
     bom_text = " ".join(f"{b['part_name']} {b['spec']} x{b['qty']}" for b in mech["master_bom"])

@@ -112,9 +112,11 @@ const DEFAULT_ARM = {
   forearm_mm: 170,
   wrist_mm: 75,
   link_style: "hollow_cobot",
+  base_yaw_deg: 0,
   shoulder_joint_deg: 35,
   elbow_joint_deg: -55,
   wrist_joint_deg: 20,
+  gripper_open_pct: 50,
   gear_ratio_shoulder: 20,
   gear_ratio_elbow: 10,
   max_accel_rad_s2: 12,
@@ -232,9 +234,17 @@ export default function App() {
     },
   });
 
-  // v4.1 Pose Sequencer (60 FPS GPU FK playback)
+  // v4.1/v4.2 Pose Sequencer (5-axis 60 FPS GPU FK playback + .INO export)
   const [recordedPoses, setRecordedPoses] = useState<
-    Array<{ id: number; label: string; shoulder: number; elbow: number; wrist: number }>
+    Array<{
+      id: number;
+      label: string;
+      j0_base: number;
+      shoulder: number;
+      elbow: number;
+      wrist: number;
+      gripper_pct: number;
+    }>
   >([]);
   const [isPlayingSeq, setIsPlayingSeq] = useState(false);
   const [activePoseIdx, setActivePoseIdx] = useState<number | null>(null);
@@ -305,10 +315,17 @@ export default function App() {
       .catch((err) => showToast(`Error cargando catálogos: ${err.message}`, true));
   }, [showToast]);
 
-  // Debounced auto-generation (skips FK angle-only changes so arm stays 60 FPS!)
+  // Debounced auto-generation (skips FK angle & gripper-only changes so arm stays 60 FPS!)
   const structuralKey = useMemo(() => {
     if (state.family === "arm") {
-      const { shoulder_joint_deg, elbow_joint_deg, wrist_joint_deg, ...rest } = state.arm;
+      const {
+        base_yaw_deg,
+        shoulder_joint_deg,
+        elbow_joint_deg,
+        wrist_joint_deg,
+        gripper_open_pct,
+        ...rest
+      } = state.arm;
       return JSON.stringify({ f: "arm", rest });
     }
     return JSON.stringify({
@@ -590,9 +607,11 @@ export default function App() {
       const to = recordedPoses[(segIdx + 1) % recordedPoses.length];
       setActivePoseIdx(segIdx);
 
+      const b = Math.round(from.j0_base + (to.j0_base - from.j0_base) * ease);
       const s = Math.round(from.shoulder + (to.shoulder - from.shoulder) * ease);
       const e = Math.round(from.elbow + (to.elbow - from.elbow) * ease);
       const w = Math.round(from.wrist + (to.wrist - from.wrist) * ease);
+      const g = Math.round(from.gripper_pct + (to.gripper_pct - from.gripper_pct) * ease);
 
       setHistory((prevHist) =>
         prevHist.map((item, idx) =>
@@ -601,9 +620,11 @@ export default function App() {
                 ...item,
                 arm: {
                   ...item.arm,
+                  base_yaw_deg: b,
                   shoulder_joint_deg: s,
                   elbow_joint_deg: e,
                   wrist_joint_deg: w,
+                  gripper_open_pct: g,
                 },
               }
             : item
@@ -623,6 +644,45 @@ export default function App() {
       seqRafRef.current = null;
     };
   }, [isPlayingSeq, recordedPoses, histIdx]);
+
+  const handleExportIno = useCallback(async () => {
+    const posesPayload =
+      recordedPoses.length > 0
+        ? recordedPoses.map((p) => ({
+            j0_base: p.j0_base,
+            j1_shoulder: p.shoulder,
+            j2_elbow: p.elbow,
+            j3_wrist: p.wrist,
+            gripper_pct: p.gripper_pct,
+          }))
+        : [
+            {
+              j0_base: state.arm.base_yaw_deg,
+              j1_shoulder: state.arm.shoulder_joint_deg,
+              j2_elbow: state.arm.elbow_joint_deg,
+              j3_wrist: state.arm.wrist_joint_deg,
+              gripper_pct: state.arm.gripper_open_pct,
+            },
+          ];
+
+    try {
+      const inoText = await api.exportFirmwareIno({
+        arm_name: armRes?.preset_name || state.arm.preset || "Brazo Arduino 5.0",
+        poses: posesPayload,
+        speed_ms: 18,
+      });
+      const blob = new Blob([inoText], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "brazo_5_0_secuencia.ino";
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(`Firmware Arduino descargado (${posesPayload.length} poses).`);
+    } catch (err: any) {
+      showToast(`Error exportando .INO: ${err.message}`, true);
+    }
+  }, [recordedPoses, state.arm, armRes, showToast]);
 
   // Live 60 FPS TCP readout for Brazo Completo
   const liveTcp = useMemo(() => {
@@ -1134,15 +1194,20 @@ export default function App() {
                 </div>
                 {(
                   [
-                    ["shoulder_joint_deg", "J1 Hombro", -60, 90],
-                    ["elbow_joint_deg", "J2 Codo", -120, 120],
-                    ["wrist_joint_deg", "J3 Muñeca", -90, 90],
+                    ["base_yaw_deg", "J0 Base (Yaw)", -180, 180, "°"],
+                    ["shoulder_joint_deg", "J1 Hombro", -60, 90, "°"],
+                    ["elbow_joint_deg", "J2 Codo", -120, 120, "°"],
+                    ["wrist_joint_deg", "J3 Muñeca", -90, 90, "°"],
+                    ["gripper_open_pct", "Pinza (Apertura)", 0, 100, "%"],
                   ] as const
-                ).map(([k, lbl, min, max]) => (
+                ).map(([k, lbl, min, max, unit]) => (
                   <div key={k} className="field-row">
                     <div className="field-head">
                       <span>{lbl}</span>
-                      <span>{(state.arm as any)[k]}°</span>
+                      <span>
+                        {(state.arm as any)[k]}
+                        {unit}
+                      </span>
                     </div>
                     <input
                       type="range"
@@ -1158,13 +1223,13 @@ export default function App() {
                   </div>
                 ))}
 
-                {/* v4.1 Mini-Secuenciador de Poses (60 FPS) */}
+                {/* v4.1/v4.2 Mini-Secuenciador de Poses (5 ejes, 60 FPS + Exportar .INO) */}
                 <div className="sequencer-box">
                   <div className="sequencer-head">
-                    <span>Secuenciador de Poses</span>
+                    <span>Secuenciador de Poses (5 Ejes)</span>
                     <small>{recordedPoses.length} grabadas</small>
                   </div>
-                  <div className="sequencer-actions">
+                  <div className="sequencer-actions four-btn">
                     <button
                       type="button"
                       className="btn-tool"
@@ -1174,14 +1239,16 @@ export default function App() {
                           {
                             id: Date.now(),
                             label: `P${prev.length + 1}`,
+                            j0_base: state.arm.base_yaw_deg,
                             shoulder: state.arm.shoulder_joint_deg,
                             elbow: state.arm.elbow_joint_deg,
                             wrist: state.arm.wrist_joint_deg,
+                            gripper_pct: state.arm.gripper_open_pct,
                           },
                         ]);
                       }}
                     >
-                      + Grabar Pose
+                      + Pose
                     </button>
                     <button
                       type="button"
@@ -1189,7 +1256,15 @@ export default function App() {
                       disabled={recordedPoses.length < 2}
                       onClick={() => setIsPlayingSeq((v) => !v)}
                     >
-                      {isPlayingSeq ? "■ Detener" : "▶ Reproducir"}
+                      {isPlayingSeq ? "■ Stop" : "▶ Play"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-tool btn-ino"
+                      onClick={handleExportIno}
+                      title="Exportar sketch Arduino UNO + PCA9685 (.INO)"
+                    >
+                      ⬇ .INO
                     </button>
                     <button
                       type="button"
@@ -1201,7 +1276,7 @@ export default function App() {
                         setRecordedPoses([]);
                       }}
                     >
-                      Limpiar
+                      ✕
                     </button>
                   </div>
                   {recordedPoses.length > 0 && (
@@ -1218,15 +1293,17 @@ export default function App() {
                               ...s,
                               arm: {
                                 ...s.arm,
+                                base_yaw_deg: pose.j0_base,
                                 shoulder_joint_deg: pose.shoulder,
                                 elbow_joint_deg: pose.elbow,
                                 wrist_joint_deg: pose.wrist,
+                                gripper_open_pct: pose.gripper_pct,
                               },
                             }));
                           }}
                           title="Ir a esta pose"
                         >
-                          <strong>{pose.label}</strong> {pose.shoulder}°/{pose.elbow}°/{pose.wrist}°
+                          <strong>{pose.label}</strong> {pose.j0_base}°/{pose.shoulder}°/{pose.elbow}° · G{pose.gripper_pct}%
                         </button>
                       ))}
                     </div>
@@ -1404,9 +1481,11 @@ export default function App() {
             family={state.family}
             loadDirection={loadDir}
             armAngles={{
+              baseYaw: state.arm.base_yaw_deg,
               shoulder: state.arm.shoulder_joint_deg,
               elbow: state.arm.elbow_joint_deg,
               wrist: state.arm.wrist_joint_deg,
+              gripperOpenPct: state.arm.gripper_open_pct,
             }}
             armReachMm={state.arm.upper_arm_mm + state.arm.forearm_mm + state.arm.wrist_mm}
             armBaseHeightMm={state.arm.base_height_mm}

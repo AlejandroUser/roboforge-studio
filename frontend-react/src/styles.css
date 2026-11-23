@@ -683,3 +683,21 @@ input[type="number"], input[type="text"], select { width: 100%; background: #090
   background: rgba(16, 185, 129, 0.18);
   color: #ecfdf5;
 }
+
+
+/* v4.2 Sequencer 4-button row + .INO highlight */
+.sequencer-actions.four-btn {
+  grid-template-columns: 1fr 1fr 1fr 32px;
+}
+
+.btn-tool.btn-ino {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.14);
+  color: #6ee7b7;
+  font-weight: 700;
+}
+
+.btn-tool.btn-ino:hover {
+  background: rgba(16, 185, 129, 0.25);
+  color: #ffffff;
+}

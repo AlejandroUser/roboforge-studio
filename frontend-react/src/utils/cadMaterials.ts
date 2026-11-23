@@ -13,7 +13,9 @@ export type CadMaterialRole =
   | "fastener_steel"
   | "controller_enclosure"
   | "anodized_horn_red"
+  | "clevis_polymer"
   | "gripper_graphite"
+  | "gripper_finger_metal"
   | "matte_polymer"
   | "single_part_enhanced";
 
@@ -124,6 +126,12 @@ export function detectCadMaterialRole(obj: THREE.Object3D, family: FamilyId): Ca
 
   if (name.includes("horn_25t") || name.includes("servo_horn")) {
     return "anodized_horn_red";
+  }
+  if (name.includes("clevis_")) {
+    return "clevis_polymer";
+  }
+  if (name.includes("gripper_finger")) {
+    return "gripper_finger_metal";
   }
   if (name.includes("gripper")) {
     return "gripper_graphite";
@@ -304,6 +312,16 @@ export function createCadPhysicalMaterial(
         envMapIntensity: 1.5,
       });
 
+    case "clevis_polymer":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#2c3e55"),
+        metalness: 0.22,
+        roughness: 0.36,
+        clearcoat: 0.32,
+        clearcoatRoughness: 0.28,
+        envMapIntensity: 1.2,
+      });
+
     case "gripper_graphite":
       return new THREE.MeshPhysicalMaterial({
         color: new THREE.Color("#27303f"),
@@ -312,6 +330,16 @@ export function createCadPhysicalMaterial(
         clearcoat: 0.22,
         clearcoatRoughness: 0.28,
         envMapIntensity: 1.25,
+      });
+
+    case "gripper_finger_metal":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#64748b"),
+        metalness: 0.72,
+        roughness: 0.28,
+        clearcoat: 0.25,
+        clearcoatRoughness: 0.22,
+        envMapIntensity: 1.4,
       });
 
     case "matte_polymer":
