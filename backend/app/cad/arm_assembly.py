@@ -901,16 +901,16 @@ def build_modular_arm_assembly(
 
     def _is_rc_servo(mid: str) -> bool:
         ml = (mid or "").lower()
-        return ("servo_td" in ml) or ("servo_ds" in ml) or ("mg996" in ml)
+        return ("servo_td" in ml) or ("servo_ds" in ml) or ("mg996" in ml) or ("sts3215" in ml)
 
     use_rc_servos = (
-        bus_arch == "arduino_pca9685_i2c"
+        bus_arch in ("arduino_pca9685_i2c", "uart_serial_bus")
         or _is_rc_servo(j1_motor_id)
         or _is_rc_servo(j2_motor_id)
         or _is_rc_servo(j3_motor_id)
     )
     is_direct_servo_mode = (
-        bus_arch == "arduino_pca9685_i2c"
+        bus_arch in ("arduino_pca9685_i2c", "uart_serial_bus")
         or (
             _is_rc_servo(j1_motor_id)
             and (getattr(j1_spec, "reducer_id", "direct") or "direct") == "direct"
@@ -1451,11 +1451,12 @@ def build_modular_arm_assembly(
 
     printable_parts: dict[str, Part] = {
         "base_pedestal": base_raw,
-        "shoulder_mount": mount_raw,
         "upper_arm_link": upper_raw,
         "forearm_link": forearm_raw,
+        "wrist_tube": wrist_tube_placed,
     }
     if not is_direct_servo_mode:
+        printable_parts["shoulder_mount"] = mount_raw
         if not replace_sh_gear:
             printable_parts["shoulder_gear"] = sh_gear_raw
         if not replace_el_gear:
@@ -1463,6 +1464,20 @@ def build_modular_arm_assembly(
     elif clevis_shoulder_placed is not None and clevis_elbow_placed is not None:
         printable_parts["clevis_shoulder"] = clevis_shoulder_placed
         printable_parts["clevis_elbow"] = clevis_elbow_placed
+
+    # Always include end-effector / wrist printable parts (gripper or 3-DOF wrist or TCP flange)
+    if gripper_parts_placed is not None:
+        g_base, g_left, g_right = gripper_parts_placed
+        printable_parts["gripper_base"] = g_base
+        printable_parts["gripper_finger_left"] = g_left
+        printable_parts["gripper_finger_right"] = g_right
+    elif wrist_3dof_placed is not None:
+        w4, w5, w6 = wrist_3dof_placed
+        printable_parts["wrist_j4_roll"] = w4
+        printable_parts["wrist_j5_pitch"] = w5
+        printable_parts["wrist_j6_flange"] = w6
+    else:
+        printable_parts["tcp_flange"] = tcp_flange_placed
 
     return {
         "real_volumes_mm3": real_volumes_mm3,
