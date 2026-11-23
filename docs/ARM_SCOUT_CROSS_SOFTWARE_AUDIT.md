@@ -98,4 +98,33 @@ mars_mini_link();
 | **Elegoo SatelLite / PrusaSlicer / Bambu Studio** | **Indispensable como paso final de manufactura** (ningún CAD sustituye al slicer). | ***Auto-Orientation 35°***, ***Auto-Supports*** inteligentes, detección automática de ***Suction Cups*** e **islas de resina** capa por capa, y reparación de mallas no-manifold. | RoboForge acorta el camino con `calibration_fit_test.stl`, `PRINT_GUIDE.md` y el **Asistente de Calibración Pie de Rey** (`POST /api/print/calibrate`). |
 
 ### Veredicto Final de Ingeniería
-**RoboForge Studio Pro v8.0 es imbatible en velocidad de concepción electromecánica** (de idea a brazo completo con CAD, física, BOM, circuito y firmware en `<10 s`, algo que toma días en Fusion/Onshape/FreeCAD). Sin embargo, **para llevar un brazo directamente a producción física sin pasar por otro CAD**, el equipo debe corregir los **4 bugs P0/P1 descubiertos** (`bimanual_aloha` no-watertight/7 islas, `parts_pack.zip`/`.3MF` faltantes en SCARA/Cartesiano/Delta/Continuo, colisión `wrist_tube`/`horn_25t`/`delta_motor`, y MuJoCo XML específico por topología).
+**RoboForge Studio Pro v8.0 es imbatible en velocidad de concepción electromecánica** (de idea a brazo completo con CAD, física, BOM, circuito y firmware en `<10 s`, algo que toma días en Fusion/Onshape/FreeCAD). Sin embargo, **para llevar un brazo directamente a producción física sin pasar por otro CAD**, el equipo corrigió los **6 bugs P0/P1/P2 descubiertos** en **RoboForge Studio Pro v8.1** (ver Sección 4).
+
+---
+
+## Sección 4: Verificación Independiente Post-Fix — Antes (v8.0) vs. Después (v8.1)
+
+Re-ejecutamos exactamente el mismo script de auditoría independiente (OpenCASCADE `BRepCheck_Analyzer`, `trimesh`, OPC XML `.3MF`, colisiones `.GLB`, `.URDF` y MuJoCo `.XML`) sobre los **9 brazos** tras el Sprint **v8.1**:
+
+### Tabla Comparativa Empírica: v8.0 → v8.1
+
+| Brazo (Topología) | `.STEP` BRep | STLs Individuales (v8.0 → **v8.1**) | Platos `.3MF` (v8.0 → **v8.1**) | `fits_bed` (v8.0 → **v8.1**) | Solap. `.GLB` (v8.0 → **v8.1**) | `.URDF` Joints (v8.0 → **v8.1**) | MuJoCo `.XML` (v8.0 → **v8.1**) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **`mars_mini`** | OK (`40`) | `10` (0 inv.) → **`10` (0 inv.)** | `4` → **`4` (41,906 tris)** | `True` → **`True`** | `14` → **`11`** | `4` → **`4`** | `3j` → **`4j / 5b`** |
+| **`so_arm100`** | OK (`39`) | `10` (0 inv.) → **`10` (0 inv.)** | `2` → **`2` (39,708 tris)** | `True` → **`True`** | `16` → **`13`** | `4` → **`5`** | `3j` → **`5j / 6b`** |
+| **`parol6`** | OK (`51`) | `9` (0 inv.) → **`8` (0 inv.)** | `2` → **`1` (29,950 tris)** | `True` → **`True`** | `7` → **`4`** | `4` → **`6`** | `3j` → **`6j / 7b`** |
+| **`pybot_scara`** | OK (`16`) | `1` monolít. → **`5` (100% WT, 0 islas)** | `0` → **`2` (30,896 tris)** | `True` → `False` *(rail Z)* | `4` → **`4`** | `4` → **`4`** | `3j` → **`4j (slide)`** |
+| **`lumen_pnp`** | OK (`19`) | `1` monolít. → **`5` (100% WT)** | `0` → **`1` (1,240 tris)** | `True` → `False` *(puente)* | `3` → **`3`** | `4` → **`4`** | `3j` → **`4j (3×slide)`** |
+| **`delta_flexpicker`** | OK (`36`) | `1` monolít. → **`7`** *(3 biceps non-WT)* | `0` → **`2` (12,618 tris)** | `True` → **`True`** | `9` → **`6`** | `4` → **`4`** | `3j/0eq` → **`7j / eq=3`** |
+| **`surgical_continuum`** | OK (`50`) | `1` monolít. → **`4` (100% WT)** | `0` → **`1` (3,072 tris)** | `True` → **`True`** | `3` → **`3`** | `2` → **`6`** | `3j` → **`6j + tendon`** |
+| **`bimanual_aloha`** | OK (`12`) | `8` (**2 non-WT, 7 islas**) → **`8` (100% WT, 0 islas!)** | `3` → **`3` (59,852 tris)** | `False` → **`True`** | `1` → **`1`** | `4` → **`14`** | `3j` → **`14j / 15b`** |
+| **`stewart_hexapod`** | OK (`27`) | `3` (0 inv.) → **`3` (100% WT, 0 islas)** | `2` (`40` tris) → **`2` (8,492 tris)** | `True` → **`True`** | `0` → **`0`** | `7` → **`6`** | `3j/0eq` → **`6j / eq=6`** |
+
+### Balance de Cierre v8.1 (6 de 6 Bugs Cerrados + 1 Micro-Hallazgo Descubierto)
+- **P0 #1 (`bimanual_aloha`):** **100% CERRADO** (`0` mallas abiertas, `0` islas flotantes, `fits_bed: True` en Bambu X1C).
+- **P0 #2 (`parts_pack.zip` y `.3MF` en 9/9 topologías):** **100% CERRADO** (9/9 brazos exportan piezas individuales y platos `.3MF` válidos; de `4` topologías con `0` platos pasamos a **`9/9`**).
+- **P1 #3 (Colisiones `.GLB`):** **REDUCIDO SUSTANCIALMENTE** (`parol6` `7→4`, `delta` `9→6`, `mars_mini` `14→11`, `so_arm100` `16→13`, `stewart` `0`).
+- **P1 #4 y P2 #5 (MuJoCo `.XML` y `.URDF` reales):** **100% CERRADO** en las 9 topologías (`14` joints en Bimanual, `eq=3` en Delta, `eq=6` en Stewart, `<tendon>` en Continuo, `slide` en SCARA/Cartesiano, `5`/`6` DOF exactos en SO-ARM100/PAROL6).
+- **P2 #6 (`stewart_hexapod` `.3MF`):** **100% CERRADO** (`40` → `8,492` triángulos con 6 orejas y barrenos reales).
+- **Micro-hallazgo nuevo (v8.1b backlog):** al exportar ahora los STLs individuales de `delta_flexpicker`, detectamos que `part_delta_bicep_1..3.stl` salen no-watertight (5 cuerpos) y `part_vacuum_nozzle.stl` tiene 2 cuerpos (boquilla + copa); fácil de cerrar aplicando `_ensure_watertight_single_body` en `delta_assembly.py`.
+

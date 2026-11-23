@@ -254,10 +254,18 @@ def build_scara_arm_assembly(
         "controller_box": [-55.0, 0.0, -20.0],
     }
 
+    printable_parts: dict[str, Part] = {
+        "base_pedestal": base_pedestal,
+        "z_carriage": z_carriage,
+        "scara_arm_1": arm1_raw,
+        "scara_arm_2": arm2_raw,
+    }
+
     return {
         "real_volumes_mm3": real_volumes_mm3,
         "explode_vectors": explode_vectors,
         "individual_files": individual_files,
+        "printable_parts": printable_parts,
         "step_path": step_path,
         "stl_path": stl_path,
         "glb_path": glb_path,

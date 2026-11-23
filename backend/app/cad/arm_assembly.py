@@ -689,7 +689,7 @@ def export_bom_csv(bom: list[BOMItem], output_path: Path) -> Path:
 
 def compute_modular_arm_hash(req: ModularArmRequest) -> str:
     """Compute a deterministic 16-char SHA-256 hex digest for a ModularArmRequest."""
-    canonical = "modarm_v71:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
+    canonical = "modarm_v81b:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
@@ -975,13 +975,13 @@ def build_modular_arm_assembly(
         )
         motor_j1_placed: Part | Compound = Compound(children=[j1_m1, j1_m2])
         if horn_25t is not None:
-            h1_a = Location((0.0, j1_y_neg + 1.0, float(req.base_height_mm))) * (rot_z_to_plus_y * horn_25t)
-            h1_b = Location((0.0, j1_y_pos - 1.0, float(req.base_height_mm))) * (rot_z_to_minus_y * horn_25t)
+            h1_a = Location((0.0, j1_y_neg + 5.5, float(req.base_height_mm))) * (rot_z_to_plus_y * horn_25t)
+            h1_b = Location((0.0, j1_y_pos - 5.5, float(req.base_height_mm))) * (rot_z_to_minus_y * horn_25t)
             horn_nodes.append(("horn_25t_j1", Compound(children=[h1_a, h1_b]), [0.0, -72.0, 0.0]))
     else:
         motor_j1_placed = j1_m1
         if _is_rc_servo(j1_motor_id) and horn_25t is not None:
-            h1_a = Location((0.0, j1_y_neg + 1.0, float(req.base_height_mm))) * (rot_z_to_plus_y * horn_25t)
+            h1_a = Location((0.0, j1_y_neg + 5.5, float(req.base_height_mm))) * (rot_z_to_plus_y * horn_25t)
             horn_nodes.append(("horn_25t_j1", h1_a, [0.0, -72.0, 0.0]))
 
     # J2 Elbow motor (supports dual opposed parallel servos + 25T red aluminum horns)
@@ -992,8 +992,8 @@ def build_modular_arm_assembly(
         j2_m2 = Location((p1[0], j2_y_pos, p1[2])) * (rot_z_to_minus_y * build_servo_3d(j2_motor_id))
         motor_j2_placed: Part | Compound = Compound(children=[j2_m1, j2_m2])
         if horn_25t is not None:
-            h2_a = Location((p1[0], j2_y_neg + 1.0, p1[2])) * (rot_z_to_plus_y * horn_25t)
-            h2_b = Location((p1[0], j2_y_pos - 1.0, p1[2])) * (rot_z_to_minus_y * horn_25t)
+            h2_a = Location((p1[0], j2_y_neg + 5.5, p1[2])) * (rot_z_to_plus_y * horn_25t)
+            h2_b = Location((p1[0], j2_y_pos - 5.5, p1[2])) * (rot_z_to_minus_y * horn_25t)
             horn_nodes.append(
                 (
                     "horn_25t_j2",
@@ -1004,7 +1004,7 @@ def build_modular_arm_assembly(
     else:
         motor_j2_placed = j2_m1
         if _is_rc_servo(j2_motor_id) and horn_25t is not None:
-            h2_a = Location((p1[0], j2_y_neg + 1.0, p1[2])) * (rot_z_to_plus_y * horn_25t)
+            h2_a = Location((p1[0], j2_y_neg + 5.5, p1[2])) * (rot_z_to_plus_y * horn_25t)
             horn_nodes.append(
                 (
                     "horn_25t_j2",
@@ -1019,7 +1019,7 @@ def build_modular_arm_assembly(
         rot_z_to_plus_y * build_motor_3d(j3_motor_id)
     )
     if _is_rc_servo(j3_motor_id) and horn_25t is not None:
-        h3_a = Location((p2_fore[0], j3_y_neg + 1.0, p2_fore[2])) * (rot_z_to_plus_y * horn_25t)
+        h3_a = Location((p2_fore[0], j3_y_neg + 5.5, p2_fore[2])) * (rot_z_to_plus_y * horn_25t)
         horn_nodes.append(
             (
                 "horn_25t_j3",
@@ -1118,6 +1118,10 @@ def build_modular_arm_assembly(
                 ("planetary_j2", plan_j2, [178, 192, 210, 255], 0.84, 0.26, [round(32.0 * math.cos(a1), 2), -58.0, round(32.0 * math.sin(a1), 2)])
             )
             replace_el_gear = True
+
+        # Shift J2 elbow motor outward in -Y so it clears planetary_j2 / cycloidal_j2 cleanly
+        if replace_el_gear:
+            motor_j2_placed = Location((0.0, -28.0, 0.0)) * motor_j2_placed
 
     # v5.0: 7-DOF Redundant Upper-Arm Roll Joint Collar (OpenArm 7-DOF)
     if req.dof >= 7:
@@ -1325,7 +1329,6 @@ def build_modular_arm_assembly(
         shoulder_mount_placed,
         upper_arm_placed,
         forearm_placed,
-        wrist_tube_placed,
         joint_hw_shoulder,
         joint_hw_elbow,
         joint_hw_wrist,
@@ -1338,6 +1341,8 @@ def build_modular_arm_assembly(
         fasteners_kit,
         controller_box_placed,
     ]
+    if wrist_3dof_placed is None:
+        compound_children.append(wrist_tube_placed)
     if is_direct_servo_mode and clevis_shoulder_placed is not None and clevis_elbow_placed is not None:
         compound_children.extend([clevis_shoulder_placed, clevis_elbow_placed])
     else:
@@ -1376,7 +1381,6 @@ def build_modular_arm_assembly(
             ("shoulder_mount", shoulder_mount_placed, [92, 134, 182, 255], 0.78, 0.28),
             ("upper_arm_link", upper_arm_placed, link_rgba, 0.52, 0.32),
             ("forearm_link", forearm_placed, link_rgba, 0.52, 0.32),
-            ("wrist_tube", wrist_tube_placed, link_rgba, 0.55, 0.30),
             ("joint_hw_shoulder", joint_hw_shoulder, [42, 48, 62, 255], 0.78, 0.28),
             ("joint_hw_elbow", joint_hw_elbow, [42, 48, 62, 255], 0.78, 0.28),
             ("joint_hw_wrist", joint_hw_wrist, [42, 48, 62, 255], 0.78, 0.28),
@@ -1390,6 +1394,8 @@ def build_modular_arm_assembly(
             ("fasteners_kit", fasteners_kit, [110, 118, 128, 255], 0.88, 0.26),
             ("controller_box", controller_box_placed, [34, 62, 56, 255], 0.42, 0.48),
         ]
+        if wrist_3dof_placed is None:
+            node_specs.append(("wrist_tube", wrist_tube_placed, link_rgba, 0.55, 0.30))
         # Direct-drive servo mode: wrapping dual-servo clevises instead of spur gears
         if is_direct_servo_mode and clevis_shoulder_placed is not None and clevis_elbow_placed is not None:
             node_specs.append(("clevis_shoulder", clevis_shoulder_placed, [52, 72, 98, 255], 0.48, 0.38))
@@ -1492,8 +1498,9 @@ def build_modular_arm_assembly(
         "base_pedestal": base_raw,
         "upper_arm_link": upper_raw,
         "forearm_link": forearm_raw,
-        "wrist_tube": wrist_tube_placed,
     }
+    if wrist_3dof_placed is None:
+        printable_parts["wrist_tube"] = wrist_tube_placed
     if not is_direct_servo_mode:
         printable_parts["shoulder_mount"] = mount_raw
         if not replace_sh_gear:

@@ -176,10 +176,17 @@ def build_continuum_pcc_assembly(
         "micro_forceps": [round(40.0 * math.sin(tip_theta), 2), 0.0, round(40.0 * math.cos(tip_theta), 2)],
     }
 
+    printable_parts: dict[str, Part] = {
+        "continuum_actuator_base": continuum_actuator_base,
+        "continuum_spacer_disks": continuum_spacer_disks,  # type: ignore[dict-item]
+        "micro_forceps": micro_forceps,
+    }
+
     return {
         "real_volumes_mm3": real_volumes_mm3,
         "explode_vectors": explode_vectors,
         "individual_files": individual_files,
+        "printable_parts": printable_parts,
         "step_path": step_path,
         "stl_path": stl_path,
         "glb_path": glb_path,

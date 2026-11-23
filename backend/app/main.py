@@ -49,6 +49,7 @@ from .cad.print_prep import generate_print_readiness_pack
 from .cad.scara_assembly import export_scara_urdf
 from .cad.stewart_assembly import export_stewart_urdf
 from .cad.sdf_gyroid import generate_field_driven_gyroid
+from .cad.sim_exporters import export_full_dof_urdf, export_topology_mujoco
 from .cad.step_analyzer import analyze_step_file
 from .cad.variants import generate_all_variants
 from .physics.arm_compatibility import (
@@ -1128,22 +1129,8 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
     mujoco_path = out_dir / "arm_mujoco.xml"
     bom_csv_path = out_dir / "arm_bom.csv"
 
-    kin_type = getattr(effective_req, "kinematics_type", "articulated")
-    if kin_type == "scara":
-        export_scara_urdf(effective_req, joints, urdf_path)
-    elif kin_type == "cartesian_gantry":
-        export_cartesian_urdf(effective_req, joints, urdf_path)
-    elif kin_type == "delta_parallel":
-        export_delta_urdf(effective_req, joints, urdf_path)
-    elif kin_type in ("continuum_pcc", "soft_pneumatic_bellows"):
-        export_continuum_urdf(effective_req, joints, urdf_path)
-    elif kin_type == "bimanual_dual_arm":
-        export_bimanual_urdf(effective_req, joints, urdf_path)
-    elif kin_type == "stewart_hexapod":
-        export_stewart_urdf(effective_req, joints, urdf_path)
-    else:
-        export_arm_urdf(proxy_arm_req, joints, urdf_path)
-    export_arm_mujoco(proxy_arm_req, joints, mujoco_path)
+    export_full_dof_urdf(effective_req, phys_res, urdf_path)
+    export_topology_mujoco(effective_req, phys_res, mujoco_path)
     export_bom_csv(bom, bom_csv_path)
 
     # v4.0: Full Mechatronics evaluation + SVG schematic + WireViz YAML + Master BOM CSV

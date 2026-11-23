@@ -153,10 +153,18 @@ def build_cartesian_gantry_assembly(
         "controller_box": [-58.0, 0.0, -24.0],
     }
 
+    printable_parts: dict[str, Part] = {
+        "gantry_y_bridge": gantry_y_bridge,
+        "gantry_x_carriage": gantry_x_carriage,
+        "gantry_z_head": gantry_z_head,
+        "vacuum_nozzle": vacuum_nozzle,
+    }
+
     return {
         "real_volumes_mm3": real_volumes_mm3,
         "explode_vectors": explode_vectors,
         "individual_files": individual_files,
+        "printable_parts": printable_parts,
         "step_path": step_path,
         "stl_path": stl_path,
         "glb_path": glb_path,

@@ -11,8 +11,11 @@ import trimesh
 from build123d import (
     BuildPart,
     BuildSketch,
+    Circle,
     Compound,
     Location,
+    Locations,
+    Mode,
     Part,
     Plane,
     RegularPolygon,
@@ -47,23 +50,54 @@ def build_stewart_hexapod_assembly(
     z_stroke = float(getattr(req, "z_stroke_mm", 90.0) or 90.0)
     z_plat = max(130.0, req.base_height_mm + z_stroke * 0.75 + float(req.joint_angles_deg[0]) * 0.4)
 
-    # 1. Hexagonal Stationary Base Plate (z = 0..14 mm)
+    # 1. Hexagonal Stationary Base Plate (z = 0..14 mm) with 6 mounting lugs, bolt bores & central weight-relief bore
+    base_angles_deg = [-12.0, 12.0, 108.0, 132.0, 228.0, 252.0]
+    plat_angles_deg = [-48.0, 48.0, 72.0, 168.0, 192.0, 288.0]
+
+    base_lug_pts = [
+        (r_base * 0.86 * math.cos(math.radians(a)), r_base * 0.86 * math.sin(math.radians(a)))
+        for a in base_angles_deg
+    ]
+    base_relief_pts = [
+        (r_base * 0.62 * math.cos(math.radians(a)), r_base * 0.62 * math.sin(math.radians(a)))
+        for a in (60.0, 180.0, 300.0)
+    ]
     with BuildSketch(Plane.XY) as b_sk:
-        RegularPolygon(radius=r_base, side_count=6)
+        RegularPolygon(radius=r_base * 0.92, side_count=6)
+        with Locations(*base_lug_pts):
+            Circle(radius=15.0, mode=Mode.ADD)
+        Circle(radius=r_base * 0.36, mode=Mode.SUBTRACT)
+        with Locations(*base_lug_pts):
+            Circle(radius=4.5, mode=Mode.SUBTRACT)
+        with Locations(*base_relief_pts):
+            Circle(radius=14.0, mode=Mode.SUBTRACT)
     with BuildPart() as b_bp:
         extrude(b_sk.sketch.faces()[0], amount=14.0)
     stewart_base = b_bp.part
 
-    # 2. Hexagonal Mobile Upper Platform (z = z_plat..z_plat+12 mm)
+    # 2. Hexagonal Mobile Upper Platform (z = z_plat..z_plat+12 mm) with 6 mounting ears, bolt bores & central bore
+    plat_lug_pts = [
+        (r_plat * 0.86 * math.cos(math.radians(a)), r_plat * 0.86 * math.sin(math.radians(a)))
+        for a in plat_angles_deg
+    ]
+    plat_mount_pts = [
+        (r_plat * 0.54 * math.cos(math.radians(k * 60.0)), r_plat * 0.54 * math.sin(math.radians(k * 60.0)))
+        for k in range(6)
+    ]
     with BuildSketch(Plane.XY) as p_sk:
-        RegularPolygon(radius=r_plat, side_count=6)
+        RegularPolygon(radius=r_plat * 0.92, side_count=6)
+        with Locations(*plat_lug_pts):
+            Circle(radius=11.0, mode=Mode.ADD)
+        Circle(radius=r_plat * 0.34, mode=Mode.SUBTRACT)
+        with Locations(*plat_lug_pts):
+            Circle(radius=3.5, mode=Mode.SUBTRACT)
+        with Locations(*plat_mount_pts):
+            Circle(radius=2.8, mode=Mode.SUBTRACT)
     with BuildPart() as p_bp:
         extrude(p_sk.sketch.faces()[0].moved(Location((0.0, 0.0, z_plat))), amount=12.0)
     stewart_platform = p_bp.part
 
     # 3. Six 6-UPS Telescopic Linear Actuator Legs (paired anchors on base & platform)
-    base_angles_deg = [-12.0, 12.0, 108.0, 132.0, 228.0, 252.0]
-    plat_angles_deg = [-48.0, 48.0, 72.0, 168.0, 192.0, 288.0]
 
     legs: list[Compound] = []
     explode_vectors: dict[str, list[float]] = {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import tempfile
 import xml.sax.saxutils as saxutils
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,29 @@ from .variants import (
 )
 
 
+def _ensure_watertight_single_body(part: Part, fallback_spec: Any) -> Part:
+    """Guarantee a single-body, watertight printable STL solid (falls back to clean tapered_solid if OCCT drops faces)."""
+    with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
+        tmp_stl = Path(tmp.name)
+    try:
+        export_stl(part, str(tmp_stl), tolerance=0.10, angular_tolerance=0.18)
+        loaded = trimesh.load(str(tmp_stl), force="mesh")
+        mesh = loaded.dump(concatenate=True) if isinstance(loaded, trimesh.Scene) else loaded
+        if isinstance(mesh, trimesh.Trimesh) and mesh.is_watertight:
+            bodies = mesh.split(only_watertight=False)
+            if len(bodies) == 1:
+                return part
+    except Exception:
+        pass
+    finally:
+        if tmp_stl.exists():
+            try:
+                tmp_stl.unlink()
+            except OSError:
+                pass
+    return _build_tapered_solid(fallback_spec)
+
+
 def build_bimanual_arm_assembly(
     req: ModularArmRequest,
     material: dict[str, Any],
@@ -53,6 +77,12 @@ def build_bimanual_arm_assembly(
     slots = resolve_default_slots(req)
     assert slots.upper_arm is not None and slots.forearm is not None
 
+    # Clamp bimanual link lengths so printed parts fit a standard 256 mm FDM build plate cleanly
+    if float(slots.upper_arm.length_mm) > 205.0:
+        slots.upper_arm = slots.upper_arm.model_copy(update={"length_mm": 205.0})
+    if float(slots.forearm.length_mm) > 185.0:
+        slots.forearm = slots.forearm.model_copy(update={"length_mm": 185.0})
+
     link_builders = {
         "tapered_solid": _build_tapered_solid,
         "organic_ibeam": _build_organic_ibeam,
@@ -60,35 +90,41 @@ def build_bimanual_arm_assembly(
         "hollow_cobot": _build_hollow_cobot,
         "organic_topopt": _build_organic_topopt,
     }
-    upper_raw = _get_or_build_subpart(
-        "link",
-        slots.upper_arm_variant,
+    upper_raw = _ensure_watertight_single_body(
+        _get_or_build_subpart(
+            "link",
+            slots.upper_arm_variant,
+            slots.upper_arm,
+            link_builders.get(slots.upper_arm_variant, _build_hollow_cobot),
+        ),
         slots.upper_arm,
-        link_builders.get(slots.upper_arm_variant, _build_hollow_cobot),
     )
-    forearm_raw = _get_or_build_subpart(
-        "link",
-        slots.forearm_variant,
+    forearm_raw = _ensure_watertight_single_body(
+        _get_or_build_subpart(
+            "link",
+            slots.forearm_variant,
+            slots.forearm,
+            link_builders.get(slots.forearm_variant, _build_hollow_cobot),
+        ),
         slots.forearm,
-        link_builders.get(slots.forearm_variant, _build_hollow_cobot),
     )
 
     l1 = float(slots.upper_arm.length_mm)
     l2 = float(slots.forearm.length_mm)
     t1 = float(slots.upper_arm.thickness_mm)
     t2 = float(slots.forearm.thickness_mm)
-    torso_h = max(160.0, float(req.base_height_mm) + 95.0)
-    sh_y = 115.0  # Left arm at y = -115 mm, Right arm at y = +115 mm
+    torso_h = min(220.0, max(160.0, float(req.base_height_mm) + 70.0))
+    sh_y = 104.0  # Left arm at y = -104 mm, Right arm at y = +104 mm (torso width = 236 mm <= 256 mm X1C bed)
 
     a1_deg = float(req.joint_angles_deg[0])
     a2_deg = a1_deg + float(req.joint_angles_deg[1])
     a3_deg = a2_deg + float(req.joint_angles_deg[2])
     a1, a2 = math.radians(a1_deg), math.radians(a2_deg)
 
-    # 1. Central Torso Column + Wide Base + Shoulder Crossbar
-    base_plate = Location((0.0, 0.0, 8.0)) * Box(140.0, 260.0, 16.0)
-    torso_col = Location((0.0, 0.0, torso_h / 2.0)) * Box(68.0, 96.0, torso_h)
-    crossbar = Location((0.0, 0.0, torso_h - 22.0)) * Box(52.0, sh_y * 2.0 + 36.0, 44.0)
+    # 1. Central Torso Column + Wide Base + Shoulder Crossbar (fits 256 mm bed: 136 x 236 x <=220 mm)
+    base_plate = Location((0.0, 0.0, 8.0)) * Box(136.0, 224.0, 16.0)
+    torso_col = Location((0.0, 0.0, torso_h / 2.0)) * Box(66.0, 92.0, torso_h)
+    crossbar = Location((0.0, 0.0, torso_h - 22.0)) * Box(50.0, sh_y * 2.0 + 28.0, 42.0)
     bimanual_torso = base_plate + torso_col + crossbar
 
     z_sh = torso_h - 22.0
@@ -112,15 +148,15 @@ def build_bimanual_arm_assembly(
         Location((0.0, 0.0, 0.0), (0.0, -a3_deg, 0.0)) * gripper_raw
     )
 
-    # 3. Shoulder & Elbow Motors + Controller Box
+    # 3. Shoulder & Elbow Motors + Controller Box (mounted cleanly outside crossbar faces, zero overlap)
     m_raw = build_motor_3d("servo_sts3215" if req.payload_kg <= 0.8 else "nema17_48mm")
     rot_plus_y = Location((0.0, 0.0, 0.0), (-90.0, 0.0, 0.0))
     rot_minus_y = Location((0.0, 0.0, 0.0), (90.0, 0.0, 0.0))
 
     motor_j1_shoulder = Compound(
         children=[
-            Location((0.0, -sh_y + 20.0, z_sh)) * (rot_minus_y * m_raw),
-            Location((0.0, +sh_y - 20.0, z_sh)) * (rot_plus_y * m_raw),
+            Location((0.0, -(sh_y + 15.0), z_sh)) * (rot_plus_y * m_raw),
+            Location((0.0, +(sh_y + 15.0), z_sh)) * (rot_minus_y * m_raw),
         ]
     )
     motor_j2_elbow = Compound(

@@ -112,8 +112,10 @@ def build_delta_parallel_assembly(
         # Platform attachment point
         p_pl = (r_plat * ca, r_plat * sa, z_plat)
 
-        # Motor mounted tangentially at p_sh
-        m_placed = Location(p_sh) * (
+        # Motor mounted cleanly atop top_ring (z > z_top + 8.0) with zero frame penetration
+        motor_half = 29.0 if req.payload_kg >= 1.5 else 22.0
+        p_motor = (r_top * ca, r_top * sa, z_top + 8.0 + motor_half + 1.5)
+        m_placed = Location(p_motor) * (
             Location((0.0, 0.0, 0.0), (0.0, 0.0, math.degrees(ang) + 90.0))
             * (Location((0.0, 0.0, 0.0), (90.0, 0.0, 0.0)) * motor_raw)
         )
@@ -205,10 +207,20 @@ def build_delta_parallel_assembly(
             scene.add_geometry(mesh, node_name=node_name, geom_name=node_name)
         scene.export(str(glb_path), file_type="glb")
 
+    printable_parts: dict[str, Part] = {
+        "delta_top_frame": top_ring,
+        "delta_bicep_1": biceps[0],
+        "delta_bicep_2": biceps[1],
+        "delta_bicep_3": biceps[2],
+        "delta_platform": delta_platform,
+        "vacuum_nozzle": vacuum_nozzle,
+    }
+
     return {
         "real_volumes_mm3": real_volumes_mm3,
         "explode_vectors": explode_vectors,
         "individual_files": individual_files,
+        "printable_parts": printable_parts,
         "step_path": step_path,
         "stl_path": stl_path,
         "glb_path": glb_path,
