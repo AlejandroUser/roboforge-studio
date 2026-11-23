@@ -166,7 +166,7 @@ def generate_field_driven_gyroid(
     mesh.visual = trimesh.visual.TextureVisuals(material=pbr_mat)
     mesh.export(str(glb_path), file_type="glb")
 
-    mod_center, mod_size = compute_modifier_box_for_mesh(stl_path, family="links")
+    mod_center, mod_size = compute_modifier_box_for_mesh(stl_path, variant_id="gyroid_sdf")
     export_smart_3mf(
         stl_path=stl_path,
         output_3mf_path=threemf_path,
