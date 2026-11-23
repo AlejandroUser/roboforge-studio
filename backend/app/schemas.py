@@ -410,10 +410,11 @@ class ArmAssemblyResponse(BaseModel):
     bom_csv_url: str
 
 
-# Hito 5: Copiloto de Optimización Automática en Bucle Cerrado
+# Hito 5 + Eje 4: Copiloto de Optimización Automática en Bucle Cerrado (Analítico + FEA 3D + Planos 2D)
 class CopilotRequest(BaseModel):
     prompt: str = Field(..., min_length=4, max_length=600)
     current_request: Optional[LinkDesignRequest] = None
+    verify_with_fea: bool = False
 
 
 class CopilotIteration(BaseModel):
@@ -432,6 +433,17 @@ class CopilotResponse(BaseModel):
     optimized_request: LinkDesignRequest
     iterations: list[CopilotIteration]
     converged: bool
+    fea_verified: bool = False
+    fea_result: Optional[FEAResult] = None
+
+
+class BlueprintAnalysisResponse(BaseModel):
+    filename: str
+    extraction_mode: Literal["multimodal_llm", "cv_offline"]
+    detected_aspect_ratio: float
+    detected_holes_count: int
+    notes: list[str] = Field(default_factory=list)
+    copilot_result: CopilotResponse
 
 
 # Sprint 6C: Motor Implícito SDF + Celosía Gyroid (TPMS) guiada por campo físico (estilo PicoGK / nTop)

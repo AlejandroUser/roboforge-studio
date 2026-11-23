@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -39,7 +39,7 @@ from .cad.sdf_gyroid import generate_field_driven_gyroid
 from .cad.step_analyzer import analyze_step_file
 from .cad.variants import generate_all_variants
 from .physics.arm_kinematics import evaluate_arm_assembly, load_arm_presets
-from .physics.copilot import run_closed_loop_copilot
+from .physics.copilot import analyze_2d_blueprint, run_closed_loop_copilot
 from .physics.dfm_rules import evaluate_global_alerts
 from .physics.fea_solver import run_gear_fea, run_mount_fea, run_step_fea
 from .physics.gear_mechanics import (
@@ -68,6 +68,7 @@ from .physics.profiles import (
 from .schemas import (
     ArmAssemblyRequest,
     ArmAssemblyResponse,
+    BlueprintAnalysisResponse,
     CopilotRequest,
     CopilotResponse,
     CustomMaterialCreate,
@@ -785,6 +786,36 @@ def optimize_with_copilot(req: CopilotRequest) -> CopilotResponse:
         ) from exc
 
 
+@app.post("/api/copilot/blueprint", response_model=BlueprintAnalysisResponse)
+async def analyze_blueprint_endpoint(
+    file: UploadFile = File(...),
+    prompt: str = Form(""),
+    verify_with_fea: bool = Form(False),
+) -> BlueprintAnalysisResponse:
+    filename = file.filename or "blueprint.png"
+    ext = Path(filename).suffix.lower()
+    if ext not in {".png", ".jpg", ".jpeg", ".webp", ".pdf"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato no soportado. Sube un plano 2D en PNG, JPG, WEBP o PDF.",
+        )
+    content = await file.read()
+    if not content or len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Archivo vacío o superior a 20 MB.")
+    try:
+        return analyze_2d_blueprint(
+            image_bytes=content,
+            filename=filename,
+            user_prompt=prompt,
+            verify_with_fea=verify_with_fea,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error analizando plano 2D: {exc}",
+        ) from exc
+
+
 @app.post("/api/sdf/gyroid", response_model=GyroidResult)
 def generate_gyroid_sdf_endpoint(req: GyroidRequest) -> GyroidResult:
     materials = load_materials()
@@ -826,5 +857,8 @@ def get_exported_file(design_hash: str, filename: str) -> FileResponse:
     return FileResponse(path=str(file_path), media_type=media_type, filename=filename)
 
 
-if FRONTEND_DIR.exists():
+REACT_DIST_DIR = PROJECT_ROOT / "frontend-react" / "dist"
+if REACT_DIST_DIR.exists() and (REACT_DIST_DIR / "index.html").exists():
+    app.mount("/", StaticFiles(directory=str(REACT_DIST_DIR), html=True), name="frontend-react")
+elif FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
