@@ -35,6 +35,7 @@ from .cad.exporter import (
 )
 from .cad.gear_variants import generate_all_gear_variants
 from .cad.mount_variants import generate_all_mount_variants
+from .cad.sdf_gyroid import generate_field_driven_gyroid
 from .cad.step_analyzer import analyze_step_file
 from .cad.variants import generate_all_variants
 from .physics.arm_kinematics import evaluate_arm_assembly, load_arm_presets
@@ -78,6 +79,8 @@ from .schemas import (
     GearVariantKind,
     GearVariantResult,
     GenerateResponse,
+    GyroidRequest,
+    GyroidResult,
     LinkDesignRequest,
     MountDesignRequest,
     MountFEARequest,
@@ -113,7 +116,7 @@ GEAR_VARIANT_ORDER: tuple[GearVariantKind, ...] = (
     "gear_spoked",
 )
 
-HASH_PATTERN = re.compile(r"^(?:[a-f0-9]{8,64}|ref_[a-f0-9]{12})$")
+HASH_PATTERN = re.compile(r"^(?:[a-f0-9]{8,64}|ref_[a-f0-9]{12}|gyr_[a-f0-9]{12})$")
 FILENAME_PATTERN = re.compile(r"^[a-z0-9_]+\.(glb|step|stl|3mf|urdf|xml|csv)$")
 
 MEDIA_TYPES: dict[str, str] = {
@@ -779,6 +782,28 @@ def optimize_with_copilot(req: CopilotRequest) -> CopilotResponse:
         raise HTTPException(
             status_code=500,
             detail=f"Error en el copiloto de optimización: {exc}",
+        ) from exc
+
+
+@app.post("/api/sdf/gyroid", response_model=GyroidResult)
+def generate_gyroid_sdf_endpoint(req: GyroidRequest) -> GyroidResult:
+    materials = load_materials()
+    if req.request.material_id not in materials:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Material '{req.request.material_id}' no encontrado en la base de datos.",
+        )
+    material = materials[req.request.material_id]
+    from .cad.sdf_gyroid import _compute_gyroid_hash
+
+    design_hash = _compute_gyroid_hash(req)
+    out_dir = get_export_dir(design_hash)
+    try:
+        return generate_field_driven_gyroid(req, material, out_dir)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generando celosía implícita SDF Gyroid: {exc}",
         ) from exc
 
 

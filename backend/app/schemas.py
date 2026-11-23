@@ -430,3 +430,27 @@ class CopilotResponse(BaseModel):
     optimized_request: LinkDesignRequest
     iterations: list[CopilotIteration]
     converged: bool
+
+
+# Sprint 6C: Motor Implícito SDF + Celosía Gyroid (TPMS) guiada por campo físico (estilo PicoGK / nTop)
+class GyroidRequest(BaseModel):
+    request: LinkDesignRequest
+    cell_size_mm: float = Field(14.0, ge=6.0, le=30.0)
+    shell_thickness_mm: float = Field(2.4, ge=1.2, le=6.0)
+    min_density: float = Field(0.28, ge=0.15, le=0.60)
+    max_density: float = Field(0.68, ge=0.35, le=0.90)
+    voxel_size_mm: float = Field(1.6, ge=0.8, le=3.0)
+
+
+class GyroidResult(BaseModel):
+    design_hash: str
+    cell_size_mm: float
+    voxel_grid: list[int]
+    triangle_count: int
+    volume_cm3: float
+    mass_g: float
+    solve_time_s: float
+    glb_url: str
+    stl_url: str
+    threemf_url: str
+    notes: list[str] = Field(default_factory=list)

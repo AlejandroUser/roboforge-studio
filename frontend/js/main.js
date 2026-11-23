@@ -18,6 +18,7 @@ import {
   generateArmAssembly,
   generateDesign,
   generateGears,
+  generateGyroidSDF,
   generateMounts,
   runCopilotOptimize,
   runFEA,
@@ -316,6 +317,10 @@ class RoboForgeApp {
 
     // Toggle between Real 3D FEA mesh and CAD model
     this.btnToggleFeaMesh?.addEventListener("click", () => this.toggleFeaMeshView());
+
+    // Field-Driven Implicit SDF + TPMS Gyroid (PicoGK / nTop style)
+    const btnGyroid = document.getElementById("btn-gyroid-sdf");
+    btnGyroid?.addEventListener("click", () => this.runGyroidSdfGeneration());
 
     // 3D Engineering Overlays (Load arrows + Clamp markers + Workspace Envelope)
     const btnLoads3d = document.getElementById("btn-loads-3d");
@@ -755,6 +760,61 @@ class RoboForgeApp {
     );
 
     this._updateHeatmapLegend();
+  }
+
+  async runGyroidSdfGeneration() {
+    if (this.isGenerating || this.isRunningFea) return;
+    if (this.activeFamily !== "links") {
+      this.showToast("Gyroid SDF está disponible en la pestaña Eslabones Robóticos.", false);
+      return;
+    }
+
+    this.isGenerating = true;
+    this.setStatus("busy", "Sintetizando SDF Gyroid...");
+    this.showLoader(
+      "Generando Celosía Implícita SDF + TPMS Gyroid...",
+      "Evaluando campo de distancia 3D guiado por esfuerzo + Marching Cubes (estilo PicoGK)"
+    );
+
+    try {
+      const res = await generateGyroidSDF({
+        request: this.controls.getPayload(),
+        cell_size_mm: 14.0,
+        shell_thickness_mm: 2.4,
+        min_density: 0.28,
+        max_density: 0.68,
+        voxel_size_mm: 1.6,
+      });
+
+      await this.viewport.loadModel(res.glb_url, { autoFit: false, isFeaMesh: false, bypassCache: true });
+      this.viewingFeaMesh = false;
+      this._refreshEngineeringOverlays();
+
+      if (this.hudDot) {
+        this.hudDot.style.background = "#22d3a8";
+        this.hudDot.style.boxShadow = "0 0 8px #22d3a8";
+      }
+      if (this.hudName) {
+        this.hudName.textContent = "Celosía Implícita SDF Gyroid (TPMS)";
+      }
+      if (this.hudMeta) {
+        this.hudMeta.textContent = `${Number(res.mass_g).toFixed(1)} g · ${res.voxel_grid.join("×")} vóxeles · ${Number(
+          res.triangle_count
+        ).toLocaleString("es")} tris (${Number(res.solve_time_s).toFixed(2)}s)`;
+      }
+
+      this.setStatus("ready", `Gyroid SDF listo (${Number(res.solve_time_s).toFixed(2)}s)`);
+      this.showToast(
+        `Gyroid SDF listo (${Number(res.mass_g).toFixed(1)} g). Descarga .3MF o .STL desde /api/files/${res.design_hash}/gyroid_sdf.3mf`,
+        false
+      );
+    } catch (err) {
+      this.setStatus("error", "Error Gyroid SDF");
+      this.showToast(`Error Gyroid SDF: ${err.message}`, true);
+    } finally {
+      this.hideLoader();
+      this.isGenerating = false;
+    }
   }
 
   async runFeaSimulation() {

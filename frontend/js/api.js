@@ -250,6 +250,17 @@ export async function runCopilotOptimize(payload, signal) {
 }
 
 /**
+ * Genera celosía implícita SDF + TPMS Gyroid guiada por esfuerzo (estilo PicoGK / nTop).
+ */
+export async function generateGyroidSDF(payload, signal) {
+  return requestJson("/api/sdf/gyroid", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    signal,
+  });
+}
+
+/**
  * Sube un archivo .STEP/.STP a POST /api/analyze-step y retorna StepReferenceAnalysis.
  */
 export async function analyzeStepFile(file) {

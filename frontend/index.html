@@ -11,8 +11,8 @@
   <script type="importmap">
     {
       "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        "three": "/vendor/three/three.module.min.js",
+        "three/addons/": "/vendor/three/addons/"
       }
     }
   </script>
@@ -890,6 +890,9 @@
                 <path d="M9 2L9 9M9 9L15.5 5.8M9 9L2.5 5.8M9 9L9 16" stroke="currentColor" stroke-width="1.2" stroke-opacity="0.75"/>
               </svg>
               <span>FEA 3D</span>
+            </button>
+            <button type="button" class="tool-btn icon-text" id="btn-gyroid-sdf" title="Generar celosía implícita SDF Gyroid guiada por esfuerzo (estilo PicoGK / nTop)">
+              <span>Gyroid SDF</span>
             </button>
             <button type="button" class="tool-btn icon-text hidden" id="btn-toggle-fea-mesh" title="Alternar entre Malla FEA 3D y Modelo CAD">
               <span id="toggle-fea-mesh-label">Malla FEA</span>
