@@ -38,6 +38,9 @@ from .cad.exporter import (
     load_cached_metadata,
     load_cached_mount_metadata,
 )
+from .cad.cartesian_assembly import export_cartesian_urdf
+from .cad.continuum_assembly import export_continuum_urdf
+from .cad.delta_assembly import export_delta_urdf
 from .cad.gear_variants import generate_all_gear_variants
 from .cad.hardware_parts import export_cnc_plates_dxf
 from .cad.mount_variants import generate_all_mount_variants
@@ -971,10 +974,10 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
         preset="parol6_desktop",
         dof=effective_req.dof,
         payload_kg=effective_req.payload_kg,
-        base_height_mm=effective_req.base_height_mm,
-        upper_arm_mm=float(slots_used.upper_arm.length_mm) if slots_used.upper_arm else 200.0,
-        forearm_mm=float(slots_used.forearm.length_mm) if slots_used.forearm else 170.0,
-        wrist_mm=effective_req.wrist_mm,
+        base_height_mm=max(40.0, min(200.0, float(effective_req.base_height_mm))),
+        upper_arm_mm=max(40.0, min(400.0, float(slots_used.upper_arm.length_mm) if slots_used.upper_arm else 200.0)),
+        forearm_mm=max(40.0, min(350.0, float(slots_used.forearm.length_mm) if slots_used.forearm else 170.0)),
+        wrist_mm=max(20.0, min(160.0, float(effective_req.wrist_mm))),
         link_style=proxy_style,  # type: ignore[arg-type]
         shoulder_joint_deg=float(effective_req.joint_angles_deg[0]),
         elbow_joint_deg=float(effective_req.joint_angles_deg[1]),
@@ -988,8 +991,15 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
     mujoco_path = out_dir / "arm_mujoco.xml"
     bom_csv_path = out_dir / "arm_bom.csv"
 
-    if getattr(effective_req, "kinematics_type", "articulated") == "scara":
+    kin_type = getattr(effective_req, "kinematics_type", "articulated")
+    if kin_type == "scara":
         export_scara_urdf(effective_req, joints, urdf_path)
+    elif kin_type == "cartesian_gantry":
+        export_cartesian_urdf(effective_req, joints, urdf_path)
+    elif kin_type == "delta_parallel":
+        export_delta_urdf(effective_req, joints, urdf_path)
+    elif kin_type == "continuum_pcc":
+        export_continuum_urdf(effective_req, joints, urdf_path)
     else:
         export_arm_urdf(proxy_arm_req, joints, urdf_path)
     export_arm_mujoco(proxy_arm_req, joints, mujoco_path)

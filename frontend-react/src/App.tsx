@@ -15,6 +15,7 @@ import type {
   FamilyId,
   GenerateResponse,
   GyroidResult,
+  KinematicsType,
   MechatronicsCatalog,
   MechatronicsConfig,
   ModularArmRequest,
@@ -115,11 +116,15 @@ const DEFAULT_ARM = {
   forearm_mm: 170,
   wrist_mm: 75,
   link_style: "hollow_cobot",
-  kinematics_type: "articulated" as "articulated" | "scara",
+  kinematics_type: "articulated" as KinematicsType,
   z_stroke_mm: 120,
   z_axis_mm: 40,
   wrist_3dof: true,
   cnc_plate_mode: false,
+  remote_base_motors: false,
+  four_bar_parallelogram: false,
+  bevel_differential_wrist: false,
+  vacuum_eoat: false,
   base_yaw_deg: 0,
   shoulder_joint_deg: 35,
   elbow_joint_deg: -55,
@@ -559,14 +564,35 @@ export default function App() {
       z_stroke_mm: state.arm.z_stroke_mm,
       wrist_3dof: state.arm.wrist_3dof,
       cnc_plate_mode: state.arm.cnc_plate_mode,
+      remote_base_motors: state.arm.remote_base_motors,
+      four_bar_parallelogram: state.arm.four_bar_parallelogram,
+      bevel_differential_wrist: state.arm.bevel_differential_wrist,
+      vacuum_eoat: state.arm.vacuum_eoat,
     }),
     [state.arm, armSlots, mechatronicsConfig]
   );
 
   const applyArmPresetWithMechatronics = useCallback(
     (presetId: string, presetDefaults: Record<string, any> = {}) => {
-      const isScara = presetId === "pybot_scara" || presetDefaults.kinematics_type === "scara";
-      const isCnc = presetId === "ar4_industrial" || Boolean(presetDefaults.cnc_plate_mode);
+      let kinType: KinematicsType = (presetDefaults.kinematics_type as KinematicsType) || "articulated";
+      if (presetId === "pybot_scara") kinType = "scara";
+      else if (presetId === "lumen_pnp") kinType = "cartesian_gantry";
+      else if (presetId === "delta_flexpicker") kinType = "delta_parallel";
+      else if (presetId === "surgical_continuum") kinType = "continuum_pcc";
+
+      const isCnc =
+        presetId === "ar4_industrial" ||
+        presetId === "barrett_wam" ||
+        presetId === "dobot_4bar" ||
+        Boolean(presetDefaults.cnc_plate_mode);
+      const isCapstan = presetId === "barrett_wam" || Boolean(presetDefaults.remote_base_motors);
+      const isFourBar = presetId === "dobot_4bar" || Boolean(presetDefaults.four_bar_parallelogram);
+      const isBevel = presetId === "thor_6dof" || Boolean(presetDefaults.bevel_differential_wrist);
+      const isVacuum =
+        presetId === "lumen_pnp" ||
+        presetId === "delta_flexpicker" ||
+        presetId === "dobot_4bar" ||
+        Boolean(presetDefaults.vacuum_eoat);
 
       pushState((s) => ({
         ...s,
@@ -575,9 +601,13 @@ export default function App() {
           ...s.arm,
           ...presetDefaults,
           preset: presetId,
-          kinematics_type: isScara ? "scara" : "articulated",
+          kinematics_type: kinType,
           cnc_plate_mode: isCnc,
-          wrist_3dof: !isScara,
+          wrist_3dof: kinType === "articulated",
+          remote_base_motors: isCapstan,
+          four_bar_parallelogram: isFourBar,
+          bevel_differential_wrist: isBevel,
+          vacuum_eoat: isVacuum,
         },
       }));
 
@@ -658,6 +688,72 @@ export default function App() {
           },
         });
         showToast("Preset BCN3D Moveo (Correas GT2 + NEMA 23/17/14) cargado.");
+      } else if (presetId === "thor_6dof") {
+        setMechatronicsConfig({
+          bus_architecture: "can_fd_bus",
+          system_voltage_v: 24,
+          joint_actuators: {
+            J1: { motor_id: "nema17_mks_servo42d", reducer_id: "planetary_20", target_rpm: 32, parallel_count: 1 },
+            J2: { motor_id: "nema17_mks_servo42d", reducer_id: "cycloidal_25", target_rpm: 32, parallel_count: 1 },
+            J3: { motor_id: "nema14_34mm", reducer_id: "planetary_10", target_rpm: 45, parallel_count: 1 },
+          },
+        });
+        showToast("Preset Thor 6-DOF / Niryo Ned2 (Muñeca Diferencial Bevel) cargado.");
+      } else if (presetId === "dobot_4bar") {
+        setMechatronicsConfig({
+          bus_architecture: "stm32_step_dir",
+          system_voltage_v: 24,
+          joint_actuators: {
+            J1: { motor_id: "nema17_48mm", reducer_id: "planetary_10", target_rpm: 40, parallel_count: 1 },
+            J2: { motor_id: "nema17_48mm", reducer_id: "planetary_10", target_rpm: 40, parallel_count: 1 },
+            J3: { motor_id: "nema14_34mm", reducer_id: "direct", target_rpm: 50, parallel_count: 1 },
+          },
+        });
+        showToast("Preset Dobot Magician (Paralelogramo 4-Barras + Boquilla Vacío) cargado.");
+      } else if (presetId === "lumen_pnp") {
+        setMechatronicsConfig({
+          bus_architecture: "stm32_step_dir",
+          system_voltage_v: 24,
+          joint_actuators: {
+            J1: { motor_id: "nema17_48mm", reducer_id: "gt2_belt_3", target_rpm: 90, parallel_count: 1 },
+            J2: { motor_id: "nema17_48mm", reducer_id: "gt2_belt_3", target_rpm: 90, parallel_count: 1 },
+            J3: { motor_id: "nema14_34mm", reducer_id: "direct", target_rpm: 60, parallel_count: 1 },
+          },
+        });
+        showToast("Preset LumenPnP (Pórtico Cartesiano X-Y-Z + Boquilla Vacío) cargado.");
+      } else if (presetId === "delta_flexpicker") {
+        setMechatronicsConfig({
+          bus_architecture: "can_fd_bus",
+          system_voltage_v: 48,
+          joint_actuators: {
+            J1: { motor_id: "bldc_qdd_8308", reducer_id: "planetary_10", target_rpm: 120, parallel_count: 1 },
+            J2: { motor_id: "bldc_qdd_8308", reducer_id: "planetary_10", target_rpm: 120, parallel_count: 1 },
+            J3: { motor_id: "bldc_qdd_8308", reducer_id: "planetary_10", target_rpm: 120, parallel_count: 1 },
+          },
+        });
+        showToast("Preset ABB FlexPicker Delta 4-DOF (3 Brazos Paralelos + 48V) cargado.");
+      } else if (presetId === "barrett_wam") {
+        setMechatronicsConfig({
+          bus_architecture: "can_fd_bus",
+          system_voltage_v: 48,
+          joint_actuators: {
+            J1: { motor_id: "damiao_dm_j4340", reducer_id: "planetary_10", target_rpm: 40, parallel_count: 1 },
+            J2: { motor_id: "damiao_dm_j4340", reducer_id: "planetary_10", target_rpm: 40, parallel_count: 1 },
+            J3: { motor_id: "damiao_dm_j4310", reducer_id: "planetary_10", target_rpm: 50, parallel_count: 1 },
+          },
+        });
+        showToast("Preset Barrett WAM (7-DOF · Motores en Base Capstan · 48V) cargado.");
+      } else if (presetId === "surgical_continuum") {
+        setMechatronicsConfig({
+          bus_architecture: "can_fd_bus",
+          system_voltage_v: 24,
+          joint_actuators: {
+            J1: { motor_id: "nema14_34mm", reducer_id: "direct", target_rpm: 30, parallel_count: 1 },
+            J2: { motor_id: "nema14_34mm", reducer_id: "direct", target_rpm: 30, parallel_count: 1 },
+            J3: { motor_id: "nema14_34mm", reducer_id: "direct", target_rpm: 30, parallel_count: 1 },
+          },
+        });
+        showToast("Preset Robot Quirúrgico Continuo PCC (Nitinol + Discos PEEK) cargado.");
       }
     },
     [pushState, showToast]
@@ -674,17 +770,28 @@ export default function App() {
         openarm_7dof: "openarm_7dof",
         arctos_6dof: "arctos_6dof",
         bcn3d_moveo: "bcn3d_moveo",
+        thor_niryo_ned2: "thor_6dof",
+        dobot_magician_4bar: "dobot_4bar",
+        lumenpnp_cartesian: "lumen_pnp",
+        abb_irb360_flexpicker_delta: "delta_flexpicker",
+        barrett_wam_ambidex: "barrett_wam",
+        continuum_tendon_surgical: "surgical_continuum",
       };
       const presetId = arm.roboforge_preset_id || idMap[arm.id] || "parol6_desktop";
       const presetObj = presets.arms?.[presetId];
       const baseDefaults = presetObj?.defaults || presetObj || {};
-      const isScara = (arm.kinematics_type || "").toLowerCase().includes("scara");
+      const kt = (arm.kinematics_type || "").toLowerCase();
+      let kinType: KinematicsType = "articulated";
+      if (kt.includes("scara")) kinType = "scara";
+      else if (kt.includes("cartesian")) kinType = "cartesian_gantry";
+      else if (kt.includes("delta")) kinType = "delta_parallel";
+      else if (kt.includes("continuum")) kinType = "continuum_pcc";
 
       applyArmPresetWithMechatronics(presetId, {
         ...baseDefaults,
         dof: Math.min(Math.max(arm.dof || 6, 4), 7),
-        payload_kg: arm.payload_kg || baseDefaults.payload_kg || 1.0,
-        kinematics_type: isScara ? "scara" : "articulated",
+        payload_kg: Math.max(0.1, arm.payload_kg || baseDefaults.payload_kg || 1.0),
+        kinematics_type: kinType,
       });
     },
     [presets.arms, applyArmPresetWithMechatronics]
@@ -889,7 +996,7 @@ export default function App() {
         <div className="header-left">
           <div className="brand">
             <span>RoboForge</span>
-            <span className="brand-badge">PRO v5.0 · R3F</span>
+            <span className="brand-badge">PRO v6.0 · R3F</span>
           </div>
           <nav className="family-tabs">
             {(
@@ -1285,9 +1392,9 @@ export default function App() {
                   type="button"
                   className="btn-tool btn-arm-db"
                   onClick={() => setShowArmDbModal(true)}
-                  title="Explorar los 8 brazos robóticos reales y cargar en 1 clic"
+                  title="Explorar los 14 brazos robóticos reales y cargar en 1 clic"
                 >
-                  📚 Base de Datos ({armDatabase?.arms?.length || 8} Brazos Reales)
+                  📚 Base de Datos ({armDatabase?.arms?.length || 14} Brazos Reales)
                 </button>
                 <div className="preset-grid">
                   {Object.entries(presets.arms).map(([id, p]: [string, any]) => (
@@ -1307,19 +1414,28 @@ export default function App() {
                     <div className="field-head"><span>Cinemática</span></div>
                     <select
                       value={state.arm.kinematics_type}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const kt = e.target.value as KinematicsType;
                         pushState((s) => ({
                           ...s,
                           arm: {
                             ...s.arm,
-                            kinematics_type: e.target.value as "articulated" | "scara",
-                            dof: e.target.value === "scara" ? 4 : s.arm.dof,
+                            kinematics_type: kt,
+                            dof:
+                              kt === "scara" || kt === "cartesian_gantry" || kt === "delta_parallel"
+                                ? 4
+                                : kt === "continuum_pcc"
+                                  ? 7
+                                  : s.arm.dof,
                           },
-                        }))
-                      }
+                        }));
+                      }}
                     >
                       <option value="articulated">Articulado (4–7 DOF)</option>
                       <option value="scara">SCARA 4-DOF (Z Prismático)</option>
+                      <option value="cartesian_gantry">Pórtico Cartesiano X-Y-Z</option>
+                      <option value="delta_parallel">Delta Paralelo 4-DOF</option>
+                      <option value="continuum_pcc">Continuo PCC (Quirúrgico)</option>
                     </select>
                   </div>
                   <div className="field-row">
@@ -1337,6 +1453,46 @@ export default function App() {
                     </select>
                   </div>
                 </div>
+                <label className="check-row">
+                  <span>Motores en Base (Capstan)</span>
+                  <input
+                    type="checkbox"
+                    checked={state.arm.remote_base_motors}
+                    onChange={(e) =>
+                      pushState((s) => ({ ...s, arm: { ...s.arm, remote_base_motors: e.target.checked } }))
+                    }
+                  />
+                </label>
+                <label className="check-row">
+                  <span>Paralelogramo 4-Barras</span>
+                  <input
+                    type="checkbox"
+                    checked={state.arm.four_bar_parallelogram}
+                    onChange={(e) =>
+                      pushState((s) => ({ ...s, arm: { ...s.arm, four_bar_parallelogram: e.target.checked } }))
+                    }
+                  />
+                </label>
+                <label className="check-row">
+                  <span>Muñeca Diferencial Bevel</span>
+                  <input
+                    type="checkbox"
+                    checked={state.arm.bevel_differential_wrist}
+                    onChange={(e) =>
+                      pushState((s) => ({ ...s, arm: { ...s.arm, bevel_differential_wrist: e.target.checked } }))
+                    }
+                  />
+                </label>
+                <label className="check-row">
+                  <span>Boquilla Vacío (EOAT)</span>
+                  <input
+                    type="checkbox"
+                    checked={state.arm.vacuum_eoat}
+                    onChange={(e) =>
+                      pushState((s) => ({ ...s, arm: { ...s.arm, vacuum_eoat: e.target.checked } }))
+                    }
+                  />
+                </label>
                 <label className="check-row">
                   <span>Placas CNC Al 6061 (.DXF)</span>
                   <input
@@ -1418,10 +1574,12 @@ export default function App() {
                   </div>
                 ))}
 
-                {state.arm.kinematics_type === "scara" && (
+                {(state.arm.kinematics_type === "scara" ||
+                  state.arm.kinematics_type === "cartesian_gantry" ||
+                  state.arm.kinematics_type === "delta_parallel") && (
                   <div className="field-row">
                     <div className="field-head">
-                      <span>Eje Z Lineal (SCARA)</span>
+                      <span>Eje Z Lineal ({state.arm.kinematics_type === "delta_parallel" ? "Delta" : state.arm.kinematics_type === "cartesian_gantry" ? "Pórtico" : "SCARA"})</span>
                       <span>{state.arm.z_axis_mm} mm</span>
                     </div>
                     <input

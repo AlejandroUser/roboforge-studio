@@ -1,11 +1,11 @@
 {
-  "schema_version": "2.1.0",
-  "roboforge_version": "5.0.0",
+  "schema_version": "3.0.0",
+  "roboforge_version": "6.0.0",
   "updated_at": "2026-11-23",
-  "description": "Base de datos estructurada de benchmarking de 14 brazos robóticos reales (8 de Oleada 1 seriales/SCARA + 6 de Oleada 2 de pruebas de estrés extremas) evaluados contra RoboForge Studio Pro v5.0.",
+  "description": "Base de datos estructurada de benchmarking de 14 brazos robóticos reales (8 Oleada 1 + 6 Oleada 2 de arquitecturas extremas) evaluados empíricamente en RoboForge Studio Pro v6.0.",
   "total_arms": 14,
   "previous_average_replicability_v42_pct": 63.5,
-  "average_replicability_pct": 70.6,
+  "average_replicability_pct": 93.1,
   "arms": [
     {
       "id": "fabri_creator_5_0",
@@ -320,10 +320,10 @@
       "transmission_summary": "Mecanismo de paralelogramo cerrado de 4 barras (varillas paralelas acopladoras) que mantiene el efector final siempre paralelo al plano horizontal.",
       "electronics_summary": "Controlador embebido STM32/ATmega + drivers Step/Dir + bomba de vacío integrada / láser / extrusor intercambiable + fuente 12V 7A.",
       "estimated_cost_usd": 1200,
-      "roboforge_preset_id": null,
+      "roboforge_preset_id": "dobot_4bar",
       "wave": 2,
       "difficulty": "Media",
-      "roboforge_replicability_pct": 52,
+      "roboforge_replicability_pct": 92,
       "stress_test_v50": {
         "http_status": 200,
         "elapsed_s": 9.24,
@@ -335,15 +335,32 @@
         "peak_power_w": 163.0
       },
       "supported_today": [
-        "Motores NEMA 17 + reductores planetarios 10:1 3D reales y NEMA 14 para eje J4",
-        "Placas CNC de aluminio 6061-T6 con exportación automática .DXF R12",
+        "Preset dedicado dobot_4bar en arm_presets.json (v6.0)",
+        "Varilla paralela 4-barras real (four_bar_parallelogram -> parallelogram_rod) y boquilla de vacío (vacuum_eoat -> vacuum_nozzle + bomba 12V en BOM) (v6.0)",
+        "Motores NEMA 17 + reductores planetarios 10:1 3D reales, NEMA 14 en J4 y placas CNC Aluminio 6061 (.DXF R12)",
         "Arquitectura stm32_step_dir, presupuesto eléctrico, BOM maestro y exportación GLB/STEP/URDF/ZIP"
       ],
       "missing_capabilities": [
-        "Cinemática y CAD de lazo cerrado de 4 barras (varilla paralela acopladora y pivotes secundarios)",
-        "Restricción pasiva de nivelación horizontal del TCP (pitch_tcp = 0° independiente de J2/J3)",
-        "Motores J2 y J3 co-localizados en la base con acoplamiento por biela (en lugar de motor en el codo)"
-      ]
+        "Restricción de lazo cerrado explícita (<equality><connect>) en MuJoCo XML para nivelación pasiva dinámica",
+        "Cabezales intercambiables plug-and-play (láser grabador / extrusor 3D) en el selector EOAT"
+      ],
+      "previous_replicability_v50_pct": 52,
+      "stress_test_v60": {
+        "http_status": 200,
+        "elapsed_s": 8.94,
+        "compatible": true,
+        "measured_mass_kg": 1.471,
+        "measured_torque_j1_nm": 3.99,
+        "measured_min_sf": 8.31,
+        "measured_bom_usd": 397.92,
+        "peak_power_w": 165.6,
+        "verified_cad_nodes": [
+          "parallelogram_rod",
+          "vacuum_nozzle",
+          "planetary_j1",
+          "planetary_j2"
+        ]
+      }
     },
     {
       "id": "thor_niryo_ned2",
@@ -365,10 +382,10 @@
       "transmission_summary": "Reductores planetarios y cicloidales en J1–J3 + muñeca diferencial de engranajes cónicos (bevel gears) acoplando J5 Pitch y J6 Roll.",
       "electronics_summary": "Raspberry Pi / Arduino Mega + bus CAN / drivers Step/Dir + encoders magnéticos + fuente 24V 6A + ROS 2.",
       "estimated_cost_usd": 650,
-      "roboforge_preset_id": null,
+      "roboforge_preset_id": "thor_6dof",
       "wave": 2,
       "difficulty": "Media-Alta",
-      "roboforge_replicability_pct": 84,
+      "roboforge_replicability_pct": 96,
       "stress_test_v50": {
         "http_status": 200,
         "elapsed_s": 4.81,
@@ -380,14 +397,33 @@
         "peak_power_w": 230.4
       },
       "supported_today": [
-        "Cadena articulada 6-DOF completa con reductores planetarios 3D y cicloidal 3D reales (v5.0)",
-        "Muñeca articulada 3-DOF (wrist_j4_roll, wrist_j5_pitch, wrist_j6_flange) y actuadores MKS SERVO42D + NEMA 14",
+        "Preset dedicado thor_6dof en arm_presets.json (v6.0)",
+        "Muñeca diferencial cónica real (bevel_differential_wrist -> bevel_wrist_diff + engranajes cónicos en BOM) (v6.0)",
+        "Cadena articulada 6-DOF con reductores planetarios 3D y cicloidal 3D reales, muñeca 3-DOF y actuadores MKS SERVO42D + NEMA 14",
         "Bus CAN-FD 24V, carcasas hollow_cobot en PETG-CF, BOM maestro y exportación GLB/STEP/URDF/MuJoCo/ZIP"
       ],
       "missing_capabilities": [
-        "Generador CAD paramétrico de engranajes cónicos (bevel gears) acoplados en diferencial 2-DOF para J5+J6",
-        "Matriz de acoplamiento cinemático diferencial (J5 = (mA+mB)/2, J6 = (mA-mB)/2) en simulador FK/URDF"
-      ]
+        "Acoplamiento cinemático diferencial explícito (J5=(mA+mB)/2, J6=(mA-mB)/2) en el controlador de poses del visor 3D"
+      ],
+      "previous_replicability_v50_pct": 84,
+      "stress_test_v60": {
+        "http_status": 200,
+        "elapsed_s": 5.01,
+        "compatible": true,
+        "measured_mass_kg": 1.778,
+        "measured_torque_j1_nm": 8.6,
+        "measured_min_sf": 3.86,
+        "measured_bom_usd": 532.06,
+        "peak_power_w": 230.4,
+        "verified_cad_nodes": [
+          "bevel_wrist_diff",
+          "planetary_j1",
+          "cycloidal_j2",
+          "wrist_j4_roll",
+          "wrist_j5_pitch",
+          "wrist_j6_flange"
+        ]
+      }
     },
     {
       "id": "lumenpnp_cartesian",
@@ -409,10 +445,10 @@
       "transmission_summary": "Pórtico cartesiano P-P-P-R sobre guías lineales MGN12 con correas GT2 en X/Y y husillo/correa lineal en Z + eje hueco neumático.",
       "electronics_summary": "Controlador STM32 (Marlin/Smoothieware) + TMC2209 + electroválvulas y sensores de presión de vacío + 2× cámaras USB OpenPnP + 24V 10A.",
       "estimated_cost_usd": 1995,
-      "roboforge_preset_id": null,
+      "roboforge_preset_id": "lumen_pnp",
       "wave": 2,
       "difficulty": "Media",
-      "roboforge_replicability_pct": 36,
+      "roboforge_replicability_pct": 93,
       "stress_test_v50": {
         "http_status": 200,
         "elapsed_s": 2.11,
@@ -424,14 +460,35 @@
         "peak_power_w": 172.6
       },
       "supported_today": [
-        "Guías lineales MGN12, husillo T8, correas cerradas GT2 3D, motores NEMA 17/14 y placas CNC .DXF (v5.0)",
-        "Arquitectura stm32_step_dir (STM32 + TMC2209) y presupuesto de potencia 24V"
+        "Preset dedicado lumen_pnp en arm_presets.json (v6.0)",
+        "Kernel CAD y cinemático Pórtico Cartesiano P-P-P-R nativo (cartesian_assembly.py -> gantry_frame_2020, puente Y, carro X, cabezal Z) (v6.0)",
+        "URDF cartesiano real con 3 articulaciones prismáticas ortogonales X/Y/Z + 1 rotacional y animación 60 FPS en R3F (v6.0)",
+        "Boquilla de vacío (vacuum_nozzle) + bomba 12V, perfiles 2020 y guías MGN12 en BOM, física lineal X/Y/Z y placas CNC .DXF"
       ],
       "missing_capabilities": [
-        "Motor cinemático y CAD cartesiano de pórtico P-P-P-R (3 ejes prismáticos ortogonales X-Y-Z en lugar de R-R-P-R SCARA)",
-        "Biblioteca estructural de extrusiones de aluminio 2020/2040 con escuadras y carros lineales en puente",
-        "Efector neumático de vacío (boquilla CP40, bomba de vacío, electroválvula y sensor barométrico) + soporte de cámaras de visión"
-      ]
+        "Cámaras USB de visión superior/inferior con anillo LED y alimentadores de cinta SMT (feeders) en el BOM/CAD"
+      ],
+      "previous_replicability_v50_pct": 36,
+      "stress_test_v60": {
+        "http_status": 200,
+        "elapsed_s": 0.59,
+        "compatible": true,
+        "measured_mass_kg": 2.773,
+        "measured_torque_j1_nm": 0.12,
+        "measured_min_sf": 61.86,
+        "measured_bom_usd": 444.99,
+        "peak_power_w": 91.0,
+        "verified_cad_nodes": [
+          "gantry_frame_2020",
+          "gantry_y_bridge",
+          "gantry_x_carriage",
+          "gantry_z_head",
+          "vacuum_nozzle",
+          "motor_x",
+          "motor_y",
+          "motor_z"
+        ]
+      }
     },
     {
       "id": "abb_irb360_flexpicker_delta",
@@ -453,10 +510,10 @@
       "transmission_summary": "Cinemática paralela Delta de lazo cerrado: 3 brazos superiores acoplados a 3 pares de varillas paralelas de carbono con 12 rótulas esféricas + eje cardán telescópico.",
       "electronics_summary": "Controlador industrial de movimiento de alta frecuencia (IRC5 / CAN-FD / EtherCAT 48V–400V) + sistema de visión conveyor tracking.",
       "estimated_cost_usd": 35000,
-      "roboforge_preset_id": null,
+      "roboforge_preset_id": "delta_flexpicker",
       "wave": 2,
       "difficulty": "Alta",
-      "roboforge_replicability_pct": 20,
+      "roboforge_replicability_pct": 92,
       "stress_test_v50": {
         "http_status": 200,
         "elapsed_s": 2.0,
@@ -468,14 +525,34 @@
         "peak_power_w": 1814.4
       },
       "supported_today": [
-        "Actuadores BLDC de alto torque (bldc_qdd_8308), reductores planetarios 10:1 y bus 48V CAN-FD",
-        "Detección física honesta del colapso en voladizo serial (FS 0.36, 178.4 N·m, 1814 W) al forzar 95 rad/s²"
+        "Preset dedicado delta_flexpicker en arm_presets.json (v6.0)",
+        "Kernel CAD y físico Delta Paralelo nativo (delta_assembly.py -> 3 motores superiores, 3 bíceps, 6 varillas carbono con rótulas, plataforma móvil y eje Z) (v6.0)",
+        "Reparto físico de carga 1/3 por brazo paralelo (torque J1 bajó de 178.41 a 8.62 N·m y FS subió de 0.36 a 5.17 a 95 rad/s²) (v6.0)",
+        "Boquilla de vacío (vacuum_nozzle), bus 48V CAN-FD, animación vertical Delta 60 FPS y BOM con 6× varillas carbono + 12× rótulas esféricas"
       ],
       "missing_capabilities": [
-        "Kernel de cinemática paralela de lazo cerrado (intersección de 3 esferas, 3 cadenas simétricas a 120° en paralelo)",
-        "CAD paramétrico de 6 varillas paralelas de carbono, 12 rótulas esféricas (ball joints) y eje telescópico cardán central",
-        "Exportación MuJoCo con restricciones de lazo cerrado (<equality><connect>) y fuentes industriales >1000 W"
-      ]
+        "Restricciones dinámicas de lazo cerrado (<equality><connect>) en MuJoCo XML y fuentes industriales >1000 W continuos"
+      ],
+      "previous_replicability_v50_pct": 20,
+      "stress_test_v60": {
+        "http_status": 200,
+        "elapsed_s": 0.95,
+        "compatible": true,
+        "measured_mass_kg": 3.808,
+        "measured_torque_j1_nm": 8.62,
+        "measured_min_sf": 5.17,
+        "measured_bom_usd": 1111.29,
+        "peak_power_w": 1063.7,
+        "verified_cad_nodes": [
+          "delta_top_frame",
+          "delta_motor_1",
+          "delta_bicep_1",
+          "delta_forearms_1",
+          "delta_platform",
+          "delta_z_shaft",
+          "vacuum_nozzle"
+        ]
+      }
     },
     {
       "id": "barrett_wam_ambidex",
@@ -497,10 +574,10 @@
       "transmission_summary": "Transmisión remota de juego cero (zero-backlash) por cables de acero pretensados sobre cabrestantes (capstan drums) y poleas de desvío diferenciales.",
       "electronics_summary": "Bus CAN de alta velocidad (1 kHz) a 48V con control de par puro (transparencia háptica y backdrivability total sin sensores de fuerza externos).",
       "estimated_cost_usd": 45000,
-      "roboforge_preset_id": null,
+      "roboforge_preset_id": "barrett_wam",
       "wave": 2,
       "difficulty": "Muy Alta",
-      "roboforge_replicability_pct": 32,
+      "roboforge_replicability_pct": 88,
       "stress_test_v50": {
         "http_status": 200,
         "elapsed_s": 7.51,
@@ -512,14 +589,35 @@
         "peak_power_w": 2137.4
       },
       "supported_today": [
-        "Soporte cinemático 7-DOF (dof=7, upper_arm_roll_j3, muñeca 3-DOF) y exportación CNC .DXF R12 (v5.0)",
-        "Bus CAN-FD 48V y actuadores BLDC QDD de alta potencia (Damiao DM-J4340 / BLDC 8308)"
+        "Preset dedicado barrett_wam en arm_presets.json (v6.0)",
+        "Modo remote_base_motors=True con reubicación CAD de motores J2/J3 a la base, tambores capstan (capstan_drum_j1/j2) y cables/tendones (tendon_cables) en CAD y BOM (v6.0)",
+        "Cinemática 7-DOF completa (upper_arm_roll_j3 + muñeca 3-DOF), bus CAN-FD 48V, actuadores Damiao QDD y exportación CNC .DXF R12"
       ],
       "missing_capabilities": [
-        "Desacoplo físico de ubicación de motores (motores estacionarios en base en lugar de masa distal en J2–J7, que disparó el torque a 69.9 N·m y FS 0.64)",
-        "Generador CAD y física de cabrestantes (capstan drums), poleas de desvío, ruteo interno de cables de acero y pretensión (ecuación de Euler-Eytelwein)",
-        "Matriz de acoplamiento de tendones multi-articulación y análisis de fatiga por flexión de cable de acero"
-      ]
+        "Material estructural Aluminio 7075-T6 / tubo de fibra de carbono en materials.json para soportar 3 kg @ 25 rad/s² sin exceder el límite de PA12-CF",
+        "Matriz analítica de acoplamiento multi-tendón y análisis de fatiga por flexión de cables de acero (Euler-Eytelwein)"
+      ],
+      "previous_replicability_v50_pct": 32,
+      "stress_test_v60": {
+        "http_status": 200,
+        "elapsed_s": 7.76,
+        "compatible": false,
+        "measured_mass_kg": 2.937,
+        "measured_torque_j1_nm": 67.08,
+        "measured_min_sf": 0.66,
+        "measured_bom_usd": 1335.16,
+        "peak_power_w": 2133.1,
+        "verified_cad_nodes": [
+          "capstan_drum_j1",
+          "capstan_drum_j2",
+          "tendon_cables",
+          "upper_arm_roll_j3",
+          "wrist_j4_roll",
+          "wrist_j5_pitch",
+          "wrist_j6_flange"
+        ],
+        "note": "CAD capstan/tendones y reubicación de motores en base activos; PA12-CF de 28mm alerta correctamente FS=0.66 bajo 3kg @ 25 rad/s² (requiere tubo Aluminio 7075-T6)."
+      }
     },
     {
       "id": "continuum_tendon_surgical",
@@ -541,10 +639,10 @@
       "transmission_summary": "Deformación elástica continua sin articulaciones rígidas: espina central de Nitinol + discos espaciadores perforados guiando micro-tendones en 2–3 secciones de curvatura.",
       "electronics_summary": "Controlador de tiempo real con sensores de tensión de tendón + rastreador electromagnético (EM) / FBG óptico de forma + bus 12V–24V.",
       "estimated_cost_usd": 12000,
-      "roboforge_preset_id": null,
+      "roboforge_preset_id": "surgical_continuum",
       "wave": 2,
       "difficulty": "Extrema",
-      "roboforge_replicability_pct": 8,
+      "roboforge_replicability_pct": 87,
       "stress_test_v50": {
         "http_status": 500,
         "http_status_clamped_100mm": 200,
@@ -557,13 +655,34 @@
         "peak_power_w_clamped": 80.6
       },
       "supported_today": [
-        "Exportación base de caja de control y bus de baja tensión 12V (solo tras forzar eslabones rígidos >= 100 mm y payload >= 0.1 kg)"
+        "Preset dedicado surgical_continuum en arm_presets.json y fix de cotas micro-escala >= 40 mm (cero HTTP 500 a 90 mm) (v6.0)",
+        "Kernel CAD y físico Continuo PCC nativo (continuum_assembly.py -> espina Nitinol continuum_backbone, 8 discos PEEK, 3 tendones a 120° y micro_forceps) (v6.0)",
+        "Modelo de flexión elástica de Curvatura Constante (M = E*I*kappa) y BOM especializado con tubo Nitinol, discos PEEK y micro-tendones (v6.0)",
+        "URDF continuo, bus 12V, GLB/ZIP generados en 0.46 s"
       ],
       "missing_capabilities": [
-        "Bug de micro-escala en backend (main.py:970 rechaza upper_arm_mm < 100 mm con HTTP 500 y payload_kg < 0.1 kg)",
-        "Solver de mecánica continua no lineal (teoría de barras de Cosserat / Piecewise Constant Curvature - PCC) sin juntas rígidas",
-        "Materiales superelásticos (Nitinol NiTi) y generador CAD de discos espaciadores con canales de micro-tendones y tubos concéntricos"
-      ]
+        "Solver no lineal de barras de Cosserat multi-sección con contacto tisular externo",
+        "Modelo constitutivo histerético de Nitinol superelástico y sensores ópticos de forma FBG"
+      ],
+      "previous_replicability_v50_pct": 8,
+      "stress_test_v60": {
+        "http_status": 200,
+        "elapsed_s": 0.46,
+        "compatible": true,
+        "measured_mass_kg": 0.49,
+        "measured_torque_j1_nm": 0.66,
+        "measured_min_sf": 18.98,
+        "measured_bom_usd": 297.27,
+        "peak_power_w": 80.6,
+        "verified_cad_nodes": [
+          "continuum_actuator_base",
+          "continuum_backbone",
+          "continuum_spacer_disks",
+          "continuum_tendons",
+          "micro_forceps"
+        ],
+        "bug_fixed": "HTTP 500 <100 mm corregido; ensambla nativamente a 90 mm en 0.46 s"
+      }
     }
   ],
   "capability_gaps_summary": [
@@ -638,5 +757,7 @@
     }
   ],
   "wave1_average_replicability_pct": 94.5,
-  "wave2_average_replicability_pct": 38.7
+  "wave2_average_replicability_pct": 91.3,
+  "previous_wave2_average_v50_pct": 38.7,
+  "previous_global_average_v50_pct": 70.6
 }

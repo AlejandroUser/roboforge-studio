@@ -5,11 +5,13 @@ from __future__ import annotations
 import math
 
 from build123d import (
+    Box,
     BuildLine,
     BuildPart,
     BuildSketch,
     Circle,
     Compound,
+    Cone,
     Cylinder,
     Line,
     Location,
@@ -261,3 +263,64 @@ def build_closed_belt_loop_3d(
     belt = out_bp.part - in_bp.part
     _CYCLOIDAL_CACHE[cache_key] = belt
     return belt
+
+
+def build_bevel_differential_wrist() -> Compound:
+    """Build a 2-DOF bevel differential wrist (2 lateral bevel cones + 1 front bevel cone + carrier)
+    centered at (0, 0, 0) with output along +X.
+    """
+    cache_key = "bevel_diff_wrist:v1"
+    if cache_key in _CYCLOIDAL_CACHE:
+        return _CYCLOIDAL_CACHE[cache_key]  # type: ignore[return-value]
+
+    # Lateral bevel gear A (+Y facing inward toward origin)
+    bevel_l = Location((0.0, 14.0, 0.0), (90.0, 0.0, 0.0)) * Cone(
+        bottom_radius=13.0, top_radius=7.5, height=9.0
+    )
+    # Lateral bevel gear B (-Y facing inward toward origin)
+    bevel_r = Location((0.0, -14.0, 0.0), (-90.0, 0.0, 0.0)) * Cone(
+        bottom_radius=13.0, top_radius=7.5, height=9.0
+    )
+    # Front output bevel gear (+X facing inward toward origin)
+    bevel_front = Location((14.0, 0.0, 0.0), (0.0, -90.0, 0.0)) * Cone(
+        bottom_radius=12.5, top_radius=7.2, height=9.0
+    )
+    # Central spider carrier & output flange shaft
+    carrier = Box(18.0, 22.0, 22.0)
+    out_shaft = Location((22.0, 0.0, 0.0), (0.0, 90.0, 0.0)) * Cylinder(radius=6.0, height=16.0)
+    flange = Location((30.0, 0.0, 0.0), (0.0, 90.0, 0.0)) * Cylinder(radius=16.0, height=6.0)
+
+    wrist = Compound(children=[carrier, bevel_l, bevel_r, bevel_front, out_shaft, flange])
+    _CYCLOIDAL_CACHE[cache_key] = wrist
+    return wrist
+
+
+def build_capstan_drum_and_tendons(
+    drum_radius_mm: float = 24.0,
+    width_mm: float = 16.0,
+    span_mm: float = 180.0,
+) -> tuple[Part, Compound]:
+    """Build a grooved capstan cable drum (axis along Z) and dual tensioned tendon cables along +X."""
+    r = round(max(12.0, float(drum_radius_mm)), 1)
+    w = round(max(8.0, float(width_mm)), 1)
+    span = round(max(40.0, float(span_mm)), 1)
+
+    drum_key = f"capstan_drum:{r}:{w}"
+    if drum_key in _CYCLOIDAL_CACHE:
+        drum = _CYCLOIDAL_CACHE[drum_key]
+    else:
+        flange_t = 2.4
+        core = Cylinder(radius=r, height=w)
+        f_top = Location((0.0, 0.0, w / 2.0 - flange_t / 2.0)) * Cylinder(radius=r + 3.0, height=flange_t)
+        f_bot = Location((0.0, 0.0, -w / 2.0 + flange_t / 2.0)) * Cylinder(radius=r + 3.0, height=flange_t)
+        bore = Cylinder(radius=max(4.0, r * 0.35), height=w + 4.0)
+        drum = (core + f_top + f_bot) - bore
+        _CYCLOIDAL_CACHE[drum_key] = drum
+
+    # Dual parallel tensioned steel/Dyneema tendon cables running along +X at z = ±(r * 0.72)
+    cable_r = 1.15
+    z_off = r * 0.72
+    c_top = Location((span / 2.0, 0.0, z_off), (0.0, 90.0, 0.0)) * Cylinder(radius=cable_r, height=span)
+    c_bot = Location((span / 2.0, 0.0, -z_off), (0.0, 90.0, 0.0)) * Cylinder(radius=cable_r, height=span)
+    tendons = Compound(children=[c_top, c_bot])
+    return drum, tendons  # type: ignore[return-value]

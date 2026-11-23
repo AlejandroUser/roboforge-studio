@@ -3,7 +3,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { ContactShadows, Environment, Grid, Lightformer, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import type { FamilyId } from "../types";
+import type { FamilyId, KinematicsType } from "../types";
 import { countSceneTriangles, createCadPhysicalMaterial } from "../utils/cadMaterials";
 
 const MAX_EDGE_TRIANGLES = 90_000;
@@ -50,6 +50,36 @@ const SEMANTIC_PART_KEYS = [
   "wrist_j5_pitch",
   "wrist_j6_flange",
   "homing_sensor_j1",
+  "gantry_frame_2020",
+  "gantry_y_bridge",
+  "gantry_x_carriage",
+  "gantry_z_head",
+  "vacuum_nozzle",
+  "motor_x",
+  "motor_y",
+  "motor_z",
+  "delta_top_frame",
+  "delta_motor_1",
+  "delta_motor_2",
+  "delta_motor_3",
+  "delta_bicep_1",
+  "delta_bicep_2",
+  "delta_bicep_3",
+  "delta_forearms_1",
+  "delta_forearms_2",
+  "delta_forearms_3",
+  "delta_platform",
+  "delta_z_shaft",
+  "continuum_actuator_base",
+  "continuum_backbone",
+  "continuum_spacer_disks",
+  "continuum_tendons",
+  "micro_forceps",
+  "bevel_wrist_diff",
+  "parallelogram_rod",
+  "capstan_drum_j1",
+  "capstan_drum_j2",
+  "tendon_cables",
 ] as const;
 
 const FALLBACK_EXPLODE_VECTORS: Record<string, [number, number, number]> = {
@@ -93,6 +123,36 @@ const FALLBACK_EXPLODE_VECTORS: Record<string, [number, number, number]> = {
   scara_arm_2: [110, 0, 55],
   z_quill: [145, 0, -25],
   fasteners_kit: [0, 75, 15],
+  gantry_frame_2020: [0, 0, -30],
+  gantry_y_bridge: [0, 0, 35],
+  gantry_x_carriage: [0, -35, 55],
+  gantry_z_head: [0, -55, 70],
+  vacuum_nozzle: [0, 0, -55],
+  motor_x: [-60, 0, 40],
+  motor_y: [0, 65, 15],
+  motor_z: [0, -55, 110],
+  delta_top_frame: [0, 0, 55],
+  delta_motor_1: [55, 0, 65],
+  delta_motor_2: [-28, 48, 65],
+  delta_motor_3: [-28, -48, 65],
+  delta_bicep_1: [70, 0, 20],
+  delta_bicep_2: [-35, 60, 20],
+  delta_bicep_3: [-35, -60, 20],
+  delta_forearms_1: [85, 0, -20],
+  delta_forearms_2: [-42, 72, -20],
+  delta_forearms_3: [-42, -72, -20],
+  delta_platform: [0, 0, -65],
+  delta_z_shaft: [0, 0, -35],
+  continuum_actuator_base: [0, 0, -45],
+  continuum_backbone: [0, 0, 15],
+  continuum_spacer_disks: [0, 35, 35],
+  continuum_tendons: [0, -35, 35],
+  micro_forceps: [0, 0, 75],
+  bevel_wrist_diff: [152, 0, 88],
+  parallelogram_rod: [42, -38, 45],
+  capstan_drum_j1: [0, -58, 12],
+  capstan_drum_j2: [50, -52, 46],
+  tendon_cables: [40, -65, 36],
 };
 
 const PART_LABELS_ES: Record<string, string> = {
@@ -136,6 +196,36 @@ const PART_LABELS_ES: Record<string, string> = {
   scara_arm_2: "Antebrazo SCARA 2",
   z_quill: "Husillo / Quill Z",
   homing_sensor_j1: "Sensor Inductivo Homing J1",
+  gantry_frame_2020: "Estructura Pórtico Aluminio 2020",
+  gantry_y_bridge: "Puente Móvil Y",
+  gantry_x_carriage: "Carro Lineal X",
+  gantry_z_head: "Cabezal Vertical Z",
+  vacuum_nozzle: "Boquilla de Vacío (EOAT)",
+  motor_x: "Motor Eje X",
+  motor_y: "Motor Eje Y",
+  motor_z: "Motor Eje Z",
+  delta_top_frame: "Chasis Superior Delta",
+  delta_motor_1: "Motor Delta 1",
+  delta_motor_2: "Motor Delta 2",
+  delta_motor_3: "Motor Delta 3",
+  delta_bicep_1: "Brazo Superior Delta 1",
+  delta_bicep_2: "Brazo Superior Delta 2",
+  delta_bicep_3: "Brazo Superior Delta 3",
+  delta_forearms_1: "Varillas Carbono Delta 1",
+  delta_forearms_2: "Varillas Carbono Delta 2",
+  delta_forearms_3: "Varillas Carbono Delta 3",
+  delta_platform: "Plataforma Móvil Delta",
+  delta_z_shaft: "Eje Cardán Telescópico Z",
+  continuum_actuator_base: "Base de Actuación Tendones",
+  continuum_backbone: "Espina Flexible Nitinol (PCC)",
+  continuum_spacer_disks: "Discos Espaciadores PEEK",
+  continuum_tendons: "Micro-Tendones (120°)",
+  micro_forceps: "Micro-Fórceps Quirúrgico",
+  bevel_wrist_diff: "Muñeca Diferencial Cónica (Bevel)",
+  parallelogram_rod: "Varilla Paralelogramo 4-Barras",
+  capstan_drum_j1: "Tambor Capstan J1",
+  capstan_drum_j2: "Tambor Capstan J2",
+  tendon_cables: "Cables Tensores Capstan",
 };
 
 function resolveSemanticKey(obj: THREE.Object3D | null): string | null {
@@ -168,7 +258,7 @@ export interface ViewportR3FProps {
     elbow: number;
     wrist: number;
     gripperOpenPct?: number;
-    kinematicsType?: "articulated" | "scara";
+    kinematicsType?: KinematicsType;
     zAxisMm?: number;
   };
   armReachMm?: number;
@@ -282,7 +372,7 @@ function LoadedModel({
     elbow: number;
     wrist: number;
     gripperOpenPct?: number;
-    kinematicsType?: "articulated" | "scara";
+    kinematicsType?: KinematicsType;
     zAxisMm?: number;
   };
   selectedArmNode?: string | null;
@@ -319,7 +409,11 @@ function LoadedModel({
           for (const child of children) {
             const lower = (child.name || "").toLowerCase();
             const isStaticBase =
-              lower.includes("base_pedestal") || lower.includes("controller_box");
+              lower.includes("base_pedestal") ||
+              lower.includes("controller_box") ||
+              lower.includes("gantry_") ||
+              lower.includes("delta_") ||
+              lower.includes("continuum_");
             if (!isStaticBase) {
               turretPivot.add(child);
             }
@@ -463,17 +557,39 @@ function LoadedModel({
         gripY = gripOffsetMm;
       }
 
-      // v5.0 SCARA prismatic Z-axis vertical translation (Z-up in GLB -> Y-up in Three.js)
-      let scaraZ = 0;
-      if (
-        armAngles?.kinematicsType === "scara" &&
-        (lower.includes("z_quill") || lower.includes("z_carriage"))
-      ) {
-        scaraZ = -(armAngles.zAxisMm ?? 0);
+      // v5.0 & v6.0 60 FPS GPU Linear Kinematics: SCARA Z, Cartesian Gantry X/Y/Z, Delta Platform Z
+      let linX = 0;
+      let linY = 0;
+      let linZ = 0;
+      const kt = armAngles?.kinematicsType || "articulated";
+      if (kt === "scara" && (lower.includes("z_quill") || lower.includes("z_carriage"))) {
+        linZ = -(armAngles?.zAxisMm ?? 0);
+      } else if (kt === "cartesian_gantry") {
+        const xShift = (armAngles?.shoulder ?? 0) * 0.9;
+        const yShift = (armAngles?.elbow ?? 0) * 0.9;
+        const zShift = -(armAngles?.zAxisMm ?? 0);
+        if (lower.includes("gantry_y_bridge")) {
+          linY = yShift;
+        } else if (lower.includes("gantry_x_carriage")) {
+          linX = xShift;
+          linY = yShift;
+        } else if (lower.includes("gantry_z_head") || lower.includes("vacuum_nozzle") || lower.includes("motor_z")) {
+          linX = xShift;
+          linY = yShift;
+          linZ = zShift;
+        }
+      } else if (kt === "delta_parallel") {
+        if (
+          lower.includes("delta_platform") ||
+          lower.includes("delta_z_shaft") ||
+          lower.includes("vacuum_nozzle")
+        ) {
+          linZ = -(armAngles?.zAxisMm ?? 0);
+        }
       }
 
-      if (vec || gripY !== 0 || scaraZ !== 0) {
-        obj.position.set(base.x + ex, base.y + ey + gripY, base.z + ez + scaraZ);
+      if (vec || gripY !== 0 || linX !== 0 || linY !== 0 || linZ !== 0) {
+        obj.position.set(base.x + ex + linX, base.y + ey + gripY + linY, base.z + ez + linZ);
         displaced.add(obj);
       }
     });
@@ -486,6 +602,8 @@ function LoadedModel({
     armAngles?.gripperOpenPct,
     armAngles?.kinematicsType,
     armAngles?.zAxisMm,
+    armAngles?.shoulder,
+    armAngles?.elbow,
   ]);
 
   // Apply / remove technical CAD Edges (28 deg threshold), skipped for FEA or >40k triangles

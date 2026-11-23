@@ -38,7 +38,7 @@ class EndInterfaceParams(BaseModel):
 
 class LinkDesignRequest(BaseModel):
     architecture: ArmArchitecture = "articulated_6dof"
-    length_mm: float = Field(180.0, ge=60.0, le=450.0)
+    length_mm: float = Field(180.0, ge=40.0, le=450.0)
     root_width_mm: float = Field(38.0, ge=16.0, le=110.0)
     tip_width_mm: float = Field(24.0, ge=12.0, le=90.0)
     thickness_mm: float = Field(20.0, ge=8.0, le=60.0)
@@ -335,7 +335,7 @@ class CustomMaterialCreate(BaseModel):
     notes: str = ""
 
 
-# Hito 5 + v5.0: Cadena Cinemática Multi-Eslabón (Brazo Completo 4–7 DOF + SCARA) + URDF/MuJoCo + BOM
+# Hito 5 + v5.0 + v6.0: Cadena Cinemática Universal (Articulado 4–7 DOF, SCARA, Cartesiano, Delta, Continuo PCC)
 ArmPresetType = Literal[
     "parol6_desktop",
     "ar4_industrial",
@@ -346,6 +346,12 @@ ArmPresetType = Literal[
     "openarm_7dof",
     "arctos_6dof",
     "bcn3d_moveo",
+    "thor_6dof",
+    "dobot_4bar",
+    "lumen_pnp",
+    "delta_flexpicker",
+    "barrett_wam",
+    "surgical_continuum",
 ]
 
 
@@ -353,10 +359,10 @@ class ArmAssemblyRequest(BaseModel):
     preset: ArmPresetType = "parol6_desktop"
     dof: int = Field(6, ge=4, le=7)
     payload_kg: float = Field(1.0, ge=0.1, le=8.0)
-    base_height_mm: float = Field(95.0, ge=50.0, le=200.0)
-    upper_arm_mm: float = Field(200.0, ge=100.0, le=400.0)
-    forearm_mm: float = Field(170.0, ge=80.0, le=350.0)
-    wrist_mm: float = Field(75.0, ge=40.0, le=160.0)
+    base_height_mm: float = Field(95.0, ge=40.0, le=220.0)
+    upper_arm_mm: float = Field(200.0, ge=40.0, le=450.0)
+    forearm_mm: float = Field(170.0, ge=40.0, le=400.0)
+    wrist_mm: float = Field(75.0, ge=20.0, le=180.0)
     link_style: Literal["organic_ibeam", "hollow_cobot", "rounded_truss", "tapered_solid"] = "hollow_cobot"
 
     # Ángulos de cinemática directa (grados)
@@ -496,15 +502,25 @@ class ModularArmSlots(BaseModel):
 
 class ModularArmRequest(BaseModel):
     dof: int = Field(6, ge=4, le=7)
-    kinematics_type: Literal["articulated", "scara"] = "articulated"
+    kinematics_type: Literal[
+        "articulated",
+        "scara",
+        "cartesian_gantry",
+        "delta_parallel",
+        "continuum_pcc",
+    ] = "articulated"
     z_stroke_mm: float = Field(default=120.0, ge=40.0, le=300.0)
     wrist_3dof: bool = True
     cnc_plate_mode: bool = False
-    payload_kg: float = Field(1.0, ge=0.1, le=8.0)
+    remote_base_motors: bool = False
+    four_bar_parallelogram: bool = False
+    bevel_differential_wrist: bool = False
+    vacuum_eoat: bool = False
+    payload_kg: float = Field(1.0, ge=0.05, le=8.0)
     material_id: str = "petg_cf"
     printer_id: Optional[str] = "bambu_x1c"
-    base_height_mm: float = Field(95.0, ge=50.0, le=200.0)
-    wrist_mm: float = Field(75.0, ge=40.0, le=160.0)
+    base_height_mm: float = Field(95.0, ge=40.0, le=220.0)
+    wrist_mm: float = Field(75.0, ge=20.0, le=180.0)
     max_accel_rad_s2: float = Field(12.0, ge=1.0, le=100.0)
     joint_angles_deg: list[float] = Field(
         default_factory=lambda: [35.0, -55.0, 20.0],

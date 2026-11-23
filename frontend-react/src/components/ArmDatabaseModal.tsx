@@ -18,6 +18,12 @@ function getTopologyBadges(arm: ArmDatabaseEntry): string[] {
   const mats = (arm.primary_materials || []).join(" ").toLowerCase();
 
   if (kt.includes("scara")) badges.push("SCARA");
+  if (kt.includes("cartesian") || id.includes("lumenpnp")) badges.push("Cartesiano");
+  if (kt.includes("delta") || id.includes("delta")) badges.push("Delta");
+  if (kt.includes("continuum") || id.includes("continuum")) badges.push("Continuo PCC");
+  if (kt.includes("parallelogram") || id.includes("dobot")) badges.push("4-Barras");
+  if (kt.includes("cable") || tx.includes("capstan")) badges.push("Capstan");
+  if (tx.includes("bevel") || id.includes("thor")) badges.push("Bevel");
   if (arm.dof >= 7 || kt.includes("7dof")) badges.push("7-DOF");
   if (tx.includes("cicloidal")) badges.push("Cicloidal");
   if (id.includes("lerobot") || id.includes("so_arm") || elec.includes("sts3215")) badges.push("LeRobot");

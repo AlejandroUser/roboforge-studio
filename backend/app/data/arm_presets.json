@@ -215,6 +215,150 @@
         "print_orientation": "xy_flat",
         "printer_id": "prusa_mk4s"
       }
+    },
+    "thor_6dof": {
+      "id": "thor_6dof",
+      "name": "Thor / Niryo 6-DOF Bevel",
+      "subtitle": "6-DOF open-source con muñeca diferencial cónica bevel + planetarios",
+      "defaults": {
+        "preset": "thor_6dof",
+        "dof": 6,
+        "payload_kg": 0.75,
+        "base_height_mm": 105.0,
+        "upper_arm_mm": 195.0,
+        "forearm_mm": 175.0,
+        "wrist_mm": 70.0,
+        "link_style": "hollow_cobot",
+        "shoulder_joint_deg": 32.0,
+        "elbow_joint_deg": -52.0,
+        "wrist_joint_deg": 20.0,
+        "gear_ratio_shoulder": 20.0,
+        "gear_ratio_elbow": 10.0,
+        "max_accel_rad_s2": 12.0,
+        "material_id": "petg_cf",
+        "print_orientation": "xy_flat",
+        "printer_id": "bambu_x1c"
+      }
+    },
+    "dobot_4bar": {
+      "id": "dobot_4bar",
+      "name": "Dobot / uArm 4-Barras",
+      "subtitle": "Paralelogramo 4-barras con TCP nivelado pasivo + ventosa vacío",
+      "defaults": {
+        "preset": "dobot_4bar",
+        "dof": 4,
+        "payload_kg": 0.5,
+        "base_height_mm": 90.0,
+        "upper_arm_mm": 135.0,
+        "forearm_mm": 147.0,
+        "wrist_mm": 45.0,
+        "link_style": "organic_ibeam",
+        "shoulder_joint_deg": 38.0,
+        "elbow_joint_deg": -62.0,
+        "wrist_joint_deg": 24.0,
+        "gear_ratio_shoulder": 10.0,
+        "gear_ratio_elbow": 10.0,
+        "max_accel_rad_s2": 14.0,
+        "material_id": "petg_cf",
+        "print_orientation": "xy_flat",
+        "printer_id": "bambu_x1c"
+      }
+    },
+    "lumen_pnp": {
+      "id": "lumen_pnp",
+      "name": "LumenPnP Cartesiano X-Y-Z",
+      "subtitle": "Pórtico cartesiano P-P-P-R sobre 2020 + MGN12 + boquilla de vacío",
+      "defaults": {
+        "preset": "lumen_pnp",
+        "dof": 4,
+        "payload_kg": 0.3,
+        "base_height_mm": 150.0,
+        "upper_arm_mm": 220.0,
+        "forearm_mm": 200.0,
+        "wrist_mm": 50.0,
+        "link_style": "tapered_solid",
+        "shoulder_joint_deg": 0.0,
+        "elbow_joint_deg": 0.0,
+        "wrist_joint_deg": 0.0,
+        "gear_ratio_shoulder": 4.0,
+        "gear_ratio_elbow": 4.0,
+        "max_accel_rad_s2": 20.0,
+        "material_id": "petg_cf",
+        "print_orientation": "xy_flat",
+        "printer_id": "bambu_x1c"
+      }
+    },
+    "delta_flexpicker": {
+      "id": "delta_flexpicker",
+      "name": "FlexPicker Delta 4-DOF",
+      "subtitle": "Cinemática paralela 3 brazos + varillas carbono + alta velocidad",
+      "defaults": {
+        "preset": "delta_flexpicker",
+        "dof": 4,
+        "payload_kg": 1.0,
+        "base_height_mm": 180.0,
+        "upper_arm_mm": 180.0,
+        "forearm_mm": 240.0,
+        "wrist_mm": 45.0,
+        "link_style": "rounded_truss",
+        "shoulder_joint_deg": 25.0,
+        "elbow_joint_deg": -35.0,
+        "wrist_joint_deg": 0.0,
+        "gear_ratio_shoulder": 10.0,
+        "gear_ratio_elbow": 10.0,
+        "max_accel_rad_s2": 60.0,
+        "material_id": "pa12_cf",
+        "print_orientation": "xy_flat",
+        "printer_id": "bambu_x1c"
+      }
+    },
+    "barrett_wam": {
+      "id": "barrett_wam",
+      "name": "Barrett WAM / Capstan 7-DOF",
+      "subtitle": "Motores en base + transmisión remota por cables/capstan de baja inercia",
+      "defaults": {
+        "preset": "barrett_wam",
+        "dof": 7,
+        "payload_kg": 3.0,
+        "base_height_mm": 135.0,
+        "upper_arm_mm": 290.0,
+        "forearm_mm": 260.0,
+        "wrist_mm": 85.0,
+        "link_style": "hollow_cobot",
+        "shoulder_joint_deg": 30.0,
+        "elbow_joint_deg": -50.0,
+        "wrist_joint_deg": 20.0,
+        "gear_ratio_shoulder": 25.0,
+        "gear_ratio_elbow": 20.0,
+        "max_accel_rad_s2": 15.0,
+        "material_id": "pa12_cf",
+        "print_orientation": "xy_flat",
+        "printer_id": "voron_24"
+      }
+    },
+    "surgical_continuum": {
+      "id": "surgical_continuum",
+      "name": "Continuo Quirúrgico PCC",
+      "subtitle": "Espina flexible Nitinol Ø2 mm + 8 discos PEEK + 3 tendones a 120°",
+      "defaults": {
+        "preset": "surgical_continuum",
+        "dof": 4,
+        "payload_kg": 0.1,
+        "base_height_mm": 65.0,
+        "upper_arm_mm": 90.0,
+        "forearm_mm": 60.0,
+        "wrist_mm": 25.0,
+        "link_style": "hollow_cobot",
+        "shoulder_joint_deg": 25.0,
+        "elbow_joint_deg": 15.0,
+        "wrist_joint_deg": 10.0,
+        "gear_ratio_shoulder": 4.0,
+        "gear_ratio_elbow": 4.0,
+        "max_accel_rad_s2": 8.0,
+        "material_id": "pa12_cf",
+        "print_orientation": "xy_flat",
+        "printer_id": "bambu_x1c"
+      }
     }
   }
 }

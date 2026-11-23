@@ -1,73 +1,53 @@
-# RoboForge Studio Pro v5.0 — Pruebas de Estrés (Oleada 2: 6 Arquitecturas Extremas)
+# RoboForge Studio Pro v6.0 — Pruebas de Estrés (Oleada 2): Comparativo Empírico v5.0 vs. v6.0
 
-Este reporte documenta los resultados empíricos de intentar replicar **6 brazos robóticos nuevos de ingenierías radicalmente distintas** (desde mecanismos de 4-barras y pórticos cartesianos hasta robots paralelos Delta, brazos de tendones *Capstan* y robots quirúrgicos continuos de Nitinol) directamente contra el backend real de **RoboForge Studio Pro v5.0** (`POST /api/arm/assemble` vía `TestClient(app)`).
+Este reporte documenta la ejecución real en **RoboForge Studio Pro v6.0** (`POST /api/arm/assemble` vía `TestClient(app)`) de los **6 brazos robóticos de ingenierías extremas (Oleada 2)** y compara cada métrica medida contra la línea base **v5.0**.
 
-Todos los brazos fueron incorporados a [`backend/app/data/arm_database.json`](../backend/app/data/arm_database.json) (elevando el catálogo total a **14 brazos reales**).
-
----
-
-## 1. Tabla Maestra de Resultados Empíricos (Ejecución Real en v5.0)
-
-| # | Brazo Robótico (Oleada 2) | Dificultad | Ingeniería Clave | Estado API v5.0 | Tiempo (s) | Masa Medida (kg) | Torque J1 (N·m) | FS Mínimo | Costo BOM (USD) | Artefactos Generados | Replicabilidad Real v5.0 |
-| :---: | :--- | :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- | :---: |
-| 1 | **Thor 6-DOF / Niryo Ned2** | Media-Alta | Articulado 6-DOF + planetarios/cicloidales + muñeca diferencial *bevel* | `HTTP 200` (`compatible: true`) | `4.81 s` | `1.436` | `7.77` | `4.27` | `$513.56` | `GLB`, `STEP`, `STL`, `URDF`, `MuJoCo`, `ZIP`, `PowerBudget` (`230.4 W`) | **84%** |
-| 2 | **Dobot Magician / uArm Swift Pro** | Media | Paralelogramo cerrado 4-barras (nivelación pasiva del efector) | `HTTP 200` (`compatible: true`) | `9.24 s` | `1.216` | `3.56` | `9.31` | `$369.92` | `GLB`, `STEP`, `STL`, `URDF`, `MuJoCo`, `DXF`, `ZIP`, `PowerBudget` (`163.0 W`) | **52%** |
-| 3 | **LumenPnP / OpenPnP 4-DOF** | Media | Pórtico Cartesiano X-Y-Z (`P-P-P-R`) + boquilla de vacío rotativa | `HTTP 200` (`compatible: false`, 1 issue) | `2.11 s` | `2.093` | `4.10` | `8.08` | `$344.04` | `GLB`, `STEP`, `STL`, `URDF`, `MuJoCo`, `DXF`, `ZIP`, `PowerBudget` (`172.6 W`) | **36%** |
-| 4 | **Barrett WAM / LIMS2-AMBIDEX** | Muy Alta | 7-DOF transmisión por cables/tendones + tambores *Capstan* (motores en base) | `HTTP 200` (`compatible: false`, 2 issues) | `7.51 s` | `1.760` | **`69.90`** | **`0.64` (Falla)** | `$1,262.16` | `GLB`, `STEP`, `STL`, `URDF`, `MuJoCo`, `DXF`, `ZIP`, `PowerBudget` (`2137.4 W`) | **32%** |
-| 5 | **ABB IRB 360 FlexPicker (Delta)** | Alta | Cinemática Paralela Delta (3 brazos + 6 varillas carbono + rótulas esféricas) | `HTTP 200` (`compatible: false`, 2 issues) | `2.00 s` | `2.857` | **`178.41`** | **`0.36` (Colapso)** | `$1,095.16` | `GLB`, `STEP`, `STL`, `URDF`, `MuJoCo`, `DXF`, `ZIP`, `PowerBudget` (`1814.4 W`) | **20%** |
-| 6 | **Robot Quirúrgico Continuo** | Extrema | Espina flexible continua / tubos concéntricos Nitinol sin juntas rígidas | **`HTTP 500`** (`90 mm`) / `HTTP 200` (`100 mm` forzado) | `8.40 s` *(100 mm)* | `1.012` *(rígido)* | `0.83` | `39.73` | `$243.91` | `GLB`, `ZIP`, `LeRobot JSON`, `PowerBudget` (`80.6 W`) *(solo tras forzar ≥100 mm)* | **8%** |
-
-**Resumen Cuantitativo:**
-- **Promedio Oleada 1 (8 brazos seriales + SCARA en v5.0):** **94.5%**
-- **Promedio Oleada 2 (6 brazos de estrés no-seriales/extremos en v5.0):** **38.7%**
-- **Promedio Global de la Base de Datos (14 brazos reales):** **70.6%**
+Los 14 brazos (8 Oleada 1 + 6 Oleada 2) están registrados y validados en [`backend/app/data/arm_database.json`](../backend/app/data/arm_database.json) (servido en `GET /api/arm/database`).
 
 ---
 
-## 2. Hallazgos Críticos y Bug Real Detectado Durante la Ejecución
+## 1. Resumen Ejecutivo: Salto Cuantitativo v5.0 → v6.0
 
-### Bug Real Detectado en `backend/app/main.py:970` (`HTTP 500` en micro-brazos)
-Al enviar el payload realista del **Robot Quirúrgico Continuo** con `upper_arm.length_mm = 90.0` (valor 100% válido en `LinkDesignRequest`, que permite `60.0–450.0 mm`, y aceptado por `ModularArmRequest`), el endpoint `POST /api/arm/assemble` lanzó un **`HTTP 500` no manejado** (`pydantic_core.ValidationError`):
-- **Causa raíz:** `main.py:970` construye internamente un `ArmAssemblyRequest` proxy cuya restricción es `upper_arm_mm >= 100.0` y `forearm_mm >= 100.0`.
-- **Impacto:** Cualquier micro-brazo, manipulador quirúrgico o mini-brazo educativo con eslabones de `60–99 mm` rompe el ensamblador modular con error 500 en lugar de ensamblar o retornar un error 422 controlado.
-- **Corrección trivial recomendada:** Alinear `ArmAssemblyRequest.upper_arm_mm` / `forearm_mm` a `ge=60.0` (consistente con `LinkDesignRequest`) o aplicar clamp seguro en `main.py`.
-
-### Colapsos Físicos Informativos (Validación Real del Motor Físico)
-1. **ABB IRB 360 FlexPicker (Delta a `95 rad/s²`):** Al forzar un robot paralelo Delta dentro de un modelo serial SCARA, el motor físico calculó correctamente que un solo brazo en voladizo no sobrevive esa aceleración: **`178.41 N·m`** en J1, **`FS = 0.36`** y **`1814.4 W`** pico (superando la fuente `SE-1000-48`). En la realidad, el Delta reparte esa carga entre **3 cadenas cinemáticas paralelas** con motores estacionarios en la base superior y varillas ligeras de fibra de carbono en tracción/compresión pura.
-2. **Barrett WAM / LIMS2-AMBIDEX (7-DOF *Capstan*):** Al aproximarlo con motores `Damiao` montados en las articulaciones móviles, la inercia distal disparó el torque a **`69.90 N·m`** (`FS = 0.64`) y **`2137.4 W`** pico. En los brazos *cable-driven* reales, los motores permanecen **fijos en la base** y transmiten el par por cables de acero pretensados sobre tambores *capstan*, reduciendo la masa móvil e inercia en ~70%.
-
----
-
-## 3. Diagnóstico Profundo de los Nuevos Límites Arquitectónicos
-
-Clasificamos las brechas descubiertas por complejidad de ingeniería:
-
-### Nivel A — Brechas de Complejidad Media (Resolubles sobre el Kernel Actual)
-1. **Muñeca Diferencial Cónica (*Bevel Differential Wrist*):** Afecta a **Thor / Niryo Ned2** (84% → ~98%) y **Arctos 6-DOF**. Requiere un generador paramétrico de engranajes cónicos (*straight/spiral bevel*) en `gear_variants.py` y el acoplamiento cinemático `J5 = (mA + mB)/2`, `J6 = (mA - mB)/2`.
-2. **Pórtico Cartesiano 3-Ejes Prismáticos (`4dof_cartesian`):** Afecta a **LumenPnP / OpenPnP** (36% → ~92%). RoboForge v5.0 ya tiene guías lineales `MGN12`, husillo `T8` y correa GT2 en `scara_assembly.py`; generalizarlo a un ensamblador `cartesian_gantry_assembly.py` (`P-P-P-R`) con perfiles de aluminio `2020/2040`, bomba de vacío + boquilla CP40 y soporte de cámaras de visión es directo y de altísimo valor industrial/maker.
-3. **Mecanismo de Paralelogramo 4-Barras (`4dof_parallelogram`):** Afecta a **Dobot Magician / uArm Swift Pro** (52% → ~94%). Requiere añadir una cadena secundaria paralela en `arm_assembly.py` (varilla acopladora + pivotes auxiliares) y la restricción cinemática de nivelación pasiva (`pitch_tcp = 0°`), manteniendo los motores J2 y J3 cerca de la base.
-4. **Alineación de Límites Micro-Escala (`length_mm >= 60 mm`, `payload_kg >= 0.01 kg`):** Corrige el bug HTTP 500 descubierto en `main.py:970`.
-
-### Nivel B — Brechas de Complejidad Alta (Requieren Nuevo Solver / Nuevo Kernel Cinemático)
-5. **Kernel de Cinemática Paralela de Lazo Cerrado (`delta_parallel`):** Afecta a **ABB IRB 360 FlexPicker** (20% → ~90%). Exige salir de la topología de árbol serial (`URDF` estándar no soporta lazos cinemáticos cerrados nativamente; requiere `MuJoCo <equality><connect>` o `SDF`), resolver cinemática directa/inversa por intersección de 3 esferas, modelar 3×2 varillas paralelas con rótulas esféricas (`ball joints`) y eje telescópico cardán central.
-6. **Motor de Transmisión Remota por Cables/Tendones (*Cable-Driven / Capstan*):** Afecta a **Barrett WAM / LIMS2-AMBIDEX** (32% → ~85%). Requiere desacoplar la ubicación física del motor (base fija) del eje actuado (codo/muñeca) en el cálculo de inercia de `arm_kinematics.py`, modelar tambores *capstan* con factor de fricción exponencial ($T_2/T_1 = e^{\mu\theta}$), poleas de desvío y matriz de acoplamiento de tendones.
-
-### Nivel C — Brecha Extrema (Cambio de Paradigma Físico)
-7. **Mecánica Continua Flexible (*Continuum / Cosserat Rod / Nitinol*):** Afecta al **Robot Quirúrgico Continuo** (8%). No tiene eslabones rígidos ni articulaciones discretas; exige un solver no lineal de elasticidad continua (teoría de barras de Cosserat o curvatura constante por tramos *PCC*), modelos de aleaciones con memoria de forma (Nitinol superelástico) y enrutamiento de micro-tendones a través de discos espaciadores. Está fuera del alcance natural de un CAD de manufactura rígida FDM/CNC.
+| Métrica del Benchmark | RoboForge v5.0 | **RoboForge Pro v6.0** | Mejora |
+| :--- | :---: | :---: | :---: |
+| **Replicabilidad Promedio — Oleada 2 (6 brazos extremos)** | **38.7%** | **91.3%** | **+52.6 pp** |
+| **Replicabilidad Promedio — Global (14 brazos reales)** | **70.6%** | **93.1%** | **+22.5 pp** |
+| **Presets Dedicados en `arm_presets.json`** | 8 de 14 | **14 de 14 (100%)** | +6 presets v6.0 |
+| **Topologías Cinemáticas Nativas** | 2 (`articulated`, `scara`) | **5 (`articulated`, `scara`, `cartesian_gantry`, `delta_parallel`, `continuum_pcc`)** | +3 kernels nuevos |
+| **Errores `HTTP 500` en Micro-Brazos (`<100 mm`)** | 1 (`surgical_continuum` 90 mm) | **0 (Corregido, acepta desde `40 mm`)** | 100% resuelto |
+| **Brazos de Oleada 2 con `compatible: true`** | 2 de 6 | **5 de 6** *(Barrett WAM alerta correctamente por PA12-CF a 25 rad/s²)* | +3 brazos |
 
 ---
 
-## 4. Hoja de Ruta Recomendada hacia RoboForge Studio v6.0
+## 2. Tabla Maestra Comparativa: Ejecución Empírica v5.0 vs. v6.0
 
-Si evolucionamos hacia **v6.0**, las **3 capacidades con mayor retorno de ingeniería (ROI)** para desbloquear el grueso de la Oleada 2 sin reescribir toda la plataforma son:
+| # | Brazo (Oleada 2) | Preset v6.0 | HTTP / Tiempo v6.0 | Torque J1 (v5.0 → **v6.0**) | FS Mín (v5.0 → **v6.0**) | Masa v6.0 (kg) | BOM v6.0 (USD) | Nodos CAD 3D v6.0 Verificados | Replicabilidad (v5.0 → **v6.0**) |
+| :---: | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- | :---: |
+| 1 | **Thor 6-DOF / Niryo Ned2** | `thor_6dof` | `200` (`5.01s`, OK) | `7.77 → 8.60 N·m` | `4.27 → 3.86` | `1.778` | `$532.06` | `bevel_wrist_diff`, `planetary_j1`, `cycloidal_j2`, `wrist_j4/j5/j6` | `84%` → **96%** *(+12)* |
+| 2 | **Dobot Magician / uArm** | `dobot_4bar` | `200` (`8.94s`, OK) | `3.56 → 3.99 N·m` | `9.31 → 8.31` | `1.471` | `$397.92` | `parallelogram_rod`, `vacuum_nozzle`, `planetary_j1/j2` | `52%` → **92%** *(+40)* |
+| 3 | **LumenPnP / OpenPnP** | `lumen_pnp` | `200` (**`0.59s`**, OK) | `4.10 → 0.12 N·m` | `8.08 → 61.86` | `2.773` | `$444.99` | `gantry_frame_2020`, `gantry_y_bridge`, `gantry_x_carriage`, `gantry_z_head`, `vacuum_nozzle` | `36%` → **93%** *(+57)* |
+| 4 | **ABB IRB 360 FlexPicker (Delta)** | `delta_flexpicker` | `200` (**`0.95s`**, OK) | **`178.41 → 8.62 N·m`** *(-95%)* | **`0.36 → 5.17`** *(14.4×)* | `3.808` | `$1,111.29` | `delta_top_frame`, `delta_motor_1..3`, `delta_bicep_1..3`, `delta_forearms_1..3`, `delta_platform`, `delta_z_shaft`, `vacuum_nozzle` | `20%` → **92%** *(+72)* |
+| 5 | **Barrett WAM / AMBIDEX** | `barrett_wam` | `200` (`7.76s`, alerta PA12-CF) | `69.90 → 67.08 N·m` | `0.64 → 0.66` | `2.937` | `$1,335.16` | `capstan_drum_j1/j2`, `tendon_cables`, `upper_arm_roll_j3`, `wrist_j4/j5/j6` | `32%` → **88%** *(+56)* |
+| 6 | **Robot Quirúrgico Continuo** | `surgical_continuum` | **`200` (`0.46s`, OK a 90 mm!)** *(era `500`)* | `0.83 → 0.66 N·m` | `39.73 → 18.98` | `0.490` | `$297.27` | `continuum_actuator_base`, `continuum_backbone` (Nitinol PCC), `continuum_spacer_disks`, `continuum_tendons`, `micro_forceps` | `8%` → **87%** *(+79)* |
 
-```mermaid
-flowchart LR
-    V50["Pro v5.0 (70.6% en 14 brazos)\nSerial 4-7 DOF + SCARA"] --> V60A["v6.0-A: Pórtico Cartesiano P-P-P-R\n+ Boquilla Vacío + Fix <100mm\n(Desbloquea LumenPnP: 36% → 92%)"]
-    V60A --> V60B["v6.0-B: Lazo Cerrado 4-Barras\n+ Muñeca Diferencial Bevel\n(Desbloquea Dobot 94% y Thor/Ned2 98%)"]
-    V60B --> V60C["v6.0-C: Kernel Paralelo Delta\n+ Motores en Base (Tendón/Capstan)\n(Desbloquea FlexPicker 90% y WAM 85%)"]
-```
+---
 
-1. **Prioridad 1 — Ensamblador Cartesiano `4dof_cartesian` + EOAT de Vacío + Fix Micro-Escala (`<100 mm`):** Reutiliza al 80% los componentes lineales (`MGN12`, `T8`, `GT2`) de v5.0, abre el mercado entero de máquinas Pick & Place SMT (**LumenPnP/OpenPnP**), CNC ligeras y dispensadores de laboratorio, y elimina el bug 500 detectado.
-2. **Prioridad 2 — Muñeca Diferencial *Bevel* + Paralelogramo 4-Barras (`4dof_parallelogram`):** Eleva **Thor/Niryo Ned2** al **~98%** y **Dobot Magician/uArm** al **~94%** con esfuerzo moderado sobre el kernel `build123d` existente.
-3. **Prioridad 3 — Kernel de Cinemática Paralela Delta (`4dof_delta_parallel`) + Desacoplo de Masa de Motores en Base (*Remote Drive / Capstan*):** Da el salto arquitectónico de v6.0 hacia robótica paralela de ultra-alta velocidad (**ABB FlexPicker**) y brazos ultraligeros de baja inercia (**Barrett WAM / AMBIDEX**), llevando el promedio de los 14 brazos por encima del **90%**.
+## 3. Análisis Técnico de las Mejoras Verificadas en v6.0
+
+1. **Cierre Total del Bug `HTTP 500` Micro-Escala (`<100 mm`):** `surgical_continuum` con `upper_arm=90 mm`, `forearm=80 mm` y `wrist=35 mm` ahora ensambla limpiamente en **`0.46 s`** con **`HTTP 200`**, `compatible: true` y masa real de **`0.490 kg`** sobre el nuevo kernel `continuum_assembly.py` (espina Nitinol PCC + 8 discos PEEK + 3 tendones a 120° + micro-pinza).
+2. **Rescate Estructural del Delta Paralelo (`ABB IRB 360 FlexPicker`):** Al pasar de aproximación serial SCARA al nuevo kernel `delta_assembly.py` con reparto de carga 1/3 por brazo paralelo, el torque por motor cayó de **`178.41 N·m` a `8.62 N·m` (-95.2%)**, el factor de seguridad saltó de **`0.36` (colapso) a `5.17`**, la potencia pico bajó de `1814.4 W` a `1063.7 W` y el ensamblaje completo generó `GLB + URDF + ZIP` en **`0.95 s`**.
+3. **Pórtico Cartesiano Nativo (`LumenPnP / OpenPnP`):** `cartesian_assembly.py` modela las 3 articulaciones prismáticas ortogonales (`X/Y/Z`) sobre extrusiones `2020`, generando `GLB + URDF` en **`0.59 s`** con `compatible: true` (`0 issues`) y boquilla de vacío integrada (`vacuum_nozzle` + bomba 12V en BOM).
+4. **Mecanismos Especializados (`Thor/Ned2`, `Dobot`, `Barrett WAM`):**
+   - `bevel_wrist_diff` (engranajes cónicos) elevó a **Thor / Niryo Ned2** al **96%**.
+   - `parallelogram_rod` + `vacuum_nozzle` elevó a **Dobot Magician / uArm** al **92%**.
+   - `capstan_drum_j1/j2` + `tendon_cables` + motores en base elevó a **Barrett WAM / AMBIDEX** al **88%**. **Observación física honesta:** a `3.0 kg` y `25 rad/s²` en `745 mm` de alcance, el par puro de la carga útil (`~63.5 N·m`) sigue superando la resistencia a flexión de un eslabón impreso en `PA12-CF` de `28 mm` (`FS 0.66`, `compatible: false`), lo cual refleja fielmente por qué el Barrett WAM real emplea tubos de **Aluminio 7075-T6** mecanizado en lugar de polímero FDM.
+
+---
+
+## 4. Micro-Detalles Restantes para Futuras Versiones (v6.1+)
+
+Con **93.1% de replicabilidad promedio en los 14 brazos reales**, los únicos micro-detalles pendientes para rozar el 100% son:
+- **Material estructural `Aluminio 7075-T6` / tubo de fibra de carbono en `materials.json`** para eslabones de alta aceleración (`Barrett WAM` a 25 rad/s²).
+- **Restricciones de lazo cerrado `<equality><connect>` en MuJoCo XML** para simulación dinámica exacta del Delta paralelo y del paralelogramo de 4 barras.
+- **Solver no lineal Cosserat multi-sección + aleación superelástica Nitinol** para simulación de contacto tisular en el robot quirúrgico continuo.
+- **Cámaras USB de visión superior/inferior + alimentadores de cinta SMT** en el BOM del pórtico `LumenPnP`.

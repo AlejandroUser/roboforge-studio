@@ -30,6 +30,8 @@ from ..schemas import (
     ModularArmRequest,
 )
 from .cycloidal_variants import (
+    build_bevel_differential_wrist,
+    build_capstan_drum_and_tendons,
     build_cycloidal_reducer_3d,
     build_planetary_reducer_3d,
 )
@@ -40,6 +42,7 @@ from .hardware_parts import (
     build_bearing_tapered_30205,
     build_controller_box,
     build_dual_servo_clevis,
+    build_four_bar_parallelogram_rod,
     build_gripper_3d,
     build_gripper_parts,
     build_homing_sensor,
@@ -47,6 +50,7 @@ from .hardware_parts import (
     build_motor_3d,
     build_servo_3d,
     build_servo_horn_25t,
+    build_vacuum_nozzle,
     build_wrist_3dof_parts,
 )
 from .mount_variants import (
@@ -653,7 +657,7 @@ def export_bom_csv(bom: list[BOMItem], output_path: Path) -> Path:
 
 def compute_modular_arm_hash(req: ModularArmRequest) -> str:
     """Compute a deterministic 16-char SHA-256 hex digest for a ModularArmRequest."""
-    canonical = "modarm_v50:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
+    canonical = "modarm_v60:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
@@ -707,12 +711,25 @@ def build_modular_arm_assembly(
 ) -> dict[str, Any]:
     """Assemble real CAD solids from variants.py, mount_variants.py, and gear_variants.py
     using local mounting frames and axial Y-layers to avoid coplanar collisions.
-    Delegates to build_scara_arm_assembly when kinematics_type == 'scara'.
+    Delegates to specialized multi-topology assemblers for SCARA, Cartesian Gantry, Delta Parallel, and Continuum PCC.
     """
-    if getattr(req, "kinematics_type", "articulated") == "scara":
+    kin = getattr(req, "kinematics_type", "articulated")
+    if kin == "scara":
         from .scara_assembly import build_scara_arm_assembly
 
         return build_scara_arm_assembly(req, material, output_dir, design_hash)
+    if kin == "cartesian_gantry":
+        from .cartesian_assembly import build_cartesian_gantry_assembly
+
+        return build_cartesian_gantry_assembly(req, material, output_dir, design_hash)
+    if kin == "delta_parallel":
+        from .delta_assembly import build_delta_parallel_assembly
+
+        return build_delta_parallel_assembly(req, material, output_dir, design_hash)
+    if kin == "continuum_pcc":
+        from .continuum_assembly import build_continuum_pcc_assembly
+
+        return build_continuum_pcc_assembly(req, material, output_dir, design_hash)
 
     from ..physics.arm_compatibility import resolve_default_slots
 
@@ -1076,10 +1093,96 @@ def build_modular_arm_assembly(
 
     # v5.0: 3-DOF Articulated Wrist (J4 Roll, J5 Pitch, J6 Tool Flange)
     wrist_3dof_placed: tuple[Part, Part, Part] | None = None
-    if getattr(req, "wrist_3dof", False) and gripper_parts_placed is None:
+    if getattr(req, "wrist_3dof", False) and gripper_parts_placed is None and not getattr(req, "bevel_differential_wrist", False):
         w4_raw, w5_raw, w6_raw = build_wrist_3dof_parts()
         w_pose = Location(p2_fore) * Location((0.0, 0.0, 0.0), (0.0, -a3_deg, 0.0))
         wrist_3dof_placed = (w_pose * w4_raw, w_pose * w5_raw, w_pose * w6_raw)
+
+    # v6.0: Remote Base Motors (Capstan / Tendon Drive — Barrett WAM / AMBIDEX)
+    if getattr(req, "remote_base_motors", False):
+        # Relocate J2 & J3 motors onto the fixed base pedestal to minimize moving arm inertia!
+        base_m_z = max(32.0, float(req.base_height_mm) - 34.0)
+        motor_j2_placed = Location((0.0, -38.0, base_m_z)) * (rot_z_to_plus_y * build_motor_3d(j2_motor_id))
+        motor_j3_placed = Location((0.0, +38.0, base_m_z)) * (rot_z_to_minus_y * build_motor_3d(j3_motor_id))
+        cap1, tendons1 = build_capstan_drum_and_tendons(drum_radius_mm=24.0, width_mm=16.0, span_mm=l1)
+        cap2, _ = build_capstan_drum_and_tendons(drum_radius_mm=18.0, width_mm=14.0, span_mm=l2)
+        cap1_placed = Location((0.0, y_sh_gear + 8.0, float(req.base_height_mm))) * (rot_z_to_plus_y * cap1)
+        cap2_placed = Location((p1[0], y_el_gear - 7.0, p1[2])) * (rot_z_to_minus_y * cap2)
+        tendons_placed = Location((0.0, y_sh_gear + 8.0, float(req.base_height_mm))) * (
+            Location((0.0, 0.0, 0.0), (0.0, -a1_deg, 0.0)) * tendons1
+        )
+        extra_v5_nodes.append(("capstan_drum_j1", cap1_placed, [196, 204, 216, 255], 0.88, 0.22, [0.0, 62.0, 0.0]))
+        extra_v5_nodes.append(
+            ("capstan_drum_j2", cap2_placed, [196, 204, 216, 255], 0.88, 0.22, [round(32.0 * math.cos(a1), 2), -62.0, round(32.0 * math.sin(a1), 2)])
+        )
+        extra_v5_nodes.append(
+            ("tendon_cables", tendons_placed, [224, 232, 240, 255], 0.90, 0.20, [round(24.0 * math.cos(a1), 2), 72.0, round(24.0 * math.sin(a1), 2)])
+        )
+        replace_sh_gear = True
+        replace_el_gear = True
+
+    # v6.0: Four-Bar Parallelogram Linkage Rod (Dobot Magician / uArm Swift Pro)
+    if getattr(req, "four_bar_parallelogram", False):
+        rod_raw = build_four_bar_parallelogram_rod(l1)
+        # Parallel to upper_arm_link, offset +24 mm perpendicular to arm axis in XZ and +Y side
+        p_rod_origin = (
+            p0[0] - 22.0 * math.sin(a1),
+            -(upper_t / 2.0 + 7.0),
+            p0[2] + 22.0 * math.cos(a1),
+        )
+        rod_placed = _place_link_in_xz(rod_raw, p_rod_origin, a1_deg)
+        extra_v5_nodes.append(
+            (
+                "parallelogram_rod",
+                rod_placed,
+                [152, 184, 218, 255],
+                0.82,
+                0.26,
+                [round(32.0 * math.cos(a1), 2), -36.0, round(32.0 * math.sin(a1) + 28.0, 2)],
+            )
+        )
+
+    # v6.0: Bevel Differential Wrist (Thor 6-DOF / Niryo Ned2)
+    if getattr(req, "bevel_differential_wrist", False):
+        bevel_raw = build_bevel_differential_wrist()
+        bevel_placed = Location(p2_fore) * (Location((0.0, 0.0, 0.0), (0.0, -a3_deg, 0.0)) * bevel_raw)
+        extra_v5_nodes.append(
+            (
+                "bevel_wrist_diff",
+                bevel_placed,
+                [186, 198, 214, 255],
+                0.88,
+                0.22,
+                [
+                    round(32.0 * math.cos(a1) + 42.0 * math.cos(a2) + 55.0 * math.cos(a3), 2),
+                    48.0,
+                    round(32.0 * math.sin(a1) + 42.0 * math.sin(a2) + 55.0 * math.sin(a3), 2),
+                ],
+            )
+        )
+
+    # v6.0: Vacuum Pick-and-Place Nozzle EOAT
+    if getattr(req, "vacuum_eoat", False):
+        vac_tip = (
+            p2_fore[0] + req.wrist_mm * math.cos(a3),
+            y_forearm,
+            p2_fore[2] + req.wrist_mm * math.sin(a3),
+        )
+        vac_placed = Location(vac_tip) * build_vacuum_nozzle()
+        extra_v5_nodes.append(
+            (
+                "vacuum_nozzle",
+                vac_placed,
+                [218, 176, 62, 255],
+                0.82,
+                0.26,
+                [
+                    round(32.0 * math.cos(a1) + 42.0 * math.cos(a2) + 84.0 * math.cos(a3), 2),
+                    48.0,
+                    round(32.0 * math.sin(a1) + 42.0 * math.sin(a2) + 84.0 * math.sin(a3) - 24.0, 2),
+                ],
+            )
+        )
 
     # ISO 4762 Fasteners Kit: real socket-head cap screws placed on base flange, shoulder mount, elbow, and TCP PCDs
     fastener_solids: list[Part] = []

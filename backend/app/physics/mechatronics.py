@@ -1056,6 +1056,119 @@ def evaluate_mechatronics(
                 6.5,
             )
 
+    # v6.0 Specialized Mechanism & Topology Hardware BOM Items (applies to all bus architectures)
+    if req.remote_base_motors:
+        _add_bom(
+            "fasteners_hardware",
+            "CAP-DRUM-SET",
+            "Tambores Capstan CNC Aluminio 6061",
+            "Transmisión remota de baja inercia con motores en base",
+            4,
+            14.0,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "CAP-TENDON-DYN",
+            "Cables Tendón Dyneema / Acero Ø1.0 mm",
+            "Lazo pretensado cero-juego para ejes J1/J2/J3",
+            2,
+            8.5,
+        )
+    if req.kinematics_type == "delta_parallel":
+        _add_bom(
+            "fasteners_hardware",
+            "DLT-CF-RODS",
+            "Varillas Paralelas Fibra de Carbono Ø6 mm",
+            "3 pares de varillas ultraligeras de alta rigidez axial",
+            6,
+            4.5,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "DLT-BALL-JOINTS",
+            "Rótulas Esféricas Magnéticas / Igus M4",
+            "12× articulaciones esféricas de bajo rozamiento",
+            12,
+            2.2,
+        )
+    if req.kinematics_type == "cartesian_gantry":
+        _add_bom(
+            "fasteners_hardware",
+            "GNT-2020-PROF",
+            "Perfiles Extrusión Aluminio 2020 Anodizado",
+            "Marco rígido pórtico X-Y-Z",
+            6,
+            6.5,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "GNT-MGN12-XYZ",
+            "Guías Lineales MGN12H X/Y/Z + Carros",
+            "Ejes prismáticos de precisión para Pick & Place",
+            4,
+            16.5,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "GNT-GT2-BELT",
+            "Correa GT2 6 mm + Poleas 20T",
+            "Transmisión lineal X/Y de alta repetibilidad",
+            3,
+            5.5,
+        )
+    if req.kinematics_type == "continuum_pcc":
+        _add_bom(
+            "fasteners_hardware",
+            "CNT-NITINOL-2MM",
+            "Espina Flexible Tubo Nitinol Superelástico Ø2 mm",
+            "Aleación NiTi superelástica (E=75 GPa) para arco PCC",
+            1,
+            28.0,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "CNT-SPACER-PEEK",
+            "Discos Espaciadores PEEK / Resina Médica",
+            "8× discos guía de tendones a 120°",
+            8,
+            2.5,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "CNT-TENDON-3X",
+            "Micro-Tendones Acero Inox Ø0.4 mm (120°)",
+            "Actuación remota desde base actuadora",
+            3,
+            4.0,
+        )
+    if req.four_bar_parallelogram:
+        _add_bom(
+            "fasteners_hardware",
+            "FBR-PARA-ROD",
+            "Varilla Paralelogramo 4-Barras + Pasadores",
+            "Mantiene efector nivelado pasivamente (Dobot/uArm)",
+            1,
+            9.0,
+        )
+    if req.bevel_differential_wrist:
+        _add_bom(
+            "fasteners_hardware",
+            "BVL-DIFF-SET",
+            "Juego 3× Engranajes Cónicos Bevel Diferencial",
+            "Muñeca diferencial Pitch+Roll acoplada (Thor/Niryo)",
+            1,
+            18.5,
+        )
+    if req.vacuum_eoat:
+        _add_bom(
+            "electronics_wiring",
+            "VAC-NOZZLE-PUMP",
+            "Boquilla de Vacío + Ventosa Silicona + Bomba 12V",
+            "EOAT Pick & Place neumático con electroválvula",
+            1,
+            19.0,
+        )
+
     total_bom_cost_usd = round(sum(item.total_cost_usd for item in master_bom), 2)
     if not notes:
         arch_labels = {

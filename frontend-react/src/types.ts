@@ -175,6 +175,13 @@ export interface ModularArmSlots {
   forearm_variant: string;
 }
 
+export type KinematicsType =
+  | "articulated"
+  | "scara"
+  | "cartesian_gantry"
+  | "delta_parallel"
+  | "continuum_pcc";
+
 export interface ModularArmRequest {
   dof: number;
   payload_kg: number;
@@ -187,11 +194,15 @@ export interface ModularArmRequest {
   slots: ModularArmSlots;
   auto_fix?: boolean;
   mechatronics?: MechatronicsConfig | null;
-  // v5.0 Universal Arms
-  kinematics_type?: "articulated" | "scara";
+  // v5.0 & v6.0 Universal Arms
+  kinematics_type?: KinematicsType;
   z_stroke_mm?: number;
   wrist_3dof?: boolean;
   cnc_plate_mode?: boolean;
+  remote_base_motors?: boolean;
+  four_bar_parallelogram?: boolean;
+  bevel_differential_wrist?: boolean;
+  vacuum_eoat?: boolean;
 }
 
 export interface CompatibilityIssue {

@@ -22,6 +22,17 @@ export type CadMaterialRole =
   | "chrome_linear_rail"
   | "homing_sensor_brass"
   | "wrist_roll_node"
+  | "gantry_extrusion"
+  | "gantry_carriage"
+  | "delta_carbon_rod"
+  | "delta_aluminum"
+  | "vacuum_brass_silicone"
+  | "bevel_steel"
+  | "parallelogram_alu"
+  | "capstan_steel"
+  | "nitinol_bright"
+  | "peek_gold"
+  | "surgical_steel"
   | "matte_polymer"
   | "single_part_enhanced";
 
@@ -130,6 +141,39 @@ export function getSemanticNodeName(obj: THREE.Object3D): string {
 export function detectCadMaterialRole(obj: THREE.Object3D, family: FamilyId): CadMaterialRole {
   const name = getSemanticNodeName(obj);
 
+  if (name.includes("micro_forceps")) {
+    return "surgical_steel";
+  }
+  if (name.includes("continuum_spacer")) {
+    return "peek_gold";
+  }
+  if (name.includes("continuum_backbone") || name.includes("continuum_tendon")) {
+    return "nitinol_bright";
+  }
+  if (name.includes("capstan_drum") || name.includes("tendon_cable")) {
+    return "capstan_steel";
+  }
+  if (name.includes("parallelogram_rod")) {
+    return "parallelogram_alu";
+  }
+  if (name.includes("bevel_wrist")) {
+    return "bevel_steel";
+  }
+  if (name.includes("vacuum_nozzle")) {
+    return "vacuum_brass_silicone";
+  }
+  if (name.includes("delta_forearms") || name.includes("delta_bicep")) {
+    return "delta_carbon_rod";
+  }
+  if (name.includes("delta_top_frame") || name.includes("delta_platform") || name.includes("delta_z_shaft")) {
+    return "delta_aluminum";
+  }
+  if (name.includes("gantry_frame") || name.includes("gantry_y_bridge")) {
+    return "gantry_extrusion";
+  }
+  if (name.includes("gantry_x_carriage") || name.includes("gantry_z_head")) {
+    return "gantry_carriage";
+  }
   if (name.includes("homing_sensor")) {
     return "homing_sensor_brass";
   }
@@ -427,6 +471,115 @@ export function createCadPhysicalMaterial(
         clearcoat: 0.3,
         clearcoatRoughness: 0.22,
         envMapIntensity: 1.4,
+      });
+
+    case "gantry_extrusion":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#cbd5e1"),
+        metalness: 0.88,
+        roughness: 0.24,
+        clearcoat: 0.2,
+        clearcoatRoughness: 0.25,
+        envMapIntensity: 1.5,
+      });
+
+    case "gantry_carriage":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#3b648c"),
+        metalness: 0.78,
+        roughness: 0.28,
+        clearcoat: 0.28,
+        envMapIntensity: 1.35,
+      });
+
+    case "delta_carbon_rod": {
+      const { map, roughnessMap } = getCarbonFiberTextures();
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#cbd5e1"),
+        map,
+        roughnessMap,
+        metalness: 0.22,
+        roughness: 0.32,
+        clearcoat: 0.72,
+        clearcoatRoughness: 0.16,
+        envMapIntensity: 1.3,
+      });
+    }
+
+    case "delta_aluminum":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#4673a0"),
+        metalness: 0.86,
+        roughness: 0.24,
+        clearcoat: 0.32,
+        clearcoatRoughness: 0.2,
+        envMapIntensity: 1.45,
+      });
+
+    case "vacuum_brass_silicone":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#d4a024"),
+        metalness: 0.85,
+        roughness: 0.25,
+        clearcoat: 0.25,
+        envMapIntensity: 1.45,
+      });
+
+    case "bevel_steel":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#cbd5e1"),
+        metalness: 0.9,
+        roughness: 0.2,
+        clearcoat: 0.2,
+        envMapIntensity: 1.55,
+      });
+
+    case "parallelogram_alu":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#94a3b8"),
+        metalness: 0.85,
+        roughness: 0.24,
+        clearcoat: 0.25,
+        envMapIntensity: 1.45,
+      });
+
+    case "capstan_steel":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#b0bec5"),
+        metalness: 0.88,
+        roughness: 0.22,
+        clearcoat: 0.25,
+        envMapIntensity: 1.5,
+      });
+
+    case "nitinol_bright":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#f1f5f9"),
+        metalness: 0.96,
+        roughness: 0.12,
+        clearcoat: 0.5,
+        clearcoatRoughness: 0.1,
+        envMapIntensity: 1.8,
+      });
+
+    case "peek_gold":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#d99b26"),
+        metalness: 0.18,
+        roughness: 0.34,
+        clearcoat: 0.45,
+        clearcoatRoughness: 0.22,
+        envMapIntensity: 1.2,
+      });
+
+    case "surgical_steel":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#e2e8f0"),
+        metalness: 0.95,
+        roughness: 0.14,
+        clearcoat: 0.35,
+        clearcoatRoughness: 0.12,
+        envMapIntensity: 1.75,
       });
 
     case "matte_polymer":

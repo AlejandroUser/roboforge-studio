@@ -695,3 +695,38 @@ def export_cnc_plates_dxf(req: Any, output_path: Path) -> Path:
     return output_path
 
 
+def build_four_bar_parallelogram_rod(length_mm: float = 200.0) -> Part:
+    """Build a secondary 4-bar parallelogram linkage rod from (0, 0) to (length_mm, 0) in XY plane."""
+    length = round(max(40.0, float(length_mm)), 1)
+    cache_key = f"four_bar_rod:{length}"
+    if cache_key in _HARDWARE_CACHE:
+        return _HARDWARE_CACHE[cache_key]
+
+    rod_h = 8.0
+    rod_t = 6.0
+    bar = Location((length / 2.0, 0.0, 0.0)) * Box(length, rod_h, rod_t)
+    eye_a = Cylinder(radius=7.5, height=rod_t) - Cylinder(radius=3.2, height=rod_t + 4.0)
+    eye_b = Location((length, 0.0, 0.0)) * (
+        Cylinder(radius=7.5, height=rod_t) - Cylinder(radius=3.2, height=rod_t + 4.0)
+    )
+    rod = bar + eye_a + eye_b
+    _HARDWARE_CACHE[cache_key] = rod
+    return rod
+
+
+def build_vacuum_nozzle() -> Part:
+    """Build a pneumatic vacuum pick-and-place nozzle with brass fitting and silicone suction cup.
+    Mounting face at z = 0, nozzle extends downward along -Z to z = -42 mm.
+    """
+    cache_key = "vacuum_nozzle:v1"
+    if cache_key in _HARDWARE_CACHE:
+        return _HARDWARE_CACHE[cache_key]
+
+    fitting = Location((0.0, 0.0, -5.0)) * Cylinder(radius=7.5, height=10.0)
+    stem = Location((0.0, 0.0, -21.0)) * Cylinder(radius=3.2, height=24.0)
+    cup = Location((0.0, 0.0, -42.0)) * Cone(bottom_radius=9.5, top_radius=3.8, height=10.0)
+    nozzle = fitting + stem + cup
+    _HARDWARE_CACHE[cache_key] = nozzle
+    return nozzle
+
+

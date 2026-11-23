@@ -21,6 +21,12 @@ def test_load_arm_presets_validate_against_schema():
         "openarm_7dof",
         "arctos_6dof",
         "bcn3d_moveo",
+        "thor_6dof",
+        "dobot_4bar",
+        "lumen_pnp",
+        "delta_flexpicker",
+        "barrett_wam",
+        "surgical_continuum",
     }
     assert set(data["presets"].keys()) == expected
     for preset_id, entry in data["presets"].items():
