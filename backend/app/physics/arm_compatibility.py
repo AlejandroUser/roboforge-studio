@@ -89,13 +89,20 @@ def resolve_default_slots(req: ModularArmRequest) -> ModularArmSlots:
     mat_id = req.material_id
     printer_id = req.printer_id
 
+    mech_bus = getattr(getattr(req, "mechatronics", None), "bus_architecture", "") or ""
+    is_compact_msla = (
+        printer_id == "elegoo_mars_5_ultra"
+        or mech_bus == "esp32_pca9685_5v"
+        or float(getattr(req, "base_height_mm", 95.0)) <= 66.0
+    )
+
     shoulder_mount = s.shoulder_mount or MountDesignRequest(
-        actuator_type="nema17",
+        actuator_type="servo_mg996r" if is_compact_msla else "nema17",
         base_type="profile_2020",
-        wall_thickness_mm=6.0,
-        base_depth_mm=44.0,
-        shaft_height_mm=34.0,
-        gusset_thickness_mm=4.5,
+        wall_thickness_mm=4.5 if is_compact_msla else 6.0,
+        base_depth_mm=34.0 if is_compact_msla else 44.0,
+        shaft_height_mm=26.0 if is_compact_msla else 34.0,
+        gusset_thickness_mm=3.5 if is_compact_msla else 4.5,
         radial_load_n=min(500.0, max(25.0, req.payload_kg * 35.0)),
         motor_torque_nm=min(20.0, max(0.6, req.payload_kg * 0.8)),
         material_id=mat_id,
@@ -119,13 +126,6 @@ def resolve_default_slots(req: ModularArmRequest) -> ModularArmSlots:
         printer_id=printer_id,
     )
 
-    mech_bus = getattr(getattr(req, "mechatronics", None), "bus_architecture", "") or ""
-    is_compact_msla = (
-        printer_id == "elegoo_mars_5_ultra"
-        or mech_bus == "esp32_pca9685_5v"
-        or float(getattr(req, "base_height_mm", 95.0)) <= 66.0
-    )
-
     upper_arm = s.upper_arm or LinkDesignRequest(
         architecture="articulated_6dof",
         length_mm=100.0 if is_compact_msla else 200.0,
@@ -134,11 +134,11 @@ def resolve_default_slots(req: ModularArmRequest) -> ModularArmSlots:
         thickness_mm=14.0 if is_compact_msla else 22.0,
         root_end=EndInterfaceParams(
             preset="custom" if is_compact_msla else act_spec["end_preset"],
-            outer_diameter_mm=26.0 if is_compact_msla else act_spec["outer_diameter_mm"],
+            outer_diameter_mm=32.0 if is_compact_msla else act_spec["outer_diameter_mm"],
             bore_diameter_mm=12.0 if is_compact_msla else act_spec["pilot_diameter_mm"],
             bolt_count=act_spec["bolt_count"],
-            bolt_pcd_mm=18.0 if is_compact_msla else act_spec["bolt_pcd_mm"],
-            bolt_size="M3" if is_compact_msla else act_spec["bolt_size"],
+            bolt_pcd_mm=act_spec["bolt_pcd_mm"],
+            bolt_size=act_spec["bolt_size"],
             use_heat_inserts=not is_compact_msla,
         ),
         tip_end=EndInterfaceParams(
