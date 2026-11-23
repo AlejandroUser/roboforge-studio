@@ -12,6 +12,8 @@ export type CadMaterialRole =
   | "chrome_bearing"
   | "fastener_steel"
   | "controller_enclosure"
+  | "anodized_horn_red"
+  | "gripper_graphite"
   | "matte_polymer"
   | "single_part_enhanced";
 
@@ -120,6 +122,12 @@ export function getSemanticNodeName(obj: THREE.Object3D): string {
 export function detectCadMaterialRole(obj: THREE.Object3D, family: FamilyId): CadMaterialRole {
   const name = getSemanticNodeName(obj);
 
+  if (name.includes("horn_25t") || name.includes("servo_horn")) {
+    return "anodized_horn_red";
+  }
+  if (name.includes("gripper")) {
+    return "gripper_graphite";
+  }
   if (name.includes("controller_box") || name.includes("controller")) {
     return "controller_enclosure";
   }
@@ -284,6 +292,26 @@ export function createCadPhysicalMaterial(
         clearcoat: 0.2,
         clearcoatRoughness: 0.35,
         envMapIntensity: 1.1,
+      });
+
+    case "anodized_horn_red":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#dc2626"),
+        metalness: 0.88,
+        roughness: 0.24,
+        clearcoat: 0.35,
+        clearcoatRoughness: 0.18,
+        envMapIntensity: 1.5,
+      });
+
+    case "gripper_graphite":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#27303f"),
+        metalness: 0.42,
+        roughness: 0.38,
+        clearcoat: 0.22,
+        clearcoatRoughness: 0.28,
+        envMapIntensity: 1.25,
       });
 
     case "matte_polymer":

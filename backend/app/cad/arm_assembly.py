@@ -33,8 +33,11 @@ from .gear_variants import _build_gear_solid, _build_gear_spoked, _build_gear_we
 from .hardware_parts import (
     build_ball_bearing,
     build_controller_box,
+    build_gripper_3d,
     build_iso4762_screw,
     build_motor_3d,
+    build_servo_3d,
+    build_servo_horn_25t,
 )
 from .mount_variants import (
     _build_mount_gusseted,
@@ -833,9 +836,10 @@ def build_modular_arm_assembly(
         length_y=wr_hw_len,
     )
 
-    # 2b. v4.0 Real 3D Hardware: Motors, Ball Bearings, ISO 4762 Fasteners Kit & Controller Box
+    # 2b. v4.0 / v4.1 Real 3D Hardware: Motors / Dual RC Servos, 25T Horns, Bearings, Gripper, Fasteners & MCU Box
     mech_cfg = getattr(req, "mechatronics", None)
     joint_acts = getattr(mech_cfg, "joint_actuators", None) or {}
+    bus_arch = getattr(mech_cfg, "bus_architecture", "can_fd_bus")
     default_j1_motor = (
         "nema23_76mm" if slots.shoulder_mount.actuator_type == "nema23" else "nema17_48mm"
     )
@@ -846,21 +850,106 @@ def build_modular_arm_assembly(
     j2_motor_id = getattr(j2_spec, "motor_id", None) or "nema17_48mm"
     j3_motor_id = getattr(j3_spec, "motor_id", None) or "bldc_qdd_5010"
 
+    j1_parallel = int(getattr(j1_spec, "parallel_count", 1) or 1)
+    j2_parallel = int(getattr(j2_spec, "parallel_count", 1) or 1)
+    j3_parallel = int(getattr(j3_spec, "parallel_count", 1) or 1)
+
+    def _is_rc_servo(mid: str) -> bool:
+        ml = (mid or "").lower()
+        return ("servo_td" in ml) or ("servo_ds" in ml) or ("mg996" in ml)
+
+    use_rc_servos = (
+        bus_arch == "arduino_pca9685_i2c"
+        or _is_rc_servo(j1_motor_id)
+        or _is_rc_servo(j2_motor_id)
+        or _is_rc_servo(j3_motor_id)
+    )
+
     # Motors: local motor faceplate is z=0, body extends along -Z, shaft along +Z.
     # Rotate -90° around X -> local +Z maps to +Y (shaft points into joint along +Y, body along -Y).
+    # Rotate +90° around X -> local +Z maps to -Y (opposed mirror servo on +Y side).
     rot_z_to_plus_y = Location((0.0, 0.0, 0.0), (-90.0, 0.0, 0.0))
-    motor_j1_placed = Location(
-        (0.0, y_mount_face - float(slots.shoulder_mount.wall_thickness_mm), float(req.base_height_mm))
-    ) * (rot_z_to_plus_y * build_motor_3d(j1_motor_id))
+    rot_z_to_minus_y = Location((0.0, 0.0, 0.0), (90.0, 0.0, 0.0))
 
-    motor_j2_placed = Location(
-        (p1[0], y_el_gear - float(slots.elbow_gear.face_width_mm) - 1.5, p1[2])
-    ) * (rot_z_to_plus_y * build_motor_3d(j2_motor_id))
+    horn_nodes: list[tuple[str, Part | Compound, list[float]]] = []
+    horn_25t = build_servo_horn_25t() if use_rc_servos else None
 
-    # Wrist motor on -Y side of forearm wrist pivot
-    motor_j3_placed = Location(
-        (p2_fore[0], y_forearm - forearm_t / 2.0 - 2.0, p2_fore[2])
-    ) * (rot_z_to_plus_y * build_motor_3d(j3_motor_id))
+    # J1 Shoulder motor (supports dual opposed parallel servos + 25T red aluminum horns)
+    j1_y_neg = y_mount_face - float(slots.shoulder_mount.wall_thickness_mm)
+    j1_m1 = Location((0.0, j1_y_neg, float(req.base_height_mm))) * (
+        rot_z_to_plus_y * build_motor_3d(j1_motor_id)
+    )
+    if _is_rc_servo(j1_motor_id) and j1_parallel >= 2:
+        j1_y_pos = y_sh_gear + float(slots.shoulder_gear.face_width_mm) + 2.0
+        j1_m2 = Location((0.0, j1_y_pos, float(req.base_height_mm))) * (
+            rot_z_to_minus_y * build_servo_3d(j1_motor_id)
+        )
+        motor_j1_placed: Part | Compound = Compound(children=[j1_m1, j1_m2])
+        if horn_25t is not None:
+            h1_a = Location((0.0, j1_y_neg + 1.0, float(req.base_height_mm))) * (rot_z_to_plus_y * horn_25t)
+            h1_b = Location((0.0, j1_y_pos - 1.0, float(req.base_height_mm))) * (rot_z_to_minus_y * horn_25t)
+            horn_nodes.append(("horn_25t_j1", Compound(children=[h1_a, h1_b]), [0.0, -72.0, 0.0]))
+    else:
+        motor_j1_placed = j1_m1
+        if _is_rc_servo(j1_motor_id) and horn_25t is not None:
+            h1_a = Location((0.0, j1_y_neg + 1.0, float(req.base_height_mm))) * (rot_z_to_plus_y * horn_25t)
+            horn_nodes.append(("horn_25t_j1", h1_a, [0.0, -72.0, 0.0]))
+
+    # J2 Elbow motor (supports dual opposed parallel servos + 25T red aluminum horns)
+    j2_y_neg = y_el_gear - float(slots.elbow_gear.face_width_mm) - 1.5
+    j2_m1 = Location((p1[0], j2_y_neg, p1[2])) * (rot_z_to_plus_y * build_motor_3d(j2_motor_id))
+    if _is_rc_servo(j2_motor_id) and j2_parallel >= 2:
+        j2_y_pos = y_forearm + forearm_t / 2.0 + 3.0
+        j2_m2 = Location((p1[0], j2_y_pos, p1[2])) * (rot_z_to_minus_y * build_servo_3d(j2_motor_id))
+        motor_j2_placed: Part | Compound = Compound(children=[j2_m1, j2_m2])
+        if horn_25t is not None:
+            h2_a = Location((p1[0], j2_y_neg + 1.0, p1[2])) * (rot_z_to_plus_y * horn_25t)
+            h2_b = Location((p1[0], j2_y_pos - 1.0, p1[2])) * (rot_z_to_minus_y * horn_25t)
+            horn_nodes.append(
+                (
+                    "horn_25t_j2",
+                    Compound(children=[h2_a, h2_b]),
+                    [round(32.0 * math.cos(a1), 2), -74.0, round(32.0 * math.sin(a1), 2)],
+                )
+            )
+    else:
+        motor_j2_placed = j2_m1
+        if _is_rc_servo(j2_motor_id) and horn_25t is not None:
+            h2_a = Location((p1[0], j2_y_neg + 1.0, p1[2])) * (rot_z_to_plus_y * horn_25t)
+            horn_nodes.append(
+                (
+                    "horn_25t_j2",
+                    h2_a,
+                    [round(32.0 * math.cos(a1), 2), -74.0, round(32.0 * math.sin(a1), 2)],
+                )
+            )
+
+    # J3 Wrist motor
+    j3_y_neg = y_forearm - forearm_t / 2.0 - 2.0
+    motor_j3_placed: Part | Compound = Location((p2_fore[0], j3_y_neg, p2_fore[2])) * (
+        rot_z_to_plus_y * build_motor_3d(j3_motor_id)
+    )
+    if _is_rc_servo(j3_motor_id) and horn_25t is not None:
+        h3_a = Location((p2_fore[0], j3_y_neg + 1.0, p2_fore[2])) * (rot_z_to_plus_y * horn_25t)
+        horn_nodes.append(
+            (
+                "horn_25t_j3",
+                h3_a,
+                [
+                    round(32.0 * math.cos(a1) + 42.0 * math.cos(a2), 2),
+                    -26.0,
+                    round(32.0 * math.sin(a1) + 42.0 * math.sin(a2), 2),
+                ],
+            )
+        )
+
+    # Optional 2-finger Robotic Gripper replacing TCP flange for RC Servo / Arduino 5.0 arms
+    gripper_placed: Part | None = None
+    if use_rc_servos:
+        gripper_local = Location((max(10.0, req.wrist_mm - 6.0), 0.0, 0.0)) * build_gripper_3d()
+        gripper_placed = Location(p2_fore) * (
+            Location((0.0, 0.0, 0.0), (0.0, -a3_deg, 0.0)) * gripper_local
+        )
 
     # Real Ball Bearings seated coaxially in shoulder, elbow, and wrist bores
     sh_bore = float(slots.upper_arm.root_end.bore_diameter_mm)
@@ -963,29 +1052,32 @@ def build_modular_arm_assembly(
         individual_files.extend([s_path, m_path])
 
     # 4. Export combined assembly STEP, STL, and semantic multi-node GLB
-    full_compound = Compound(
-        children=[
-            base_raw,
-            shoulder_mount_placed,
-            shoulder_gear_placed,
-            upper_arm_placed,
-            elbow_gear_placed,
-            forearm_placed,
-            wrist_tube_placed,
-            tcp_flange_placed,
-            joint_hw_shoulder,
-            joint_hw_elbow,
-            joint_hw_wrist,
-            motor_j1_placed,
-            motor_j2_placed,
-            motor_j3_placed,
-            bearing_j1_placed,
-            bearing_j2_placed,
-            bearing_j3_placed,
-            fasteners_kit,
-            controller_box_placed,
-        ]
-    )
+    end_effector_solid: Part = gripper_placed if gripper_placed is not None else tcp_flange_placed
+    compound_children: list[Part | Compound] = [
+        base_raw,
+        shoulder_mount_placed,
+        shoulder_gear_placed,
+        upper_arm_placed,
+        elbow_gear_placed,
+        forearm_placed,
+        wrist_tube_placed,
+        end_effector_solid,
+        joint_hw_shoulder,
+        joint_hw_elbow,
+        joint_hw_wrist,
+        motor_j1_placed,
+        motor_j2_placed,
+        motor_j3_placed,
+        bearing_j1_placed,
+        bearing_j2_placed,
+        bearing_j3_placed,
+        fasteners_kit,
+        controller_box_placed,
+    ]
+    for _, h_solid, _ in horn_nodes:
+        compound_children.append(h_solid)
+
+    full_compound = Compound(children=compound_children)
     step_path = output_dir / "arm_assembly.step"
     stl_path = output_dir / "arm_assembly.stl"
     glb_path = output_dir / "arm_assembly.glb"
@@ -998,7 +1090,7 @@ def build_modular_arm_assembly(
     if not (glb_path.exists() and glb_path.stat().st_size > 0):
         link_rgba = _hex_to_rgba(str(material.get("color_hex", "")), [62, 184, 204, 255])
         scene = trimesh.Scene()
-        node_specs = [
+        node_specs: list[tuple[str, Part | Compound, list[int], float, float]] = [
             ("base_pedestal", base_raw, [68, 82, 102, 255], 0.72, 0.32),
             ("shoulder_mount", shoulder_mount_placed, [92, 134, 182, 255], 0.78, 0.28),
             ("shoulder_gear", shoulder_gear_placed, [224, 174, 72, 255], 0.74, 0.28),
@@ -1006,7 +1098,13 @@ def build_modular_arm_assembly(
             ("elbow_gear", elbow_gear_placed, [196, 152, 68, 255], 0.74, 0.28),
             ("forearm_link", forearm_placed, link_rgba, 0.52, 0.32),
             ("wrist_tube", wrist_tube_placed, link_rgba, 0.55, 0.30),
-            ("tcp_flange", tcp_flange_placed, [242, 182, 58, 255], 0.80, 0.26),
+            (
+                "gripper_assembly" if gripper_placed is not None else "tcp_flange",
+                end_effector_solid,
+                [56, 62, 74, 255] if gripper_placed is not None else [242, 182, 58, 255],
+                0.65 if gripper_placed is not None else 0.80,
+                0.34 if gripper_placed is not None else 0.26,
+            ),
             ("joint_hw_shoulder", joint_hw_shoulder, [42, 48, 62, 255], 0.78, 0.28),
             ("joint_hw_elbow", joint_hw_elbow, [42, 48, 62, 255], 0.78, 0.28),
             ("joint_hw_wrist", joint_hw_wrist, [42, 48, 62, 255], 0.78, 0.28),
@@ -1020,6 +1118,10 @@ def build_modular_arm_assembly(
             ("fasteners_kit", fasteners_kit, [110, 118, 128, 255], 0.88, 0.26),
             ("controller_box", controller_box_placed, [34, 62, 56, 255], 0.42, 0.48),
         ]
+        # v4.1 Red anodized 25T aluminum servo horns
+        for h_name, h_solid, _ in horn_nodes:
+            node_specs.append((h_name, h_solid, [220, 38, 38, 255], 0.88, 0.24))
+
         for node_name, solid, rgba, met, rough in node_specs:
             mesh = _part_to_trimesh(solid, rgba, met, rough, node_name)
             scene.add_geometry(mesh, node_name=node_name, geom_name=node_name)
@@ -1030,6 +1132,11 @@ def build_modular_arm_assembly(
     u2_x, u2_z = math.cos(a2), math.sin(a2)
     u3_x, u3_z = math.cos(a3), math.sin(a3)
 
+    tcp_explode = [
+        round(32.0 * u1_x + 42.0 * u2_x + 70.0 * u3_x, 2),
+        48.0,
+        round(32.0 * u1_z + 42.0 * u2_z + 70.0 * u3_z, 2),
+    ]
     explode_vectors: dict[str, list[float]] = {
         "base_pedestal": [0.0, 0.0, -40.0],
         "shoulder_mount": [0.0, -52.0, 0.0],
@@ -1042,11 +1149,8 @@ def build_modular_arm_assembly(
             48.0,
             round(32.0 * u1_z + 42.0 * u2_z + 36.0 * u3_z, 2),
         ],
-        "tcp_flange": [
-            round(32.0 * u1_x + 42.0 * u2_x + 70.0 * u3_x, 2),
-            48.0,
-            round(32.0 * u1_z + 42.0 * u2_z + 70.0 * u3_z, 2),
-        ],
+        "tcp_flange": tcp_explode,
+        "gripper_assembly": tcp_explode,
         "joint_hw_shoulder": [0.0, -22.0, 0.0],
         "joint_hw_elbow": [round(32.0 * u1_x, 2), 20.0, round(32.0 * u1_z, 2)],
         "joint_hw_wrist": [round(32.0 * u1_x + 42.0 * u2_x, 2), 76.0, round(32.0 * u1_z + 42.0 * u2_z, 2)],
@@ -1060,6 +1164,8 @@ def build_modular_arm_assembly(
         "fasteners_kit": [0.0, 0.0, 32.0],
         "controller_box": [-58.0, 0.0, -24.0],
     }
+    for h_name, _, h_vec in horn_nodes:
+        explode_vectors[h_name] = h_vec
 
     return {
         "real_volumes_mm3": real_volumes_mm3,

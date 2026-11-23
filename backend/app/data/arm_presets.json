@@ -95,6 +95,30 @@
         "print_orientation": "xy_flat",
         "printer_id": "voron_24"
       }
+    },
+    "fabri_arm_5": {
+      "id": "fabri_arm_5",
+      "name": "Brazo Arduino 5.0 — 8 Servos",
+      "subtitle": "Réplica FABRI 5.0 (~400 mm / 0.35 kg) · 8× TD-8120MG + PCA9685 I2C",
+      "defaults": {
+        "preset": "fabri_arm_5",
+        "dof": 6,
+        "payload_kg": 0.35,
+        "base_height_mm": 88.0,
+        "upper_arm_mm": 165.0,
+        "forearm_mm": 150.0,
+        "wrist_mm": 85.0,
+        "link_style": "hollow_cobot",
+        "shoulder_joint_deg": 35.0,
+        "elbow_joint_deg": -55.0,
+        "wrist_joint_deg": 20.0,
+        "gear_ratio_shoulder": 4.0,
+        "gear_ratio_elbow": 4.0,
+        "max_accel_rad_s2": 10.0,
+        "material_id": "pla_plus",
+        "print_orientation": "xy_flat",
+        "printer_id": "bambu_x1c"
+      }
     }
   }
 }

@@ -230,14 +230,18 @@ export interface ModularArmResponse {
 }
 
 // v4.0: Mecatrónica Completa — Motores, Curvas Torque–RPM, Presupuesto Eléctrico y BOM Maestro
+export type BusArchitecture = "can_fd_bus" | "stm32_step_dir" | "arduino_pca9685_i2c";
+export type MotorType = "stepper" | "closed_loop_stepper" | "bldc_qdd" | "rc_servo";
+
 export interface JointActuatorSpec {
   motor_id: string;
   reducer_id: string;
   target_rpm: number;
+  parallel_count?: number;
 }
 
 export interface MechatronicsConfig {
-  bus_architecture: "can_fd_bus" | "stm32_step_dir";
+  bus_architecture: BusArchitecture;
   system_voltage_v: number;
   joint_actuators: Record<string, JointActuatorSpec>;
 }
@@ -253,7 +257,8 @@ export interface JointMechatronicsReport {
   joint_name: string;
   motor_id: string;
   motor_name: string;
-  motor_type: "stepper" | "closed_loop_stepper" | "bldc_qdd";
+  motor_type: MotorType;
+  parallel_count?: number;
   reducer_id: string;
   reducer_name: string;
   gear_ratio: number;
@@ -272,7 +277,7 @@ export interface JointMechatronicsReport {
 }
 
 export interface PowerBudget {
-  bus_architecture: "can_fd_bus" | "stm32_step_dir";
+  bus_architecture: BusArchitecture;
   system_voltage_v: number;
   continuous_current_a: number;
   peak_current_a: number;
@@ -304,7 +309,7 @@ export interface MasterBomItem {
 }
 
 export interface MechatronicsResponse {
-  bus_architecture: "can_fd_bus" | "stm32_step_dir";
+  bus_architecture: BusArchitecture;
   joint_reports: JointMechatronicsReport[];
   power_budget: PowerBudget;
   master_bom: MasterBomItem[];
@@ -315,7 +320,7 @@ export interface MechatronicsResponse {
 export interface ActuatorCatalogItem {
   id: string;
   name: string;
-  motor_type: "stepper" | "closed_loop_stepper" | "bldc_qdd";
+  motor_type: MotorType;
   voltage_v: number;
   rated_torque_nm: number;
   peak_torque_nm: number;
@@ -336,7 +341,7 @@ export interface ReducerCatalogItem {
 }
 
 export interface ArchitectureCatalogItem {
-  id: "can_fd_bus" | "stm32_step_dir";
+  id: BusArchitecture;
   name: string;
   description?: string;
 }

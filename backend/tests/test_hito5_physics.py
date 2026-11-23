@@ -11,7 +11,13 @@ from app.schemas import ArmAssemblyRequest, CopilotRequest
 def test_load_arm_presets_validate_against_schema():
     data = load_arm_presets()
     assert "presets" in data
-    expected = {"parol6_desktop", "ar4_industrial", "so_arm_lerobot", "cobot_hollow_ur"}
+    expected = {
+        "parol6_desktop",
+        "ar4_industrial",
+        "so_arm_lerobot",
+        "cobot_hollow_ur",
+        "fabri_arm_5",
+    }
     assert set(data["presets"].keys()) == expected
     for preset_id, entry in data["presets"].items():
         assert entry["id"] == preset_id

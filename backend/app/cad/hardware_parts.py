@@ -5,13 +5,16 @@ from __future__ import annotations
 import math
 
 from build123d import (
+    Box,
     BuildPart,
     BuildSketch,
     Cylinder,
     Location,
+    Locations,
     Mode,
     Part,
     Plane,
+    Polygon,
     RectangleRounded,
     RegularPolygon,
     extrude,
@@ -146,6 +149,9 @@ def build_motor_3d(motor_id: str = "nema17_48mm") -> Part:
 
     mid = (motor_id or "nema17_48mm").lower()
 
+    if "servo_td" in mid or "servo_ds" in mid or "mg996" in mid:
+        return build_servo_3d(motor_id)
+
     if "nema23" in mid:
         motor = _build_nema_body(
             side_mm=57.2,
@@ -219,3 +225,128 @@ def build_controller_box() -> Part:
     box = base_bp.part + lid_bp.part + xt_bp.part + port1 + port2
     _HARDWARE_CACHE[cache_key] = box
     return box
+
+
+def build_servo_3d(motor_id: str = "servo_td8120mg") -> Part:
+    """Build a realistic standard RC servo (TD-8120MG / DS3218 / MG996R: 40 × 20 × 40.5 mm).
+    Output 25T spline shaft is centered at (0, 0) extending along +Z (z = 0..+5 mm),
+    top gearbox face lies at z = 0, body extends along -Z (z = -38..0 mm), offset +10 mm in X.
+    """
+    cache_key = f"servo:{motor_id}"
+    if cache_key in _HARDWARE_CACHE:
+        return _HARDWARE_CACHE[cache_key]
+
+    # Body centered at x = +10 mm so the output spline sits at x = 0 (real 10 mm from front edge)
+    with BuildSketch(Plane.XY) as body_sk:
+        with Locations((10.0, 0.0)):
+            RectangleRounded(40.0, 20.0, radius=1.8)
+    with BuildPart() as body_bp:
+        extrude(body_sk.sketch.faces()[0].moved(Location((0.0, 0.0, -38.0))), amount=38.0)
+
+    # Mounting ears flange (54 × 20 × 2.6 mm) at z = -10.6..-8.0 mm with 4×Ø4.2 mm mounting holes
+    with BuildSketch(Plane.XY) as ear_sk:
+        with Locations((10.0, 0.0)):
+            RectangleRounded(54.0, 20.0, radius=1.6)
+    with BuildPart() as ear_bp:
+        extrude(ear_sk.sketch.faces()[0].moved(Location((0.0, 0.0, -10.6))), amount=2.6)
+
+    ears = ear_bp.part
+    for hx in (-14.5, 34.5):
+        for hy in (-5.0, 5.0):
+            hole = Location((hx, hy, -9.3)) * Cylinder(radius=2.1, height=6.0)
+            try:
+                ears = ears - hole
+            except Exception:
+                pass
+
+    # Upper output collar + 25T spline shaft (Ø6 mm) along +Z
+    collar = Location((0.0, 0.0, 1.0)) * Cylinder(radius=5.8, height=2.0)
+    spline = Location((0.0, 0.0, 3.0)) * Cylinder(radius=3.0, height=6.0)
+
+    servo = body_bp.part + ears + collar + spline
+    _HARDWARE_CACHE[cache_key] = servo
+    return servo
+
+
+def build_servo_horn_25t() -> Part:
+    """Build a realistic Ø20 × 4 mm circular aluminum 25T servo horn with central hub & 4×M3 PCD 14 mm."""
+    cache_key = "horn_25t:v1"
+    if cache_key in _HARDWARE_CACHE:
+        return _HARDWARE_CACHE[cache_key]
+
+    disc = Location((0.0, 0.0, 2.0)) * Cylinder(radius=10.0, height=4.0)
+    hub = Location((0.0, 0.0, 2.5)) * Cylinder(radius=4.5, height=5.8)
+    horn = disc + hub
+
+    # Center M3 spline screw bore + 4×M3 mounting holes on PCD 14 mm (r = 7 mm)
+    cutters = [Location((0.0, 0.0, 2.5)) * Cylinder(radius=1.6, height=10.0)]
+    for i in range(4):
+        ang = i * (math.pi / 2.0)
+        cutters.append(
+            Location((7.0 * math.cos(ang), 7.0 * math.sin(ang), 2.0))
+            * Cylinder(radius=1.55, height=8.0)
+        )
+    for cutter in cutters:
+        try:
+            cand = horn - cutter
+            if cand.is_valid and cand.volume > 0:
+                horn = cand
+        except Exception:
+            pass
+
+    _HARDWARE_CACHE[cache_key] = horn
+    return horn
+
+
+def build_gripper_3d() -> Part:
+    """Build a realistic 2-finger parallel articulated robotic gripper (~65 mm long along +X).
+    Mounting face sits at x = 0, centered in Y and Z.
+    """
+    cache_key = "gripper_3d:v1"
+    if cache_key in _HARDWARE_CACHE:
+        return _HARDWARE_CACHE[cache_key]
+
+    # 1. Mounting base block (x = 0..14 mm, 44 × 24 mm)
+    with BuildSketch(Plane.YZ) as base_sk:
+        RectangleRounded(44.0, 24.0, radius=3.0)
+    with BuildPart() as base_bp:
+        extrude(base_sk.sketch.faces()[0], amount=14.0)
+
+    # 2. Central actuator housing block (x = 12..34 mm, 22 × 18 mm)
+    act_box = Location((23.0, 0.0, 0.0)) * Box(22.0, 22.0, 18.0)
+
+    # 3. Two parallel serrated gripping fingers extending from x = 14..65 mm
+    # Build upper (+Y) and lower (-Y) jaws in XY plane and extrude along Z (-6..+6 mm)
+    jaw_pts_top = [
+        (12.0, 10.0),
+        (26.0, 20.0),
+        (65.0, 16.0),
+        (65.0, 10.0),
+        (56.0, 11.5),
+        (52.0, 9.5),
+        (46.0, 11.5),
+        (42.0, 9.5),
+        (36.0, 11.5),
+        (26.0, 14.0),
+        (12.0, 5.0),
+    ]
+    jaw_pts_bot = [(x, -y) for (x, y) in jaw_pts_top]
+
+    with BuildSketch(Plane.XY) as jt_sk:
+        Polygon(*jaw_pts_top, align=None)
+    with BuildPart() as jt_bp:
+        extrude(jt_sk.sketch.faces()[0], amount=6.0, both=True)
+
+    with BuildSketch(Plane.XY) as jb_sk:
+        Polygon(*jaw_pts_bot, align=None)
+    with BuildPart() as jb_bp:
+        extrude(jb_sk.sketch.faces()[0], amount=6.0, both=True)
+
+    # 4. Pivot pins at jaw roots
+    pin_top = Location((16.0, 12.0, 0.0)) * Cylinder(radius=2.5, height=16.0)
+    pin_bot = Location((16.0, -12.0, 0.0)) * Cylinder(radius=2.5, height=16.0)
+
+    gripper = base_bp.part + act_box + jt_bp.part + jb_bp.part + pin_top + pin_bot
+    _HARDWARE_CACHE[cache_key] = gripper
+    return gripper
+

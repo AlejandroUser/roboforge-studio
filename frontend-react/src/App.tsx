@@ -226,11 +226,19 @@ export default function App() {
     bus_architecture: "can_fd_bus",
     system_voltage_v: 24,
     joint_actuators: {
-      J1: { motor_id: "nema23_mks_servo57d", reducer_id: "planetary_20", target_rpm: 30 },
-      J2: { motor_id: "nema17_mks_servo42d", reducer_id: "planetary_10", target_rpm: 35 },
-      J3: { motor_id: "nema17_mks_servo42d", reducer_id: "gt2_belt_3", target_rpm: 45 },
+      J1: { motor_id: "nema23_mks_servo57d", reducer_id: "planetary_20", target_rpm: 30, parallel_count: 1 },
+      J2: { motor_id: "nema17_mks_servo42d", reducer_id: "planetary_10", target_rpm: 35, parallel_count: 1 },
+      J3: { motor_id: "nema17_mks_servo42d", reducer_id: "gt2_belt_3", target_rpm: 45, parallel_count: 1 },
     },
   });
+
+  // v4.1 Pose Sequencer (60 FPS GPU FK playback)
+  const [recordedPoses, setRecordedPoses] = useState<
+    Array<{ id: number; label: string; shoulder: number; elbow: number; wrist: number }>
+  >([]);
+  const [isPlayingSeq, setIsPlayingSeq] = useState(false);
+  const [activePoseIdx, setActivePoseIdx] = useState<number | null>(null);
+  const seqRafRef = useRef<number | null>(null);
 
   const assignedSlotCount = useMemo(() => {
     let n = 0;
@@ -559,6 +567,62 @@ export default function App() {
       setBusyLabel(null);
     }
   }, [buildModularArmRequest, showToast]);
+
+  // 60 FPS smooth Pose Sequencer playback loop
+  useEffect(() => {
+    if (!isPlayingSeq || recordedPoses.length < 2) {
+      if (seqRafRef.current) cancelAnimationFrame(seqRafRef.current);
+      seqRafRef.current = null;
+      return;
+    }
+
+    const segDurationMs = 950;
+    let startTs = performance.now();
+    let segIdx = 0;
+
+    const tick = (now: number) => {
+      const elapsed = now - startTs;
+      const rawT = Math.min(elapsed / segDurationMs, 1);
+      // Cubic ease-in-out
+      const ease = rawT < 0.5 ? 4 * rawT * rawT * rawT : 1 - Math.pow(-2 * rawT + 2, 3) / 2;
+
+      const from = recordedPoses[segIdx];
+      const to = recordedPoses[(segIdx + 1) % recordedPoses.length];
+      setActivePoseIdx(segIdx);
+
+      const s = Math.round(from.shoulder + (to.shoulder - from.shoulder) * ease);
+      const e = Math.round(from.elbow + (to.elbow - from.elbow) * ease);
+      const w = Math.round(from.wrist + (to.wrist - from.wrist) * ease);
+
+      setHistory((prevHist) =>
+        prevHist.map((item, idx) =>
+          idx === histIdx
+            ? {
+                ...item,
+                arm: {
+                  ...item.arm,
+                  shoulder_joint_deg: s,
+                  elbow_joint_deg: e,
+                  wrist_joint_deg: w,
+                },
+              }
+            : item
+        )
+      );
+
+      if (rawT >= 1) {
+        segIdx = (segIdx + 1) % recordedPoses.length;
+        startTs = now;
+      }
+      seqRafRef.current = requestAnimationFrame(tick);
+    };
+
+    seqRafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (seqRafRef.current) cancelAnimationFrame(seqRafRef.current);
+      seqRafRef.current = null;
+    };
+  }, [isPlayingSeq, recordedPoses, histIdx]);
 
   // Live 60 FPS TCP readout for Brazo Completo
   const liveTcp = useMemo(() => {
@@ -1015,9 +1079,23 @@ export default function App() {
                       key={id}
                       type="button"
                       className={`preset-btn ${state.arm.preset === id ? "active" : ""}`}
-                      onClick={() =>
-                        pushState((s) => ({ ...s, arm: { ...s.arm, ...(p.defaults || p), preset: id } }))
-                      }
+                      onClick={() => {
+                        pushState((s) => ({ ...s, arm: { ...s.arm, ...(p.defaults || p), preset: id } }));
+                        if (id === "fabri_arm_5") {
+                          setMechatronicsConfig({
+                            bus_architecture: "arduino_pca9685_i2c",
+                            system_voltage_v: 6.5,
+                            joint_actuators: {
+                              J1: { motor_id: "servo_td8120mg", reducer_id: "direct", target_rpm: 35, parallel_count: 2 },
+                              J2: { motor_id: "servo_td8120mg", reducer_id: "direct", target_rpm: 35, parallel_count: 2 },
+                              J3: { motor_id: "servo_td8120mg", reducer_id: "direct", target_rpm: 45, parallel_count: 1 },
+                            },
+                          });
+                          showToast(
+                            "Preset Brazo Arduino 5.0 (8× Servos TD-8120MG · PCA9685 6.5V) cargado. Pulsa «Ensamblar Brazo Real»."
+                          );
+                        }
+                      }}
                     >
                       <strong>{p.name || id}</strong>
                       <small>{p.subtitle || ""}</small>
@@ -1072,12 +1150,88 @@ export default function App() {
                       max={max}
                       step={1}
                       value={(state.arm as any)[k]}
-                      onChange={(e) =>
-                        pushState((s) => ({ ...s, arm: { ...s.arm, [k]: Number(e.target.value) } }))
-                      }
+                      onChange={(e) => {
+                        setIsPlayingSeq(false);
+                        pushState((s) => ({ ...s, arm: { ...s.arm, [k]: Number(e.target.value) } }));
+                      }}
                     />
                   </div>
                 ))}
+
+                {/* v4.1 Mini-Secuenciador de Poses (60 FPS) */}
+                <div className="sequencer-box">
+                  <div className="sequencer-head">
+                    <span>Secuenciador de Poses</span>
+                    <small>{recordedPoses.length} grabadas</small>
+                  </div>
+                  <div className="sequencer-actions">
+                    <button
+                      type="button"
+                      className="btn-tool"
+                      onClick={() => {
+                        setRecordedPoses((prev) => [
+                          ...prev,
+                          {
+                            id: Date.now(),
+                            label: `P${prev.length + 1}`,
+                            shoulder: state.arm.shoulder_joint_deg,
+                            elbow: state.arm.elbow_joint_deg,
+                            wrist: state.arm.wrist_joint_deg,
+                          },
+                        ]);
+                      }}
+                    >
+                      + Grabar Pose
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn-tool ${isPlayingSeq ? "active" : ""}`}
+                      disabled={recordedPoses.length < 2}
+                      onClick={() => setIsPlayingSeq((v) => !v)}
+                    >
+                      {isPlayingSeq ? "■ Detener" : "▶ Reproducir"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-tool"
+                      disabled={recordedPoses.length === 0}
+                      onClick={() => {
+                        setIsPlayingSeq(false);
+                        setActivePoseIdx(null);
+                        setRecordedPoses([]);
+                      }}
+                    >
+                      Limpiar
+                    </button>
+                  </div>
+                  {recordedPoses.length > 0 && (
+                    <div className="sequencer-chips">
+                      {recordedPoses.map((pose, idx) => (
+                        <button
+                          key={pose.id}
+                          type="button"
+                          className={`pose-chip ${activePoseIdx === idx && isPlayingSeq ? "active" : ""}`}
+                          onClick={() => {
+                            setIsPlayingSeq(false);
+                            setActivePoseIdx(idx);
+                            pushState((s) => ({
+                              ...s,
+                              arm: {
+                                ...s.arm,
+                                shoulder_joint_deg: pose.shoulder,
+                                elbow_joint_deg: pose.elbow,
+                                wrist_joint_deg: pose.wrist,
+                              },
+                            }));
+                          }}
+                          title="Ir a esta pose"
+                        >
+                          <strong>{pose.label}</strong> {pose.shoulder}°/{pose.elbow}°/{pose.wrist}°
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </>
           )}

@@ -127,6 +127,42 @@ ACTUATOR_CATALOG: dict[str, dict] = {
         "unit_cost_usd": 148.0,
         "bus_supported": ["can_fd_bus"],
     },
+    "servo_td8120mg": {
+        "id": "servo_td8120mg",
+        "name": "TD-8120MG 20kg·cm (180° Metal Gear)",
+        "motor_type": "rc_servo",
+        "voltage_v": 6.8,
+        "rated_torque_nm": 1.65,
+        "peak_torque_nm": 2.15,
+        "no_load_rpm": 62.0,
+        "corner_rpm": 38.0,
+        "rated_current_a": 1.1,
+        "peak_current_a": 2.5,
+        "mass_g": 60.0,
+        "shaft_d_mm": 6.0,
+        "bolt_pcd_mm": 16.0,
+        "bolt_size": "M3",
+        "unit_cost_usd": 9.5,
+        "bus_supported": ["arduino_pca9685_i2c"],
+    },
+    "servo_ds3218": {
+        "id": "servo_ds3218",
+        "name": "DS3218MG 20kg·cm (Digital Metal Gear)",
+        "motor_type": "rc_servo",
+        "voltage_v": 6.8,
+        "rated_torque_nm": 1.65,
+        "peak_torque_nm": 2.15,
+        "no_load_rpm": 62.0,
+        "corner_rpm": 38.0,
+        "rated_current_a": 1.1,
+        "peak_current_a": 2.5,
+        "mass_g": 60.0,
+        "shaft_d_mm": 6.0,
+        "bolt_pcd_mm": 16.0,
+        "bolt_size": "M3",
+        "unit_cost_usd": 12.0,
+        "bus_supported": ["arduino_pca9685_i2c"],
+    },
 }
 
 REDUCER_CATALOG: dict[str, dict] = {
@@ -206,6 +242,11 @@ ARCHITECTURES_CATALOG: list[dict] = [
         "name": "Estrella STM32 Step/Dir (TMC2209)",
         "description": "Controlador STM32F4 + drivers TMC2209 en caja base con cableado punto a punto de 4 hilos por motor stepper.",
     },
+    {
+        "id": "arduino_pca9685_i2c",
+        "name": "Arduino UNO + PCA9685 I2C (6.5V / 10A)",
+        "description": "Controlador Arduino UNO + Servo Shield PCA9685 I2C de 16 canales para 8× servos TD-8120MG (doble servo paralelo en hombro y codo) + garra.",
+    },
 ]
 
 CATEGORY_LABELS: dict[str, str] = {
@@ -244,7 +285,7 @@ def _motor_torque_at_rpm(motor: dict, motor_rpm: float) -> tuple[float, float]:
     if rpm >= no_load:
         return 0.0, 0.0
 
-    if m_type == "bldc_qdd":
+    if m_type in ("bldc_qdd", "rc_servo"):
         if rpm <= corner:
             return t_rated, t_peak
         frac = max(0.0, (no_load - rpm) / max(no_load - corner, 1.0))
@@ -267,6 +308,20 @@ def _default_spec_for_joint(
     bus_arch: str,
 ) -> JointActuatorSpec:
     """Choose sensible default motor + reducer for joint J1..J6."""
+    if bus_arch == "arduino_pca9685_i2c":
+        if joint_idx in (1, 2):
+            return JointActuatorSpec(
+                motor_id="servo_td8120mg",
+                reducer_id="direct",
+                target_rpm=30.0,
+                parallel_count=2,
+            )
+        return JointActuatorSpec(
+            motor_id="servo_td8120mg",
+            reducer_id="direct",
+            target_rpm=38.0,
+            parallel_count=1,
+        )
     if joint_idx == 1:
         if required_peak_nm > 18.0:
             return JointActuatorSpec(
@@ -373,16 +428,17 @@ def evaluate_mechatronics(
 
         ratio = float(reducer["ratio"])
         eff = float(reducer["efficiency"])
+        p_count = max(1, min(2, int(spec.parallel_count)))
         max_motor_voltage = max(max_motor_voltage, float(motor["voltage_v"]))
 
-        motor_counts[motor["id"]] = motor_counts.get(motor["id"], 0) + 1
+        motor_counts[motor["id"]] = motor_counts.get(motor["id"], 0) + p_count
         if reducer["id"] != "direct":
-            reducer_counts[reducer["id"]] = reducer_counts.get(reducer["id"], 0) + 1
+            reducer_counts[reducer["id"]] = reducer_counts.get(reducer["id"], 0) + p_count
 
         max_joint_rpm = max(1.0, float(motor["no_load_rpm"]) / ratio)
         op_rpm = min(float(spec.target_rpm), max_joint_rpm * 0.92)
 
-        # Build 13-point Torque-Speed curve at joint output
+        # Build 13-point Torque-Speed curve at joint output (scaled by parallel_count)
         curve: list[TorqueSpeedPoint] = []
         for k in range(13):
             j_rpm = max_joint_rpm * (k / 12.0)
@@ -390,14 +446,14 @@ def evaluate_mechatronics(
             curve.append(
                 TorqueSpeedPoint(
                     rpm=round(j_rpm, 1),
-                    continuous_torque_nm=round(m_cont * ratio * eff, 2),
-                    peak_torque_nm=round(m_peak * ratio * eff, 2),
+                    continuous_torque_nm=round(m_cont * p_count * ratio * eff, 2),
+                    peak_torque_nm=round(m_peak * p_count * ratio * eff, 2),
                 )
             )
 
         m_cont_op, m_peak_op = _motor_torque_at_rpm(motor, op_rpm * ratio)
-        avail_cont = max(m_cont_op * ratio * eff, 1e-4)
-        avail_peak = max(m_peak_op * ratio * eff, 1e-4)
+        avail_cont = max(m_cont_op * p_count * ratio * eff, 1e-4)
+        avail_peak = max(m_peak_op * p_count * ratio * eff, 1e-4)
 
         req_rms = math.sqrt(0.65 * (tau_s**2) + 0.35 * (tau_d**2))
         req_peak = max(tau_d, 0.05)
@@ -407,16 +463,16 @@ def evaluate_mechatronics(
         load_ratio = req_rms / avail_cont
         thermal_margin_pct = (1.0 - (load_ratio**2)) * 100.0
 
-        # Operating electrical currents
-        cont_i = float(motor["rated_current_a"]) * min(1.35, max(0.35, load_ratio))
-        peak_i = float(motor["peak_current_a"]) * min(1.25, max(0.45, req_peak / avail_peak))
+        # Operating electrical currents (scaled by parallel_count)
+        cont_i = float(motor["rated_current_a"]) * p_count * min(1.35, max(0.35, load_ratio))
+        peak_i = float(motor["peak_current_a"]) * p_count * min(1.25, max(0.45, req_peak / avail_peak))
         sum_cont_i += cont_i
         sum_peak_i += peak_i
 
         if req_peak > avail_peak or req_rms > avail_cont:
             status = "critical"
             notes.append(
-                f"{jid}: torque requerido ({req_peak:.1f} N·m pico / {req_rms:.1f} N·m RMS) excede {motor['name']} + {reducer['name']}."
+                f"{jid}: torque requerido ({req_peak:.1f} N·m pico / {req_rms:.1f} N·m RMS) excede {p_count}× {motor['name']} + {reducer['name']}."
             )
         elif torque_margin_pct < 20.0 or thermal_margin_pct < 25.0:
             status = "warning"
@@ -430,6 +486,7 @@ def evaluate_mechatronics(
                 motor_id=motor["id"],
                 motor_name=motor["name"],
                 motor_type=motor["motor_type"],
+                parallel_count=p_count,
                 reducer_id=reducer["id"],
                 reducer_name=reducer["name"],
                 gear_ratio=ratio,
@@ -449,18 +506,35 @@ def evaluate_mechatronics(
         )
 
     # Power Budget
-    system_v = 48.0 if max_motor_voltage >= 40.0 else 24.0
-    cont_i_total = round(sum_cont_i * 0.72 + 0.8, 2)
-    peak_i_total = round(sum_peak_i * 0.85 + 1.0, 2)
-    cont_w = round(system_v * cont_i_total, 1)
-    peak_w = round(system_v * peak_i_total, 1)
-    psu_name, psu_cost = _select_psu(system_v, peak_w)
-    power_awg = _select_power_awg(peak_i_total)
-    signal_awg = (
-        "24 AWG Par Trenzado 120Ω (CAN-FD)"
-        if bus_arch == "can_fd_bus"
-        else "26 AWG Apantallado (Step/Dir)"
-    )
+    is_pca_servo = bus_arch == "arduino_pca9685_i2c"
+    if is_pca_servo:
+        system_v = (
+            float(cfg.system_voltage_v)
+            if 5.5 <= float(cfg.system_voltage_v) <= 7.4
+            else 6.5
+        )
+        # Include gripper servo (~0.6A cont / 1.5A peak) + Arduino/PCA9685 logic (0.3A)
+        cont_i_total = round(sum_cont_i * 0.65 + 0.9, 2)
+        peak_i_total = round(min(10.0, sum_peak_i * 0.65 + 1.5), 2)
+        cont_w = round(system_v * cont_i_total, 1)
+        peak_w = round(system_v * peak_i_total, 1)
+        psu_name = "Fuente Ajustable 3–12V 10A (6.5V · Jack DC 5.5×2.1mm)"
+        psu_cost = 16.5
+        power_awg = "16 AWG (Jack DC → PCA9685 V+)"
+        signal_awg = "22 AWG Extensiones Servo (10/30/50 cm)"
+    else:
+        system_v = 48.0 if max_motor_voltage >= 40.0 else 24.0
+        cont_i_total = round(sum_cont_i * 0.72 + 0.8, 2)
+        peak_i_total = round(sum_peak_i * 0.85 + 1.0, 2)
+        cont_w = round(system_v * cont_i_total, 1)
+        peak_w = round(system_v * peak_i_total, 1)
+        psu_name, psu_cost = _select_psu(system_v, peak_w)
+        power_awg = _select_power_awg(peak_i_total)
+        signal_awg = (
+            "24 AWG Par Trenzado 120Ω (CAN-FD)"
+            if bus_arch == "can_fd_bus"
+            else "26 AWG Apantallado (Step/Dir)"
+        )
 
     # Harness length (m): sum real arm segment runs * 1.20 dynamic service loop
     h_base_m = float(req.base_height_mm) / 1000.0
@@ -539,161 +613,256 @@ def evaluate_mechatronics(
         max(2.5, 0.195 * mat_cost_kg * 1.2 + 1.5),
     )
 
-    # Category 2: actuators_reducers
-    for mid, qty in motor_counts.items():
-        m = ACTUATOR_CATALOG[mid]
+    # Category 2, 3, 4: actuators_reducers, electronics_wiring, fasteners_hardware
+    if is_pca_servo:
+        # Exact FABRI Brazo Robótico 5.0 8-servo kit Master BOM (no external metallic bearings)
+        primary_servo_id = next(iter(motor_counts.keys()), "servo_td8120mg")
+        primary_servo = ACTUATOR_CATALOG.get(primary_servo_id, ACTUATOR_CATALOG["servo_td8120mg"])
+        servo_qty = max(8, sum(motor_counts.values()))
         _add_bom(
             "actuators_reducers",
-            f"MOT-{mid.upper()[:10]}",
-            m["name"],
-            f"{m['voltage_v']:.0f}V · {m['rated_torque_nm']:.2f} N·m nom / {m['peak_torque_nm']:.2f} pico",
-            qty,
-            float(m["unit_cost_usd"]),
+            f"SRV-{primary_servo_id.upper()[:10]}",
+            primary_servo["name"],
+            f"6.8V · 20 kg·cm · doble servo paralelo en hombro/codo + pinza",
+            servo_qty,
+            float(primary_servo["unit_cost_usd"]),
         )
-    for rid, qty in reducer_counts.items():
-        r = REDUCER_CATALOG[rid]
         _add_bom(
             "actuators_reducers",
-            f"RED-{rid.upper()[:10]}",
-            f"Reductor {r['name']}",
-            f"Relación {r['ratio']:.0f}:1 · η={int(r['efficiency'] * 100)}%",
-            qty,
-            float(r["unit_cost_usd"]),
+            "HRN-ALU-25T",
+            "Horns Circulares de Aluminio 25T",
+            "Ø20 × 4 mm anodizado rojo · 4 barrenos M3 (PCD 14 mm)",
+            servo_qty,
+            1.8,
         )
 
-    # Category 3: electronics_wiring
-    if bus_arch == "can_fd_bus":
         _add_bom(
             "electronics_wiring",
-            "EL-MCU-CANFD",
-            "Controlador Principal STM32H7 + CAN-FD",
-            "STM32H743 + transceptor MCP2562FD 5 Mbps",
+            "EL-ARDUINO-UNO",
+            "Arduino UNO R3 (ATmega328P)",
+            "Controlador principal I2C (SDA/SCL) + USB programación",
             1,
-            38.0,
+            12.0,
         )
         _add_bom(
             "electronics_wiring",
-            "EL-CONN-JSTGH",
-            "Conectores JST-GH 4-Pin (Bus CAN-FD)",
-            "Paso 1.25 mm con traba + terminadores 120Ω",
-            req.dof + 2,
+            "EL-PCA9685-16CH",
+            "Servo Shield PCA9685 (I2C 16 Canales)",
+            "Driver PWM 12-bit · bornera V+ 10A · canales CH0–CH7",
+            1,
+            6.5,
+        )
+        _add_bom(
+            "electronics_wiring",
+            "EL-PSU-10A",
+            psu_name,
+            f"Salida {system_v:.1f}V DC · 10A continuos · Jack DC 5.5×2.1 mm",
+            1,
+            psu_cost,
+        )
+        _add_bom(
+            "electronics_wiring",
+            "EL-SERVO-EXT",
+            "Cables de Extensión Servo 22 AWG (10/30/50 cm)",
+            f"3 pines JR/Futaba · arnés total {total_harness_m:.2f} m",
+            5,
             1.4,
         )
-    else:
-        _add_bom(
-            "electronics_wiring",
-            "EL-MCU-STM32",
-            "Controlador STM32F407 + Shield Step/Dir",
-            "Soporte hasta 6 ejes + finales de carrera",
-            1,
-            26.0,
-        )
-        _add_bom(
-            "electronics_wiring",
-            "EL-DRV-TMC2209",
-            "Driver Silencioso TMC2209 (UART)",
-            "2.0A RMS · 256 microsteps",
-            req.dof,
-            5.5,
-        )
-    _add_bom(
-        "electronics_wiring",
-        "EL-PSU-MAIN",
-        psu_name,
-        f"Salida {system_v:.0f}V DC · Pico {peak_w:.0f} W",
-        1,
-        psu_cost,
-    )
-    _add_bom(
-        "electronics_wiring",
-        "EL-ESTOP-FUSE",
-        "Paro de Emergencia E-Stop + Portafusible",
-        f"Seta NC + fusible automotriz {fuse_a:.0f} A",
-        1,
-        12.0,
-    )
-    _add_bom(
-        "electronics_wiring",
-        "EL-CONN-XT60",
-        "Conectores de Potencia XT60 (Par Macho/Hembra)",
-        "60A continuos chapados en oro",
-        2,
-        1.8,
-    )
-    _add_bom(
-        "electronics_wiring",
-        "EL-HARNESS-M",
-        "Arnés Eléctrico Completo (Potencia + Señal)",
-        f"{power_awg} + {signal_awg} · {total_harness_m:.2f} m",
-        max(1, int(math.ceil(total_harness_m))),
-        2.8,
-    )
 
-    # Category 4: fasteners_hardware (unit-level ISO 4762 / ISO 4032 / bearings)
-    m3_qty = 16 + 4 * req.dof
-    m4_qty = 12
-    m5_qty = 8 if sm.actuator_type == "nema23" else 4
-    _add_bom(
-        "fasteners_hardware",
-        "ISO4762-M3x12",
-        "Tornillo Allen ISO 4762 M3×12",
-        "Acero 12.9 pavonado · bridas NEMA17 / muñeca / TCP",
-        m3_qty,
-        0.08,
-    )
-    _add_bom(
-        "fasteners_hardware",
-        "ISO4762-M4x16",
-        "Tornillo Allen ISO 4762 M4×16",
-        "Acero 12.9 pavonado · tapas de juntas y caja MCU",
-        m4_qty,
-        0.12,
-    )
-    _add_bom(
-        "fasteners_hardware",
-        "ISO4762-M5x20",
-        "Tornillo Allen ISO 4762 M5×20",
-        "Acero 12.9 pavonado · anclaje base y montura hombro",
-        m5_qty,
-        0.18,
-    )
-    _add_bom(
-        "fasteners_hardware",
-        "ISO4032-NUTS",
-        "Tuercas Hexagonales ISO 4032 (M3/M4/M5)",
-        "Acero inox A2-70",
-        m3_qty // 2 + m4_qty + m5_qty,
-        0.06,
-    )
-    _add_bom(
-        "fasteners_hardware",
-        "INS-BRASS-M3M4",
-        "Insertos Térmicos de Latón CNC (M3/M4)",
-        "Moleteados para termoplásticos PETG-CF / PA12-CF",
-        m3_qty + m4_qty,
-        0.10,
-    )
-    _add_bom(
-        "fasteners_hardware",
-        "BRG-6808-2RS",
-        "Rodamiento Sección Delgada 6808-2RS",
-        "40×52×7 mm · juntas principales Hombro y Codo",
-        4,
-        4.8,
-    )
-    _add_bom(
-        "fasteners_hardware",
-        "BRG-608-2RS",
-        "Rodamiento de Bolas 608-2RS",
-        "8×22×7 mm · muñeca y ejes secundarios",
-        4,
-        1.1,
-    )
+        # Exact 120-screw hardware kit for Brazo 5.0 (no external bearings)
+        _add_bom(
+            "fasteners_hardware",
+            "ISO4762-M3x8",
+            "Tornillo Allen ISO 4762 M3×8",
+            "Acero 12.9 · fijación horns aluminio 25T",
+            35,
+            0.07,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "DIN7981-M3x6",
+            "Tornillo Autorroscante M3×6",
+            "Acero zincado · tapas y electrónica",
+            5,
+            0.05,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "DIN7981-M4x8",
+            "Tornillo Autorroscante M4×8",
+            "Acero zincado · soporte pinza y muñeca",
+            10,
+            0.06,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "DIN7981-M4x12",
+            "Tornillo Autorroscante M4×12",
+            "Acero zincado · orejas de servos y estructura 3D",
+            70,
+            0.07,
+        )
+    else:
+        # Category 2: actuators_reducers
+        for mid, qty in motor_counts.items():
+            m = ACTUATOR_CATALOG[mid]
+            _add_bom(
+                "actuators_reducers",
+                f"MOT-{mid.upper()[:10]}",
+                m["name"],
+                f"{m['voltage_v']:.0f}V · {m['rated_torque_nm']:.2f} N·m nom / {m['peak_torque_nm']:.2f} pico",
+                qty,
+                float(m["unit_cost_usd"]),
+            )
+        for rid, qty in reducer_counts.items():
+            r = REDUCER_CATALOG[rid]
+            _add_bom(
+                "actuators_reducers",
+                f"RED-{rid.upper()[:10]}",
+                f"Reductor {r['name']}",
+                f"Relación {r['ratio']:.0f}:1 · η={int(r['efficiency'] * 100)}%",
+                qty,
+                float(r["unit_cost_usd"]),
+            )
+
+        # Category 3: electronics_wiring
+        if bus_arch == "can_fd_bus":
+            _add_bom(
+                "electronics_wiring",
+                "EL-MCU-CANFD",
+                "Controlador Principal STM32H7 + CAN-FD",
+                "STM32H743 + transceptor MCP2562FD 5 Mbps",
+                1,
+                38.0,
+            )
+            _add_bom(
+                "electronics_wiring",
+                "EL-CONN-JSTGH",
+                "Conectores JST-GH 4-Pin (Bus CAN-FD)",
+                "Paso 1.25 mm con traba + terminadores 120Ω",
+                req.dof + 2,
+                1.4,
+            )
+        else:
+            _add_bom(
+                "electronics_wiring",
+                "EL-MCU-STM32",
+                "Controlador STM32F407 + Shield Step/Dir",
+                "Soporte hasta 6 ejes + finales de carrera",
+                1,
+                26.0,
+            )
+            _add_bom(
+                "electronics_wiring",
+                "EL-DRV-TMC2209",
+                "Driver Silencioso TMC2209 (UART)",
+                "2.0A RMS · 256 microsteps",
+                req.dof,
+                5.5,
+            )
+        _add_bom(
+            "electronics_wiring",
+            "EL-PSU-MAIN",
+            psu_name,
+            f"Salida {system_v:.0f}V DC · Pico {peak_w:.0f} W",
+            1,
+            psu_cost,
+        )
+        _add_bom(
+            "electronics_wiring",
+            "EL-ESTOP-FUSE",
+            "Paro de Emergencia E-Stop + Portafusible",
+            f"Seta NC + fusible automotriz {fuse_a:.0f} A",
+            1,
+            12.0,
+        )
+        _add_bom(
+            "electronics_wiring",
+            "EL-CONN-XT60",
+            "Conectores de Potencia XT60 (Par Macho/Hembra)",
+            "60A continuos chapados en oro",
+            2,
+            1.8,
+        )
+        _add_bom(
+            "electronics_wiring",
+            "EL-HARNESS-M",
+            "Arnés Eléctrico Completo (Potencia + Señal)",
+            f"{power_awg} + {signal_awg} · {total_harness_m:.2f} m",
+            max(1, int(math.ceil(total_harness_m))),
+            2.8,
+        )
+
+        # Category 4: fasteners_hardware (unit-level ISO 4762 / ISO 4032 / bearings)
+        m3_qty = 16 + 4 * req.dof
+        m4_qty = 12
+        m5_qty = 8 if sm.actuator_type == "nema23" else 4
+        _add_bom(
+            "fasteners_hardware",
+            "ISO4762-M3x12",
+            "Tornillo Allen ISO 4762 M3×12",
+            "Acero 12.9 pavonado · bridas NEMA17 / muñeca / TCP",
+            m3_qty,
+            0.08,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "ISO4762-M4x16",
+            "Tornillo Allen ISO 4762 M4×16",
+            "Acero 12.9 pavonado · tapas de juntas y caja MCU",
+            m4_qty,
+            0.12,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "ISO4762-M5x20",
+            "Tornillo Allen ISO 4762 M5×20",
+            "Acero 12.9 pavonado · anclaje base y montura hombro",
+            m5_qty,
+            0.18,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "ISO4032-NUTS",
+            "Tuercas Hexagonales ISO 4032 (M3/M4/M5)",
+            "Acero inox A2-70",
+            m3_qty // 2 + m4_qty + m5_qty,
+            0.06,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "INS-BRASS-M3M4",
+            "Insertos Térmicos de Latón CNC (M3/M4)",
+            "Moleteados para termoplásticos PETG-CF / PA12-CF",
+            m3_qty + m4_qty,
+            0.10,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "BRG-6808-2RS",
+            "Rodamiento Sección Delgada 6808-2RS",
+            "40×52×7 mm · juntas principales Hombro y Codo",
+            4,
+            4.8,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "BRG-608-2RS",
+            "Rodamiento de Bolas 608-2RS",
+            "8×22×7 mm · muñeca y ejes secundarios",
+            4,
+            1.1,
+        )
 
     total_bom_cost_usd = round(sum(item.total_cost_usd for item in master_bom), 2)
     if not notes:
+        arch_label = (
+            "Arduino UNO + PCA9685 I2C (8 Servos)"
+            if is_pca_servo
+            else ("Bus CAN-FD 4 hilos" if bus_arch == "can_fd_bus" else "STM32 Step/Dir")
+        )
         notes.append(
-            f"Arquitectura {'Bus CAN-FD 4 hilos' if bus_arch == 'can_fd_bus' else 'STM32 Step/Dir'} validada a {system_v:.0f}V con margen térmico y de torque positivos."
+            f"Arquitectura {arch_label} validada a {system_v:.1f}V con margen térmico y de torque positivos."
         )
 
     return MechatronicsResponse(
@@ -706,12 +875,100 @@ def evaluate_mechatronics(
     )
 
 
+def _generate_pca9685_schematic_svg(mechatronics: MechatronicsResponse) -> str:
+    """Dedicated dark-mode SVG schematic for Arduino UNO + PCA9685 16ch I2C (8 Servos + Gripper)."""
+    pb = mechatronics.power_budget
+    channels = [
+        ("CH0", "J1 Hombro Servo A (Paralelo ×2)", "TD-8120MG · 22 AWG"),
+        ("CH1", "J1 Hombro Servo B (Paralelo ×2)", "TD-8120MG · Invertido"),
+        ("CH2", "J2 Codo Servo A (Paralelo ×2)", "TD-8120MG · 22 AWG"),
+        ("CH3", "J2 Codo Servo B (Paralelo ×2)", "TD-8120MG · Invertido"),
+        ("CH4", "J3 Muñeca Pitch", "TD-8120MG · Ext 30cm"),
+        ("CH5", "J4 Base Yaw", "TD-8120MG · Ext 10cm"),
+        ("CH6", "J5 Muñeca Roll", "TD-8120MG · Ext 50cm"),
+        ("CH7", "Pinza / Gripper 2-Dedos", "TD-8120MG · Ext 50cm"),
+    ]
+    svg_w, svg_h = 980, 560
+    lines: list[str] = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {svg_w} {svg_h}" width="{svg_w}" height="{svg_h}">',
+        "<defs>",
+        '  <pattern id="rf-grid-pca" width="24" height="24" patternUnits="userSpaceOnUse">',
+        '    <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#1e293b" stroke-width="0.6"/>',
+        "  </pattern>",
+        "</defs>",
+        f'<rect width="{svg_w}" height="{svg_h}" fill="#0b1120"/>',
+        f'<rect width="{svg_w}" height="{svg_h}" fill="url(#rf-grid-pca)"/>',
+        '<text x="24" y="32" fill="#f8fafc" font-family="ui-monospace,Consolas,monospace" font-size="16" font-weight="700">'
+        'ROBOFORGE v4.1 — ESQUEMÁTICO BRAZO 5.0 (ARDUINO UNO + PCA9685 I2C · 8 SERVOS)</text>',
+        '<text x="24" y="52" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="11">'
+        f'{escape(pb.recommended_psu)} · {pb.system_voltage_v:.1f}V · Pico {pb.peak_current_a:.1f}A ({pb.peak_power_w:.0f}W) · Arnés {pb.total_harness_length_m:.2f} m</text>',
+        # PSU block
+        '<rect x="24" y="120" width="190" height="104" rx="8" fill="#111827" stroke="#f59e0b" stroke-width="1.8"/>',
+        '<text x="36" y="144" fill="#fbbf24" font-family="ui-monospace,Consolas,monospace" font-size="12" font-weight="700">FUENTE 6.5V 10A</text>',
+        '<text x="36" y="164" fill="#e2e8f0" font-family="ui-monospace,Consolas,monospace" font-size="10">Ajustable 3–12V · 10A</text>',
+        '<text x="36" y="182" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">Jack DC 5.5×2.1 mm</text>',
+        f'<text x="36" y="200" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">Vout: {pb.system_voltage_v:.1f} V DC (V+)</text>',
+        # Arduino UNO block
+        '<rect x="24" y="290" width="190" height="114" rx="8" fill="#111827" stroke="#38bdf8" stroke-width="1.8"/>',
+        '<text x="36" y="314" fill="#38bdf8" font-family="ui-monospace,Consolas,monospace" font-size="12" font-weight="700">ARDUINO UNO R3</text>',
+        '<text x="36" y="334" fill="#e2e8f0" font-family="ui-monospace,Consolas,monospace" font-size="10">ATmega328P · 5V Logic</text>',
+        '<text x="36" y="352" fill="#22c55e" font-family="ui-monospace,Consolas,monospace" font-size="10">A4 (SDA) / A5 (SCL)</text>',
+        '<text x="36" y="370" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">GND común + VCC 5V</text>',
+        '<text x="36" y="388" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">USB Secuenciador Poses</text>',
+        # Wires PSU -> PCA9685 and Arduino -> PCA9685
+        '<line x1="214" y1="162" x2="310" y2="162" stroke="#ef4444" stroke-width="2.8"/>',
+        '<line x1="214" y1="184" x2="310" y2="184" stroke="#64748b" stroke-width="2.4" stroke-dasharray="4 2"/>',
+        '<text x="224" y="154" fill="#fca5a5" font-family="ui-monospace,Consolas,monospace" font-size="9">Jack DC V+ 16AWG</text>',
+        '<line x1="214" y1="336" x2="310" y2="274" stroke="#22c55e" stroke-width="2.0"/>',
+        '<line x1="214" y1="354" x2="310" y2="292" stroke="#38bdf8" stroke-width="2.0"/>',
+        '<line x1="214" y1="372" x2="310" y2="310" stroke="#64748b" stroke-width="1.8" stroke-dasharray="4 2"/>',
+        '<text x="220" y="294" fill="#86efac" font-family="ui-monospace,Consolas,monospace" font-size="9">I2C SDA/SCL/GND</text>',
+        # PCA9685 16ch Shield block
+        '<rect x="310" y="130" width="230" height="215" rx="8" fill="#111827" stroke="#a855f7" stroke-width="2.0"/>',
+        '<text x="324" y="158" fill="#c084fc" font-family="ui-monospace,Consolas,monospace" font-size="12.5" font-weight="700">PCA9685 16ch I2C</text>',
+        '<text x="324" y="178" fill="#e2e8f0" font-family="ui-monospace,Consolas,monospace" font-size="10">Driver PWM 12-bit (50 Hz)</text>',
+        '<text x="324" y="198" fill="#fca5a5" font-family="ui-monospace,Consolas,monospace" font-size="10">Bornera V+: 6.5V / 10A</text>',
+        '<text x="324" y="218" fill="#86efac" font-family="ui-monospace,Consolas,monospace" font-size="10">Dir I2C: 0x40 (SDA/SCL)</text>',
+        '<text x="324" y="244" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">Canales Activos: CH0..CH7</text>',
+        '<text x="324" y="264" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">8× Servos TD-8120MG</text>',
+        '<text x="324" y="284" fill="#fbbf24" font-family="ui-monospace,Consolas,monospace" font-size="10">CH0–CH1: Hombro ×2</text>',
+        '<text x="324" y="304" fill="#fbbf24" font-family="ui-monospace,Consolas,monospace" font-size="10">CH2–CH3: Codo ×2</text>',
+        '<text x="324" y="324" fill="#38bdf8" font-family="ui-monospace,Consolas,monospace" font-size="10">CH7: Pinza / Gripper</text>',
+        # Bus trunk to CH0..CH7
+        '<line x1="540" y1="238" x2="612" y2="238" stroke="#ef4444" stroke-width="2.4"/>',
+        '<line x1="612" y1="96" x2="612" y2="490" stroke="#ef4444" stroke-width="2.0"/>',
+        '<line x1="622" y1="104" x2="622" y2="498" stroke="#f59e0b" stroke-width="1.8"/>',
+    ]
+    for idx, (ch, label, sub) in enumerate(channels):
+        cy = 96 + idx * 56
+        stroke = "#dc2626" if idx < 4 else ("#38bdf8" if idx == 7 else "#22c55e")
+        lines.extend(
+            [
+                f'<line x1="612" y1="{cy}" x2="674" y2="{cy}" stroke="#ef4444" stroke-width="1.6"/>',
+                f'<line x1="622" y1="{cy + 8}" x2="674" y2="{cy + 8}" stroke="#f59e0b" stroke-width="1.5"/>',
+                f'<rect x="674" y="{cy - 18}" width="282" height="44" rx="6" fill="#0f172a" stroke="{stroke}" stroke-width="1.6"/>',
+                f'<text x="684" y="{cy - 2}" fill="#f8fafc" font-family="ui-monospace,Consolas,monospace" font-size="10.5" font-weight="700">{ch} · {escape(label)}</text>',
+                f'<text x="684" y="{cy + 15}" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="9.5">{escape(sub)}</text>',
+            ]
+        )
+    lines.extend(
+        [
+            '<text x="24" y="542" fill="#cbd5e1" font-family="ui-monospace,Consolas,monospace" font-size="10">'
+            'Rojo: V+ 6.5V (16 AWG) · Ámbar: PWM 50Hz (22 AWG) · Verde/Cian: Bus I2C SDA/SCL</text>',
+            "</svg>",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def generate_circuit_schematic_svg(mechatronics: MechatronicsResponse, dof: int) -> str:
     """
     Generate a clean dark-mode WireViz-style electrical schematic SVG (100% offline).
-    Shows PSU -> E-Stop/Fuse -> MCU -> CAN-FD Bus or Step/Dir Drivers -> Motors J1..Jn.
+    Shows PSU -> E-Stop/Fuse -> MCU -> CAN-FD Bus, Step/Dir, or Arduino + PCA9685 I2C.
     """
     pb = mechatronics.power_budget
+    if pb.bus_architecture == "arduino_pca9685_i2c":
+        return _generate_pca9685_schematic_svg(mechatronics)
     is_can = pb.bus_architecture == "can_fd_bus"
     n_joints = max(1, min(dof, len(mechatronics.joint_reports)))
     svg_h = max(420, 120 + n_joints * 58)
@@ -830,6 +1087,66 @@ def generate_circuit_schematic_svg(mechatronics: MechatronicsResponse, dof: int)
 def generate_wireviz_yaml(mechatronics: MechatronicsResponse, dof: int) -> str:
     """Export wiring harness definition in standard WireViz YAML format."""
     pb = mechatronics.power_budget
+    if pb.bus_architecture == "arduino_pca9685_i2c":
+        out_pca = [
+            "# RoboForge Studio Pro v4.1 — Brazo Arduino 5.0 (PCA9685 I2C · 8 Servos)",
+            "connectors:",
+            "  X1_PSU_6V5:",
+            f"    type: {pb.recommended_psu}",
+            "    subtype: DC-Jack-5.5x2.1mm",
+            f"    pins: ['+{pb.system_voltage_v:.1f}V', 'GND']",
+            "  X2_ARDUINO_UNO:",
+            "    type: Arduino UNO R3 (ATmega328P)",
+            "    pins: ['5V', 'GND', 'A4_SDA', 'A5_SCL']",
+            "  X3_PCA9685:",
+            "    type: PCA9685 16ch I2C Servo Shield",
+            "    pins: ['V+', 'GND', 'SDA', 'SCL', 'PWM']",
+        ]
+        ch_names = [
+            "CH0_J1_Shoulder_A",
+            "CH1_J1_Shoulder_B",
+            "CH2_J2_Elbow_A",
+            "CH3_J2_Elbow_B",
+            "CH4_J3_Wrist_Pitch",
+            "CH5_J4_Base_Yaw",
+            "CH6_J5_Wrist_Roll",
+            "CH7_Gripper",
+        ]
+        for ch in ch_names:
+            out_pca.extend(
+                [
+                    f"  S_{ch}:",
+                    "    type: Servo TD-8120MG 20kg-cm",
+                    "    subtype: JR-3Pin",
+                    "    pins: ['PWM', 'V+', 'GND']",
+                ]
+            )
+        out_pca.extend(
+            [
+                "",
+                "cables:",
+                "  W1_PSU_DC:",
+                "    gauge: 16 AWG",
+                "    length: 0.40 m",
+                "    colors: [RD, BK]",
+                "  W2_I2C_BUS:",
+                "    gauge: 24 AWG",
+                "    length: 0.15 m",
+                "    colors: [RD, BK, GN, BU]",
+                "  W3_SERVO_EXT:",
+                "    gauge: 22 AWG",
+                f"    length: {pb.total_harness_length_m:.2f} m",
+                "    colors: [OG, RD, BN]",
+                "",
+                "connections:",
+                "  - [X1_PSU_6V5: [1, 2], W1_PSU_DC: [1, 2], X3_PCA9685: [1, 2]]",
+                "  - [X2_ARDUINO_UNO: [1, 2, 3, 4], W2_I2C_BUS: [1, 2, 3, 4], X3_PCA9685: [1, 2, 3, 4]]",
+            ]
+        )
+        for ch in ch_names:
+            out_pca.append(f"  - [X3_PCA9685: [5, 1, 2], W3_SERVO_EXT: [1, 2, 3], S_{ch}: [1, 2, 3]]")
+        return "\n".join(out_pca) + "\n"
+
     is_can = pb.bus_architecture == "can_fd_bus"
     n_joints = max(1, min(dof, len(mechatronics.joint_reports)))
 

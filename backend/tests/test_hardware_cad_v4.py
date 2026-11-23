@@ -77,7 +77,7 @@ def test_v4_mechatronics_catalog_and_arm_assemble_zip():
     r_cat = client.get("/api/mechatronics/catalog")
     assert r_cat.status_code == 200, r_cat.text
     cat = r_cat.json()
-    assert len(cat["actuators"]) == 6
+    assert len(cat["actuators"]) >= 6
     assert len(cat["reducers"]) >= 7
     assert len(cat["architectures"]) >= 2
 

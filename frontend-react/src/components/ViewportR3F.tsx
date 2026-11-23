@@ -26,6 +26,10 @@ const SEMANTIC_PART_KEYS = [
   "bearing_j3",
   "fasteners_kit",
   "controller_box",
+  "horn_25t_j1",
+  "horn_25t_j2",
+  "horn_25t_j3",
+  "gripper_assembly",
 ] as const;
 
 const FALLBACK_EXPLODE_VECTORS: Record<string, [number, number, number]> = {
@@ -35,15 +39,19 @@ const FALLBACK_EXPLODE_VECTORS: Record<string, [number, number, number]> = {
   shoulder_gear: [0, -60, 15],
   motor_j1_shoulder: [0, -90, 10],
   bearing_j1: [0, -45, 25],
+  horn_25t_j1: [0, -72, 15],
   upper_arm_link: [35, 0, 35],
   elbow_gear: [55, 45, 50],
   motor_j2_elbow: [55, 80, 50],
   bearing_j2: [55, 30, 50],
+  horn_25t_j2: [55, 62, 50],
   forearm_link: [90, 0, 65],
   wrist_tube: [130, 0, 80],
   motor_j3_wrist: [130, 65, 80],
   bearing_j3: [130, 30, 80],
+  horn_25t_j3: [130, 48, 80],
   tcp_flange: [165, 0, 95],
+  gripper_assembly: [185, 0, 100],
   fasteners_kit: [0, 75, 15],
 };
 
@@ -64,6 +72,10 @@ const PART_LABELS_ES: Record<string, string> = {
   bearing_j3: "Rodamiento J3",
   fasteners_kit: "Kit Tornillería ISO 4762",
   controller_box: "Caja Controlador STM32 / CAN-FD",
+  horn_25t_j1: "Horn Aluminio 25T J1",
+  horn_25t_j2: "Horn Aluminio 25T J2",
+  horn_25t_j3: "Horn Aluminio 25T J3",
+  gripper_assembly: "Pinza / Garra Robótica",
 };
 
 function resolveSemanticKey(obj: THREE.Object3D | null): string | null {

@@ -336,7 +336,13 @@ class CustomMaterialCreate(BaseModel):
 
 
 # Hito 5: Cadena Cinemática Multi-Eslabón (Brazo Completo) + URDF/MuJoCo + BOM
-ArmPresetType = Literal["parol6_desktop", "ar4_industrial", "so_arm_lerobot", "cobot_hollow_ur"]
+ArmPresetType = Literal[
+    "parol6_desktop",
+    "ar4_industrial",
+    "so_arm_lerobot",
+    "cobot_hollow_ur",
+    "fabri_arm_5",
+]
 
 
 class ArmAssemblyRequest(BaseModel):
@@ -542,16 +548,20 @@ class ModularArmResponse(BaseModel):
     mechatronics: Optional["MechatronicsResponse"] = None
 
 
-# v4.0: Mecatrónica Completa — Motores, Curvas Torque–RPM, Presupuesto Eléctrico y BOM Maestro
+# v4.0 + v4.1: Mecatrónica Completa — Motores, Servos Paralelos, Curvas Torque–RPM, Presupuesto Eléctrico y BOM Maestro
+BusArchitectureType = Literal["can_fd_bus", "stm32_step_dir", "arduino_pca9685_i2c"]
+
+
 class JointActuatorSpec(BaseModel):
     motor_id: str = "nema17_mks_servo42d"
     reducer_id: str = "planetary_10"
     target_rpm: float = Field(30.0, ge=1.0, le=300.0)
+    parallel_count: int = Field(default=1, ge=1, le=2)
 
 
 class MechatronicsConfig(BaseModel):
-    bus_architecture: Literal["can_fd_bus", "stm32_step_dir"] = "can_fd_bus"
-    system_voltage_v: float = Field(24.0, ge=12.0, le=60.0)
+    bus_architecture: BusArchitectureType = "can_fd_bus"
+    system_voltage_v: float = Field(24.0, ge=5.0, le=60.0)
     joint_actuators: dict[str, JointActuatorSpec] = Field(default_factory=dict)
 
 
@@ -566,7 +576,8 @@ class JointMechatronicsReport(BaseModel):
     joint_name: str
     motor_id: str
     motor_name: str
-    motor_type: Literal["stepper", "closed_loop_stepper", "bldc_qdd"]
+    motor_type: Literal["stepper", "closed_loop_stepper", "bldc_qdd", "rc_servo"]
+    parallel_count: int = 1
     reducer_id: str
     reducer_name: str
     gear_ratio: float
@@ -585,7 +596,7 @@ class JointMechatronicsReport(BaseModel):
 
 
 class PowerBudget(BaseModel):
-    bus_architecture: Literal["can_fd_bus", "stm32_step_dir"]
+    bus_architecture: BusArchitectureType
     system_voltage_v: float
     continuous_current_a: float
     peak_current_a: float
@@ -616,7 +627,7 @@ class MasterBomItem(BaseModel):
 
 
 class MechatronicsResponse(BaseModel):
-    bus_architecture: Literal["can_fd_bus", "stm32_step_dir"]
+    bus_architecture: BusArchitectureType
     joint_reports: list[JointMechatronicsReport] = Field(default_factory=list)
     power_budget: PowerBudget
     master_bom: list[MasterBomItem] = Field(default_factory=list)

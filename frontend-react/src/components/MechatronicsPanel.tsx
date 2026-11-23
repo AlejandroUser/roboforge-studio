@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import type {
+  BusArchitecture,
   JointActuatorSpec,
   JointMechatronicsReport,
   MasterBomCategory,
@@ -16,6 +17,8 @@ const FALLBACK_ACTUATORS = [
   { id: "nema23_mks_servo57d", name: "NEMA 23 MKS SERVO57D (Closed-Loop)" },
   { id: "bldc_qdd_5010", name: "BLDC QDD 5010 (Direct/QDD)" },
   { id: "bldc_qdd_8308", name: "BLDC QDD 8308 (High-Torque QDD)" },
+  { id: "servo_td8120mg", name: "TD-8120MG 20kg·cm (Metal Gear Servo)" },
+  { id: "servo_ds3218", name: "DS3218MG 20kg·cm (Digital Servo)" },
 ];
 
 const FALLBACK_REDUCERS = [
@@ -43,17 +46,23 @@ export interface MechatronicsPanelProps {
   onChangeConfig: (next: MechatronicsConfig) => void;
 }
 
-function TorqueSpeedChart({ report }: { report: JointMechatronicsReport }) {
+function TorqueSpeedChart({
+  report,
+  parallelCount,
+}: {
+  report: JointMechatronicsReport;
+  parallelCount: number;
+}) {
   const curve = report.torque_speed_curve || [];
   if (curve.length < 2) {
     return <div className="mech-empty">Sin puntos de curva Torque–RPM para {report.joint_id}.</div>;
   }
 
   const W = 310;
-  const H = 152;
-  const padL = 36;
+  const H = 162;
+  const padL = 38;
   const padR = 12;
-  const padT = 14;
+  const padT = 22;
   const padB = 26;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
@@ -85,6 +94,7 @@ function TorqueSpeedChart({ report }: { report: JointMechatronicsReport }) {
   const opRmsY = toY(report.required_rms_torque_nm);
   const dotColor =
     report.status === "ok" ? "#10b981" : report.status === "warning" ? "#f59e0b" : "#ef4444";
+  const isParallel = (report.parallel_count ?? parallelCount) === 2;
 
   return (
     <div className="torque-chart-wrap">
@@ -92,9 +102,12 @@ function TorqueSpeedChart({ report }: { report: JointMechatronicsReport }) {
         <span>
           <strong>{report.joint_name}</strong> · {report.motor_name}
         </span>
-        <span className={`badge ${report.status === "ok" ? "good" : report.status === "warning" ? "warn" : "bad"}`}>
-          {report.status === "ok" ? "✓ OK" : report.status === "warning" ? "⚠ Límite" : "✕ Saturado"}
-        </span>
+        <div className="badge-row">
+          {isParallel && <span className="badge badge-parallel">×2 Paralelo</span>}
+          <span className={`badge ${report.status === "ok" ? "good" : report.status === "warning" ? "warn" : "bad"}`}>
+            {report.status === "ok" ? "✓ OK" : report.status === "warning" ? "⚠ Límite" : "✕ Saturado"}
+          </span>
+        </div>
       </div>
 
       <svg viewBox={`0 0 ${W} ${H}`} className="torque-svg" role="img" aria-label={`Curva Torque RPM ${report.joint_id}`}>
@@ -105,13 +118,18 @@ function TorqueSpeedChart({ report }: { report: JointMechatronicsReport }) {
           </linearGradient>
         </defs>
 
+        {/* Axis title clearly above top gridline (never overlaps orange Peak curve) */}
+        <text x={padL - 4} y={11} textAnchor="end" fontSize="8.5" fill="#94a3b8" fontFamily="monospace">
+          N·m
+        </text>
+
         {/* Grid lines */}
         {[0, 0.5, 1].map((frac) => {
           const y = padT + plotH * (1 - frac);
           return (
             <g key={frac}>
               <line x1={padL} y1={y} x2={W - padR} y2={y} stroke="rgba(148,163,184,0.14)" strokeDasharray="2 2" />
-              <text x={padL - 4} y={y + 3} textAnchor="end" fontSize="8.5" fill="#64748b" fontFamily="monospace">
+              <text x={padL - 5} y={y + 3} textAnchor="end" fontSize="8.5" fill="#64748b" fontFamily="monospace">
                 {(maxTorque * frac).toFixed(1)}
               </text>
             </g>
@@ -148,11 +166,6 @@ function TorqueSpeedChart({ report }: { report: JointMechatronicsReport }) {
         <line x1={opX} y1={opY} x2={opX} y2={padT + plotH} stroke={dotColor} strokeOpacity="0.4" strokeDasharray="2 2" />
         <circle cx={opX} cy={opRmsY} r="3" fill="#38bdf8" stroke="#0b0f17" strokeWidth="1" />
         <circle cx={opX} cy={opY} r="4.5" fill={dotColor} stroke="#0b0f17" strokeWidth="1.4" />
-
-        {/* Axis title */}
-        <text x={4} y={padT + 4} fontSize="8" fill="#94a3b8" fontFamily="monospace">
-          N·m
-        </text>
       </svg>
 
       <div className="torque-legend-row">
@@ -282,15 +295,18 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
               <div className="field-head"><span>Bus Eléctrico</span></div>
               <select
                 value={config.bus_architecture}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const nextBus = e.target.value as BusArchitecture;
                   onChangeConfig({
                     ...config,
-                    bus_architecture: e.target.value as "can_fd_bus" | "stm32_step_dir",
-                  })
-                }
+                    bus_architecture: nextBus,
+                    system_voltage_v: nextBus === "arduino_pca9685_i2c" ? 6.5 : config.system_voltage_v < 12 ? 24 : config.system_voltage_v,
+                  });
+                }}
               >
                 <option value="can_fd_bus">Bus CAN-FD (4 Hilos)</option>
                 <option value="stm32_step_dir">Estrella STM32 Step/Dir</option>
+                <option value="arduino_pca9685_i2c">Arduino UNO + PCA9685 I2C · 6V/10A</option>
               </select>
             </div>
             <div className="field-row">
@@ -301,22 +317,26 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
                   onChangeConfig({ ...config, system_voltage_v: Number(e.target.value) })
                 }
               >
+                <option value={6}>6 V DC (Servos)</option>
+                <option value={6.5}>6.5 V DC (Servos 10A)</option>
                 <option value={24}>24 V DC</option>
                 <option value={48}>48 V DC</option>
               </select>
             </div>
           </div>
 
-          {/* Per-joint actuator & reducer selectors */}
+          {/* Per-joint actuator, reducer & 1x/2x parallel toggle */}
           <div className="joint-selector-list">
             {(["J1", "J2", "J3"] as const).map((jid) => {
               const spec = config.joint_actuators[jid] || {
                 motor_id: jid === "J1" ? "nema23_mks_servo57d" : "nema17_mks_servo42d",
                 reducer_id: jid === "J1" ? "planetary_20" : "planetary_10",
                 target_rpm: 30,
+                parallel_count: 1,
               };
+              const pCount = spec.parallel_count ?? 1;
               return (
-                <div key={jid} className="joint-selector-row">
+                <div key={jid} className="joint-selector-row has-parallel">
                   <span className="joint-pill">{jid}</span>
                   <select
                     value={spec.motor_id}
@@ -340,6 +360,18 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
                       </option>
                     ))}
                   </select>
+                  <button
+                    type="button"
+                    className={`btn-parallel-toggle ${pCount === 2 ? "active" : ""}`}
+                    onClick={() => updateJointSpec(jid, { parallel_count: pCount === 2 ? 1 : 2 })}
+                    title={
+                      pCount === 2
+                        ? "2× actuadores enfrentados en paralelo (doble torque)"
+                        : "Actuador simple (clic para ×2 en paralelo)"
+                    }
+                  >
+                    {pCount}×
+                  </button>
                 </div>
               );
             })}
@@ -349,20 +381,30 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
           {mechatronics?.joint_reports?.length ? (
             <>
               <div className="joint-chart-pills">
-                {mechatronics.joint_reports.map((rep) => (
-                  <button
-                    key={rep.joint_id}
-                    type="button"
-                    className={`joint-chart-pill ${
-                      activeReport?.joint_id === rep.joint_id ? "active" : ""
-                    }`}
-                    onClick={() => setSelectedJointId(rep.joint_id)}
-                  >
-                    {rep.joint_id}
-                  </button>
-                ))}
+                {mechatronics.joint_reports.map((rep) => {
+                  const pCount =
+                    rep.parallel_count ?? config.joint_actuators[rep.joint_id]?.parallel_count ?? 1;
+                  return (
+                    <button
+                      key={rep.joint_id}
+                      type="button"
+                      className={`joint-chart-pill ${
+                        activeReport?.joint_id === rep.joint_id ? "active" : ""
+                      }`}
+                      onClick={() => setSelectedJointId(rep.joint_id)}
+                    >
+                      {rep.joint_id}
+                      {pCount === 2 ? " ×2" : ""}
+                    </button>
+                  );
+                })}
               </div>
-              {activeReport && <TorqueSpeedChart report={activeReport} />}
+              {activeReport && (
+                <TorqueSpeedChart
+                  report={activeReport}
+                  parallelCount={config.joint_actuators[activeReport.joint_id]?.parallel_count ?? 1}
+                />
+              )}
             </>
           ) : (
             <div className="mech-empty">
@@ -518,7 +560,15 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
         <div className="svg-modal-backdrop" onClick={() => setShowSvgModal(false)}>
           <div className="svg-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="pareto-head">
-              <strong>Esquemático Eléctrico &amp; Arnés ({config.bus_architecture === "can_fd_bus" ? "CAN-FD" : "STM32 Step/Dir"})</strong>
+              <strong>
+                Esquemático Eléctrico &amp; Arnés (
+                {config.bus_architecture === "arduino_pca9685_i2c"
+                  ? "Arduino UNO + PCA9685 I2C"
+                  : config.bus_architecture === "can_fd_bus"
+                    ? "CAN-FD"
+                    : "STM32 Step/Dir"}
+                )
+              </strong>
               <button type="button" className="btn-tool" onClick={() => setShowSvgModal(false)}>
                 ✕ Cerrar
               </button>
