@@ -1,0 +1,47 @@
+# Git & VCS
+.git/
+.gitignore
+.github/
+
+# Python virtual environments & caches
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Frontend build artifacts (rebuilt in Stage 1)
+node_modules/
+frontend-react/node_modules/
+frontend-react/dist/
+
+# Local build, desktop packaging & generated CAD exports
+dist/
+build/
+exports/
+backend/generated/
+desktop/
+*.spec
+*.exe
+*.step
+*.stp
+*.stl
+*.glb
+*.3mf
+*.dxf
+*.zip
+
+# Docs, media & editor files
+docs/
+.agents/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+.env
+.env.*

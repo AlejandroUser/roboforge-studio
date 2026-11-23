@@ -1,8 +1,12 @@
 import React, { useMemo, useState } from "react";
+import { api } from "../api";
+import { LiveHardwarePanel } from "./LiveHardwarePanel";
 import type {
   BusArchitecture,
+  CaliperCalibrateResponse,
   JointActuatorSpec,
   JointMechatronicsReport,
+  LiveArmPose,
   MasterBomCategory,
   MasterBomItem,
   MechatronicsCatalog,
@@ -51,6 +55,7 @@ export interface MechatronicsPanelProps {
   mechatronics: MechatronicsResponse | null | undefined;
   printReadiness?: PrintReadinessSummary | null;
   files: Record<string, string> | undefined;
+  livePose?: LiveArmPose;
   onChangeConfig: (next: MechatronicsConfig) => void;
 }
 
@@ -210,11 +215,18 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
   mechatronics,
   printReadiness,
   files,
+  livePose,
   onChangeConfig,
 }) => {
-  const [subTab, setSubTab] = useState<"motors" | "circuit" | "bom" | "print">("motors");
+  const [subTab, setSubTab] = useState<"motors" | "circuit" | "bom" | "print" | "hardware">("motors");
   const [selectedJointId, setSelectedJointId] = useState<string>("J1");
   const [showSvgModal, setShowSvgModal] = useState<boolean>(false);
+
+  // v8.0 Caliper Calibration Assistant state
+  const [measuredM3, setMeasuredM3] = useState<number>(3.2);
+  const [measuredBore, setMeasuredBore] = useState<number>(22.2);
+  const [caliperBusy, setCaliperBusy] = useState<boolean>(false);
+  const [caliperResult, setCaliperResult] = useState<CaliperCalibrateResponse | null>(null);
 
   const actuators = catalog?.actuators?.length ? catalog.actuators : FALLBACK_ACTUATORS;
   const reducers = catalog?.reducers?.length ? catalog.reducers : FALLBACK_REDUCERS;
@@ -272,17 +284,53 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
   const formatVoltage = (v: number) =>
     Number.isInteger(v) ? `${v.toFixed(0)} V DC` : `${v.toFixed(1)} V DC`;
 
+  const handleCalibrateCaliper = async () => {
+    setCaliperBusy(true);
+    try {
+      const res = await api.calibrateCaliper({
+        measured_m3_mm: measuredM3,
+        measured_bore_mm: measuredBore,
+        nominal_m3_mm: 3.2,
+        nominal_bore_mm: 22.2,
+        process_type: isMslaResin ? "msla_resin" : "fdm",
+      });
+      setCaliperResult(res);
+    } catch {
+      // Offline analytical fallback matching backend formula
+      const errM3 = measuredM3 - 3.2;
+      const errBore = measuredBore - 22.2;
+      const meanErr = (errM3 + errBore) / 2;
+      const comp = Number((-meanErr / 2).toFixed(3));
+      const status: "perfect" | "tight" | "loose" =
+        Math.abs(meanErr) <= 0.08 ? "perfect" : meanErr < 0 ? "tight" : "loose";
+      setCaliperResult({
+        status,
+        xy_hole_compensation_mm: comp,
+        recommended_clearance_mm: Number(Math.max(0.05, Math.min(0.45, 0.15 - meanErr / 2)).toFixed(2)),
+        exposure_delta_s: isMslaResin ? Number((meanErr < -0.08 ? -0.15 : meanErr > 0.08 ? 0.15 : 0).toFixed(2)) : null,
+        diagnosis:
+          status === "perfect"
+            ? "Tolerancias dentro de ±0.08 mm. Listo para imprimir el brazo completo sin ajustes."
+            : status === "tight"
+              ? `Agujeros apretados (${meanErr.toFixed(2)} mm). Aplica compensación XY positiva${isMslaResin ? " o reduce exposición -0.15 s en SatelLite/Chitubox" : " en OrcaSlicer/Bambu Studio"}.`
+              : `Agujeros holgados (+${meanErr.toFixed(2)} mm). Reduce compensación XY${isMslaResin ? " o sube exposición +0.15 s" : ""}.`,
+      });
+    } finally {
+      setCaliperBusy(false);
+    }
+  };
+
   return (
     <div className="mech-card">
       <div className="pareto-head">
-        <strong>Mecatrónica &amp; Impresión 3D (v7.1)</strong>
+        <strong>Mecatrónica &amp; Impresión 3D (v8.0)</strong>
         {mechatronics && (
           <span className="badge good">${mechatronics.total_bom_cost_usd.toFixed(0)} USD</span>
         )}
       </div>
 
-      {/* 4 Sub-tabs */}
-      <div className="mech-tabs four-tabs">
+      {/* 5 Sub-tabs */}
+      <div className="mech-tabs" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 4 }}>
         <button
           type="button"
           className={`mech-tab ${subTab === "motors" ? "active" : ""}`}
@@ -309,7 +357,15 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
           className={`mech-tab ${subTab === "print" ? "active" : ""}`}
           onClick={() => setSubTab("print")}
         >
-          🖨 Impresión 3D
+          🖨 3D
+        </button>
+        <button
+          type="button"
+          className={`mech-tab ${subTab === "hardware" ? "active" : ""}`}
+          onClick={() => setSubTab("hardware")}
+          title="Control USB Serial / WebSerial en tiempo real"
+        >
+          🔌 USB
         </button>
       </div>
 
@@ -821,6 +877,106 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
                   </div>
                 </div>
               )}
+              {/* v8.0 Asistente de Calibración Pie de Rey (Cupón 15 min) */}
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "8px 9px",
+                  borderRadius: 8,
+                  background: "rgba(56, 189, 248, 0.08)",
+                  border: "1px solid rgba(56, 189, 248, 0.28)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <strong style={{ fontSize: 11.5, color: "#7dd3fc" }}>
+                    Calibrar con Pie de Rey (Cupón 15 min)
+                  </strong>
+                  {caliperResult && (
+                    <span
+                      className={`badge ${
+                        caliperResult.status === "perfect"
+                          ? "good"
+                          : caliperResult.status === "tight"
+                            ? "warn"
+                            : "neutral"
+                      }`}
+                    >
+                      {caliperResult.status === "perfect"
+                        ? "✓ Ideal"
+                        : caliperResult.status === "tight"
+                          ? "⚠ Apretado"
+                          : "⚠ Holgado"}
+                    </span>
+                  )}
+                </div>
+                <div className="two-col">
+                  <div className="field-row">
+                    <div className="field-head">
+                      <span>M3 medido (nom. 3.20)</span>
+                    </div>
+                    <input
+                      type="number"
+                      step={0.05}
+                      min={2.4}
+                      max={4.0}
+                      value={measuredM3}
+                      onChange={(e) => setMeasuredM3(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="field-row">
+                    <div className="field-head">
+                      <span>Aloj. 608 (nom. 22.20)</span>
+                    </div>
+                    <input
+                      type="number"
+                      step={0.05}
+                      min={21.0}
+                      max={23.5}
+                      value={measuredBore}
+                      onChange={(e) => setMeasuredBore(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn-tool"
+                  style={{ width: "100%", marginTop: 6 }}
+                  disabled={caliperBusy}
+                  onClick={handleCalibrateCaliper}
+                >
+                  {caliperBusy ? "Calculando..." : "Calcular Compensación"}
+                </button>
+                {caliperResult && (
+                  <div style={{ marginTop: 7 }}>
+                    <div className="metrics-grid">
+                      <div className="metric-box">
+                        <span>Comp. XY</span>
+                        <strong>
+                          {caliperResult.xy_hole_compensation_mm >= 0 ? "+" : ""}
+                          {caliperResult.xy_hole_compensation_mm.toFixed(2)} mm
+                        </strong>
+                      </div>
+                      <div className="metric-box">
+                        <span>Holgura Rec.</span>
+                        <strong>{caliperResult.recommended_clearance_mm.toFixed(2)} mm</strong>
+                      </div>
+                      <div className="metric-box">
+                        <span>{isMslaResin ? "Δ Expos." : "Slicer"}</span>
+                        <strong>
+                          {isMslaResin && caliperResult.exposure_delta_s != null
+                            ? `${caliperResult.exposure_delta_s >= 0 ? "+" : ""}${caliperResult.exposure_delta_s.toFixed(2)} s`
+                            : "Orca / Bambu"}
+                        </strong>
+                      </div>
+                    </div>
+                    {(caliperResult.diagnosis || caliperResult.message || caliperResult.slicer_tip) && (
+                      <div className="alert-item info" style={{ marginTop: 6, fontSize: 11 }}>
+                        {caliperResult.diagnosis || caliperResult.message || caliperResult.slicer_tip}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </>
           ) : (
             <div className="mech-empty">
@@ -828,6 +984,21 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {/* TAB 5: CONTROL USB EN VIVO (v8.0) */}
+      {subTab === "hardware" && (
+        <LiveHardwarePanel
+          pose={
+            livePose || {
+              j0_base: 0,
+              j1_shoulder: 35,
+              j2_elbow: -55,
+              j3_wrist: 20,
+              gripper_pct: 50,
+            }
+          }
+        />
       )}
 
       {/* Fullscreen Circuit Schematic Modal */}

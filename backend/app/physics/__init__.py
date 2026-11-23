@@ -18,6 +18,7 @@ from .gear_mechanics import (
     evaluate_gear_metrics,
     load_gear_presets,
 )
+from .ik_solver import compute_caliper_compensation, solve_arm_ik
 from .mechanics import evaluate_variant_metrics, load_materials, load_presets
 from .mechatronics import (
     ACTUATOR_CATALOG,
@@ -86,4 +87,6 @@ __all__ = [
     "generate_lerobot_config_json",
     "generate_arduino_pca9685_ino",
     "generate_esp32_wifi_pca9685_ino",
+    "solve_arm_ik",
+    "compute_caliper_compensation",
 ]

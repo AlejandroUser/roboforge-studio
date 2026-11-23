@@ -451,3 +451,72 @@ export interface ArmDatabaseResponse {
   average_replicability_pct?: number;
   arms: ArmDatabaseEntry[];
 }
+
+// v8.0: Cinemática Inversa 3D, Calibración Pie de Rey y Control USB en Vivo
+export interface ArmIkRequest {
+  target_x_mm: number;
+  target_y_mm: number;
+  target_z_mm: number;
+  l1_mm: number;
+  l2_mm: number;
+  l3_mm: number;
+  base_height_mm: number;
+  kinematics_type?: string;
+  elbow_up?: boolean;
+}
+
+export interface ArmIkResponse {
+  reachable: boolean;
+  reach_error_mm: number;
+  tcp_mm: number[];
+  j0_base_deg: number;
+  j1_shoulder_deg: number;
+  j2_elbow_deg: number;
+  j3_wrist_deg: number;
+  z_mm?: number;
+}
+
+export interface CaliperCalibrateRequest {
+  measured_m3_mm: number;
+  measured_bore_mm: number;
+  nominal_m3_mm?: number;
+  nominal_bore_mm?: number;
+  process_type?: "fdm" | "msla_resin";
+}
+
+export interface CaliperCalibrateResponse {
+  status: "perfect" | "tight" | "loose";
+  xy_hole_compensation_mm: number;
+  recommended_clearance_mm: number;
+  exposure_delta_s?: number | null;
+  mean_error_mm?: number;
+  diagnosis?: string;
+  message?: string;
+  slicer_tip?: string;
+}
+
+export interface HardwarePortInfo {
+  port: string;
+  description: string;
+}
+
+export interface LiveArmPose {
+  j0_base: number;
+  j1_shoulder: number;
+  j2_elbow: number;
+  j3_wrist: number;
+  gripper_pct: number;
+}
+
+export interface HardwarePoseRequest extends LiveArmPose {
+  port: string;
+  baudrate?: number;
+}
+
+export interface HardwarePoseResponse {
+  ok: boolean;
+  frame: string;
+  port: string;
+  mode: string;
+  error?: string;
+}

@@ -158,6 +158,93 @@ const INITIAL_STATE: StudioState = {
   arm: DEFAULT_ARM,
 };
 
+/**
+ * 60 FPS analytical 3D Inverse Kinematics solver (mirrors backend/app/physics/ik_solver.py).
+ */
+function solveClientArmIk(params: {
+  x: number;
+  y: number;
+  z: number;
+  l1: number;
+  l2: number;
+  l3: number;
+  baseH: number;
+  kinematicsType: KinematicsType;
+  zStrokeMm: number;
+}): {
+  reachable: boolean;
+  j0: number;
+  j1: number;
+  j2: number;
+  j3: number;
+  zAxisMm?: number;
+} {
+  const { x, y, z, l1, l2, l3, baseH, kinematicsType, zStrokeMm } = params;
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+  const radToDeg = 180 / Math.PI;
+
+  if (kinematicsType === "scara") {
+    const r = Math.hypot(x, y);
+    const maxR = Math.max(10, l1 + l2 - 2);
+    const minR = Math.abs(l1 - l2) + 2;
+    const reachable = r >= minR && r <= maxR && z >= 0 && z <= baseH + zStrokeMm;
+    const rc = clamp(r, minR, maxR);
+    const cosJ2 = clamp((rc * rc - l1 * l1 - l2 * l2) / (2 * l1 * l2), -1, 1);
+    const j2Rad = -Math.acos(cosJ2);
+    const alpha = Math.atan2(y, x);
+    const beta = Math.atan2(l2 * Math.sin(j2Rad), l1 + l2 * Math.cos(j2Rad));
+    const j0 = clamp(Math.round((alpha - beta) * radToDeg), -180, 180);
+    const j2 = clamp(Math.round(j2Rad * radToDeg), -120, 120);
+    return {
+      reachable,
+      j0,
+      j1: 0,
+      j2,
+      j3: 0,
+      zAxisMm: clamp(Math.round(z), 0, zStrokeMm || 120),
+    };
+  }
+
+  // Articulated 3D IK: J0 yaw + planar 2-link (L1, L2) to wrist point + horizontal wrist J3 = -(J1+J2)
+  const j0Rad = Math.atan2(y, x);
+  const rTotal = Math.hypot(x, y);
+  const rWrist = Math.max(10, rTotal - l3);
+  const zWrist = z - baseH;
+  const dist = Math.hypot(rWrist, zWrist);
+  const maxReach = Math.max(10, l1 + l2 - 1);
+  const minReach = Math.abs(l1 - l2) + 5;
+  const reachable = dist >= minReach && dist <= maxReach;
+
+  const dClamped = clamp(dist, minReach, maxReach);
+  const scale = dist > 1e-4 ? dClamped / dist : 1;
+  const rw = rWrist * scale;
+  const zw = zWrist * scale;
+
+  const cosJ2 = clamp((rw * rw + zw * zw - l1 * l1 - l2 * l2) / (2 * l1 * l2), -1, 1);
+  // Elbow-up branch (negative elbow angle in RoboForge convention)
+  const j2Rad = -Math.acos(cosJ2);
+  const phi = Math.atan2(zw, rw);
+  const psi = Math.atan2(l2 * Math.sin(j2Rad), l1 + l2 * Math.cos(j2Rad));
+  const j1Rad = phi - psi;
+
+  const j0 = clamp(Math.round(j0Rad * radToDeg), -180, 180);
+  const j1 = clamp(Math.round(j1Rad * radToDeg), -60, 90);
+  const j2 = clamp(Math.round(j2Rad * radToDeg), -120, 120);
+  const j3 = clamp(Math.round(-(j1 + j2)), -90, 90);
+
+  return {
+    reachable,
+    j0,
+    j1,
+    j2,
+    j3,
+    zAxisMm:
+      kinematicsType === "cartesian_gantry" || kinematicsType === "delta_parallel" || kinematicsType === "stewart_hexapod"
+        ? clamp(Math.round(z), 0, zStrokeMm || 120)
+        : undefined,
+  };
+}
+
 export default function App() {
   // Undo / Redo History Stack (Eje 5)
   const [history, setHistory] = useState<StudioState[]>([INITIAL_STATE]);
@@ -270,6 +357,15 @@ export default function App() {
   const [isPlayingSeq, setIsPlayingSeq] = useState(false);
   const [activePoseIdx, setActivePoseIdx] = useState<number | null>(null);
   const seqRafRef = useRef<number | null>(null);
+
+  // v8.0 Interactive 3D Inverse Kinematics (60 FPS target X, Y, Z)
+  const [ikMode, setIkMode] = useState(false);
+  const [ikTarget, setIkTarget] = useState<{ x: number; y: number; z: number }>({
+    x: 180,
+    y: 0,
+    z: 140,
+  });
+  const [ikReachable, setIkReachable] = useState(true);
 
   const assignedSlotCount = useMemo(() => {
     let n = 0;
@@ -1076,10 +1172,98 @@ export default function App() {
     const a1 = (state.arm.shoulder_joint_deg * Math.PI) / 180;
     const a2 = ((state.arm.shoulder_joint_deg + state.arm.elbow_joint_deg) * Math.PI) / 180;
     const a3 = ((state.arm.shoulder_joint_deg + state.arm.elbow_joint_deg + state.arm.wrist_joint_deg) * Math.PI) / 180;
-    const x = state.arm.upper_arm_mm * Math.cos(a1) + state.arm.forearm_mm * Math.cos(a2) + state.arm.wrist_mm * Math.cos(a3);
+    const r = state.arm.upper_arm_mm * Math.cos(a1) + state.arm.forearm_mm * Math.cos(a2) + state.arm.wrist_mm * Math.cos(a3);
+    const yaw = (state.arm.base_yaw_deg * Math.PI) / 180;
+    const x = r * Math.cos(yaw);
+    const y = r * Math.sin(yaw);
     const z = state.arm.base_height_mm + state.arm.upper_arm_mm * Math.sin(a1) + state.arm.forearm_mm * Math.sin(a2) + state.arm.wrist_mm * Math.sin(a3);
-    return { x, z };
+    return { x, y, z };
   }, [state.arm]);
+
+  const applyIkTarget = useCallback(
+    (next: { x: number; y: number; z: number }) => {
+      setIsPlayingSeq(false);
+      setIkTarget(next);
+      const sol = solveClientArmIk({
+        x: next.x,
+        y: next.y,
+        z: next.z,
+        l1: state.arm.upper_arm_mm,
+        l2: state.arm.forearm_mm,
+        l3: state.arm.wrist_mm,
+        baseH: state.arm.base_height_mm,
+        kinematicsType: state.arm.kinematics_type,
+        zStrokeMm: state.arm.z_stroke_mm,
+      });
+      setIkReachable(sol.reachable);
+      setHistory((prevHist) =>
+        prevHist.map((item, idx) =>
+          idx === histIdx
+            ? {
+                ...item,
+                arm: {
+                  ...item.arm,
+                  base_yaw_deg: sol.j0,
+                  shoulder_joint_deg: sol.j1,
+                  elbow_joint_deg: sol.j2,
+                  wrist_joint_deg: sol.j3,
+                  ...(sol.zAxisMm !== undefined ? { z_axis_mm: sol.zAxisMm } : {}),
+                },
+              }
+            : item
+        )
+      );
+    },
+    [
+      histIdx,
+      state.arm.upper_arm_mm,
+      state.arm.forearm_mm,
+      state.arm.wrist_mm,
+      state.arm.base_height_mm,
+      state.arm.kinematics_type,
+      state.arm.z_stroke_mm,
+    ]
+  );
+
+  const handleVerifyIkBackend = useCallback(async () => {
+    try {
+      const res = await api.solveArmIk({
+        target_x_mm: ikTarget.x,
+        target_y_mm: ikTarget.y,
+        target_z_mm: ikTarget.z,
+        l1_mm: state.arm.upper_arm_mm,
+        l2_mm: state.arm.forearm_mm,
+        l3_mm: state.arm.wrist_mm,
+        base_height_mm: state.arm.base_height_mm,
+        kinematics_type: state.arm.kinematics_type,
+        elbow_up: true,
+      });
+      setIkReachable(res.reachable);
+      setHistory((prevHist) =>
+        prevHist.map((item, idx) =>
+          idx === histIdx
+            ? {
+                ...item,
+                arm: {
+                  ...item.arm,
+                  base_yaw_deg: Math.round(res.j0_base_deg),
+                  shoulder_joint_deg: Math.round(res.j1_shoulder_deg),
+                  elbow_joint_deg: Math.round(res.j2_elbow_deg),
+                  wrist_joint_deg: Math.round(res.j3_wrist_deg),
+                },
+              }
+            : item
+        )
+      );
+      showToast(
+        res.reachable
+          ? `IK Backend verificado (error ${res.reach_error_mm.toFixed(1)} mm).`
+          : `IK clamped al espacio de trabajo (error ${res.reach_error_mm.toFixed(1)} mm).`
+      );
+    } catch (err: any) {
+      showToast(`IK Backend: ${err.message}`, true);
+    }
+  }, [ikTarget, state.arm, histIdx, showToast]);
 
   const activeGlbUrl =
     state.family === "arm"
@@ -1128,7 +1312,7 @@ export default function App() {
         <div className="header-left">
           <div className="brand">
             <span>RoboForge</span>
-            <span className="brand-badge">PRO v7.1 · R3F</span>
+            <span className="brand-badge">PRO v8.0 · R3F</span>
           </div>
           <nav className="family-tabs">
             {(
@@ -1738,9 +1922,125 @@ export default function App() {
               </div>
 
               <div className="section-card">
-                <div className="section-title">
-                  <span>Cinemática Directa 60 FPS (GPU)</span>
+                <div className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>Cinemática 60 FPS (GPU)</span>
+                  <button
+                    type="button"
+                    className={`btn-tool ${ikMode ? "active" : ""}`}
+                    style={{ padding: "3px 7px", fontSize: 10.5 }}
+                    onClick={() => {
+                      const next = !ikMode;
+                      setIkMode(next);
+                      if (next) {
+                        const initTarget = {
+                          x: Math.round(liveTcp.x),
+                          y: Math.round(liveTcp.y),
+                          z: Math.round(liveTcp.z),
+                        };
+                        setIkTarget(initTarget);
+                        setIkReachable(true);
+                      }
+                    }}
+                    title="Alternar entre control directo de ángulos (FK) y objetivo cartesiano 3D (IK)"
+                  >
+                    🎯 {ikMode ? "IK ON" : "Modo IK"}
+                  </button>
                 </div>
+
+                {ikMode && (() => {
+                  const maxReach = Math.round(state.arm.upper_arm_mm + state.arm.forearm_mm + state.arm.wrist_mm);
+                  const maxZ = Math.round(state.arm.base_height_mm + state.arm.upper_arm_mm + state.arm.forearm_mm);
+                  return (
+                    <div
+                      style={{
+                        marginBottom: 8,
+                        padding: "8px 9px",
+                        borderRadius: 8,
+                        background: "rgba(34, 211, 238, 0.08)",
+                        border: "1px solid rgba(34, 211, 238, 0.32)",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <strong style={{ fontSize: 11.5, color: "#67e8f9" }}>🎯 Objetivo IK 3D (X · Y · Z)</strong>
+                        <span className={`badge ${ikReachable ? "good" : "warn"}`}>
+                          {ikReachable ? "✓ Alcanzable" : "⚠ Clamped"}
+                        </span>
+                      </div>
+                      {(
+                        [
+                          ["x", "Objetivo X", -maxReach, maxReach],
+                          ["y", "Objetivo Y", -maxReach, maxReach],
+                          ["z", "Objetivo Z", 10, maxZ],
+                        ] as const
+                      ).map(([axis, lbl, min, max]) => (
+                        <div key={axis} className="field-row">
+                          <div className="field-head">
+                            <span>{lbl}</span>
+                            <span>{ikTarget[axis]} mm</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={min}
+                            max={max}
+                            step={2}
+                            value={ikTarget[axis]}
+                            onChange={(e) => applyIkTarget({ ...ikTarget, [axis]: Number(e.target.value) })}
+                          />
+                        </div>
+                      ))}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginTop: 6 }}>
+                        <button
+                          type="button"
+                          className="btn-tool"
+                          onClick={() =>
+                            applyIkTarget({
+                              x: Math.round(maxReach * 0.62),
+                              y: 0,
+                              z: Math.max(25, Math.round(state.arm.base_height_mm * 0.45)),
+                            })
+                          }
+                        >
+                          Mesa
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-tool"
+                          onClick={() =>
+                            applyIkTarget({
+                              x: Math.round(maxReach * 0.68),
+                              y: 0,
+                              z: Math.round(state.arm.base_height_mm + state.arm.upper_arm_mm * 0.42),
+                            })
+                          }
+                        >
+                          Centro
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-tool"
+                          onClick={() =>
+                            applyIkTarget({
+                              x: Math.round(maxReach * 0.48),
+                              y: Math.round(maxReach * 0.2),
+                              z: Math.round(state.arm.base_height_mm + state.arm.upper_arm_mm * 0.85),
+                            })
+                          }
+                        >
+                          Alto
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-tool"
+                        style={{ width: "100%", marginTop: 5, fontSize: 10.5 }}
+                        onClick={handleVerifyIkBackend}
+                        title="Validar pose exacta con POST /api/arm/ik"
+                      >
+                        Sincronizar con Solver Backend (/api/arm/ik)
+                      </button>
+                    </div>
+                  );
+                })()}
                 {(
                   [
                     ["base_yaw_deg", "J0 Base (Yaw)", -180, 180, "°"],
@@ -2048,7 +2348,7 @@ export default function App() {
             </strong>
             <small>
               {state.family === "arm"
-                ? `TCP (FK): X ${liveTcp.x.toFixed(1)} · Y 0.0 · Z ${liveTcp.z.toFixed(1)} mm`
+                ? `TCP (FK): X ${liveTcp.x.toFixed(1)} · Y ${liveTcp.y.toFixed(1)} · Z ${liveTcp.z.toFixed(1)} mm`
                 : viewingGyroid && gyroidRes
                   ? `${gyroidRes.mass_g} g · ${gyroidRes.voxel_grid.join("×")} vóxeles · ${gyroidRes.triangle_count.toLocaleString("es")} tris`
                   : activeVariant
@@ -2095,6 +2395,7 @@ export default function App() {
             onExplodeFactorChange={setExplodeFactor}
             hoveredArmPart={hoveredArmPart}
             onHoverArmPart={setHoveredArmPart}
+            ikTargetMm={state.family === "arm" && ikMode ? { ...ikTarget, reachable: ikReachable } : null}
             cameraPreset={camPreset}
           />
 
@@ -2367,6 +2668,13 @@ export default function App() {
                 mechatronics={modularArmRes?.mechatronics}
                 printReadiness={modularArmRes?.print_readiness}
                 files={modularArmRes?.files}
+                livePose={{
+                  j0_base: state.arm.base_yaw_deg,
+                  j1_shoulder: state.arm.shoulder_joint_deg,
+                  j2_elbow: state.arm.elbow_joint_deg,
+                  j3_wrist: state.arm.wrist_joint_deg,
+                  gripper_pct: state.arm.gripper_open_pct,
+                }}
                 onChangeConfig={setMechatronicsConfig}
               />
 

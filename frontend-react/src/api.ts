@@ -1,11 +1,18 @@
 import type {
   ArmAssemblyResponse,
   ArmDatabaseResponse,
+  ArmIkRequest,
+  ArmIkResponse,
   BlueprintAnalysisResponse,
+  CaliperCalibrateRequest,
+  CaliperCalibrateResponse,
   CopilotResponse,
   FEAResult,
   GenerateResponse,
   GyroidResult,
+  HardwarePortInfo,
+  HardwarePoseRequest,
+  HardwarePoseResponse,
   MechatronicsCatalog,
   ModularArmRequest,
   ModularArmResponse,
@@ -123,4 +130,23 @@ export const api = {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   },
+
+  // v8.0: IK 3D, Calibración Pie de Rey y Puente USB Serial
+  solveArmIk: (body: ArmIkRequest) =>
+    reqJson<ArmIkResponse>("/api/arm/ik", { method: "POST", body: JSON.stringify(body) }),
+
+  calibrateCaliper: (body: CaliperCalibrateRequest) =>
+    reqJson<CaliperCalibrateResponse>("/api/print/calibrate", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  getHardwarePorts: () =>
+    reqJson<{ ports: HardwarePortInfo[] } | HardwarePortInfo[]>("/api/hardware/ports"),
+
+  sendHardwarePose: (body: HardwarePoseRequest) =>
+    reqJson<HardwarePoseResponse>("/api/hardware/send-pose", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };

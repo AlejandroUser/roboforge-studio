@@ -313,6 +313,7 @@ export interface ViewportR3FProps {
   onExplodeFactorChange?: (factor: number) => void;
   hoveredArmPart?: string | null;
   onHoverArmPart?: (partName: string | null) => void;
+  ikTargetMm?: { x: number; y: number; z: number; reachable?: boolean } | null;
   cameraPreset: { view: "iso" | "top" | "front" | "side"; nonce: number };
 }
 
@@ -917,6 +918,65 @@ function EngineeringOverlays({
   );
 }
 
+function IkTargetMarker({
+  target,
+}: {
+  target: { x: number; y: number; z: number; reachable?: boolean };
+}) {
+  const color = target.reachable === false ? "#f59e0b" : "#22d3ee";
+  // CAD (X, Y, Z) maps to Three.js (X, Z, -Y) because root.rotation.x = -Math.PI/2
+  const tx = target.x;
+  const ty = Math.max(0, target.z);
+  const tz = -target.y;
+
+  const dropLineGeom = useMemo(() => {
+    const g = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(tx, 0.5, tz),
+      new THREE.Vector3(tx, ty, tz),
+    ]);
+    return g;
+  }, [tx, ty, tz]);
+
+  useEffect(() => {
+    return () => dropLineGeom.dispose();
+  }, [dropLineGeom]);
+
+  return (
+    <group>
+      {/* Glowing target sphere */}
+      <mesh position={[tx, ty, tz]}>
+        <sphereGeometry args={[6.5, 24, 24]} />
+        <meshStandardMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={0.85}
+          roughness={0.2}
+          metalness={0.15}
+        />
+      </mesh>
+      {/* Horizontal crosshair ring */}
+      <mesh position={[tx, ty, tz]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[10.5, 13.5, 36]} />
+        <meshBasicMaterial color={color} transparent opacity={0.82} side={THREE.DoubleSide} />
+      </mesh>
+      {/* Vertical crosshair ring */}
+      <mesh position={[tx, ty, tz]}>
+        <ringGeometry args={[10.5, 13.0, 36]} />
+        <meshBasicMaterial color={color} transparent opacity={0.55} side={THREE.DoubleSide} />
+      </mesh>
+      {/* Floor shadow target ring */}
+      <mesh position={[tx, 0.6, tz]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[5.5, 8.5, 28]} />
+        <meshBasicMaterial color={color} transparent opacity={0.4} side={THREE.DoubleSide} />
+      </mesh>
+      {/* Vertical drop line */}
+      <lineSegments geometry={dropLineGeom}>
+        <lineBasicMaterial color={color} transparent opacity={0.45} />
+      </lineSegments>
+    </group>
+  );
+}
+
 export const ViewportR3F: React.FC<ViewportR3FProps> = (props) => {
   const [bounds, setBounds] = useState<THREE.Box3 | null>(null);
   const [showEdges, setShowEdges] = useState<boolean>(true);
@@ -1045,6 +1105,10 @@ export const ViewportR3F: React.FC<ViewportR3FProps> = (props) => {
             armReachMm={props.armReachMm || 445}
             armBaseHeightMm={props.armBaseHeightMm || 95}
           />
+        )}
+
+        {props.family === "arm" && props.ikTargetMm && (
+          <IkTargetMarker target={props.ikTargetMm} />
         )}
 
         <CameraController

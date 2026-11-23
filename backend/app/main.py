@@ -67,6 +67,7 @@ from .physics.gear_mechanics import (
     evaluate_gear_metrics,
     load_gear_presets,
 )
+from .physics.ik_solver import compute_caliper_compensation, solve_arm_ik
 from .physics.mechanics import (
     evaluate_variant_metrics,
     load_materials,
@@ -931,6 +932,122 @@ def get_arm_database() -> dict[str, Any]:
         return json.loads(db_path.read_text(encoding="utf-8"))
     except Exception:
         return {"arms": []}
+
+
+# v8.0: Cinemática Inversa 3D (IK), Calibración Pie de Rey y Control USB en Vivo
+class ArmIkRequest(BaseModel):
+    target_x_mm: float = 200.0
+    target_y_mm: float = 0.0
+    target_z_mm: float = 150.0
+    l1_mm: float = Field(200.0, ge=20.0, le=1500.0)
+    l2_mm: float = Field(170.0, ge=20.0, le=1500.0)
+    l3_mm: float = Field(75.0, ge=0.0, le=400.0)
+    base_height_mm: float = Field(95.0, ge=20.0, le=800.0)
+    kinematics_type: str = "articulated"
+    elbow_up: bool = True
+
+
+class CaliperCalibrationRequest(BaseModel):
+    measured_m3_mm: float = Field(..., ge=1.5, le=6.0)
+    measured_bore_mm: float = Field(..., ge=5.0, le=60.0)
+    nominal_m3_mm: float = Field(3.2, ge=1.5, le=6.0)
+    nominal_bore_mm: float = Field(22.2, ge=5.0, le=60.0)
+    process_type: str = "msla_resin"
+
+
+class HardwarePoseRequest(BaseModel):
+    port: str = "VIRTUAL_SIM"
+    baudrate: int = Field(115200, ge=9600, le=1000000)
+    j0_base: float = 0.0
+    j1_shoulder: float = 35.0
+    j2_elbow: float = -55.0
+    j3_wrist: float = 20.0
+    gripper_pct: float = 50.0
+
+
+@app.post("/api/arm/ik")
+def solve_arm_ik_endpoint(req: ArmIkRequest) -> dict[str, Any]:
+    return solve_arm_ik(
+        target_x_mm=req.target_x_mm,
+        target_y_mm=req.target_y_mm,
+        target_z_mm=req.target_z_mm,
+        l1_mm=req.l1_mm,
+        l2_mm=req.l2_mm,
+        l3_mm=req.l3_mm,
+        base_height_mm=req.base_height_mm,
+        kinematics_type=req.kinematics_type,
+        elbow_up=req.elbow_up,
+    )
+
+
+@app.post("/api/print/calibrate")
+def calibrate_print_caliper_endpoint(req: CaliperCalibrationRequest) -> dict[str, Any]:
+    return compute_caliper_compensation(
+        measured_m3_mm=req.measured_m3_mm,
+        measured_bore_mm=req.measured_bore_mm,
+        nominal_m3_mm=req.nominal_m3_mm,
+        nominal_bore_mm=req.nominal_bore_mm,
+        process_type=req.process_type,
+    )
+
+
+@app.get("/api/hardware/ports")
+def list_hardware_ports() -> dict[str, Any]:
+    ports: list[dict[str, str]] = [
+        {
+            "port": "VIRTUAL_SIM",
+            "description": "Simulador USB RoboForge (Sin placa física)",
+        }
+    ]
+    try:
+        from serial.tools import list_ports  # type: ignore[import-not-found]
+
+        for p in list_ports.comports():
+            ports.append(
+                {
+                    "port": str(p.device),
+                    "description": str(p.description or p.device),
+                }
+            )
+    except Exception:
+        pass
+    return {"ports": ports}
+
+
+@app.post("/api/hardware/send-pose")
+def send_hardware_pose(req: HardwarePoseRequest) -> dict[str, Any]:
+    frame = (
+        f"P:{int(round(req.j0_base))},{int(round(req.j1_shoulder))},"
+        f"{int(round(req.j2_elbow))},{int(round(req.j3_wrist))},"
+        f"{int(round(req.gripper_pct))}\n"
+    )
+    if req.port == "VIRTUAL_SIM":
+        return {
+            "ok": True,
+            "frame": frame,
+            "port": req.port,
+            "mode": "virtual_sim",
+        }
+    try:
+        import serial  # type: ignore[import-not-found]
+
+        with serial.Serial(req.port, req.baudrate, timeout=0.5) as ser:
+            ser.write(frame.encode("ascii"))
+            ser.flush()
+        return {
+            "ok": True,
+            "frame": frame,
+            "port": req.port,
+            "mode": "serial_usb",
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "frame": frame,
+            "port": req.port,
+            "mode": "serial_error",
+            "error": str(exc),
+        }
 
 
 @app.post("/api/arm/auto-match")
