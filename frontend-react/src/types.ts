@@ -153,3 +153,76 @@ export interface GyroidResult {
   threemf_url: string;
   notes: string[];
 }
+
+// v3.0: Ensamblador Modular Real + Contrato de Acoples + Cascada con Masas Reales
+export type ArmSlotKey =
+  | "shoulder_mount"
+  | "shoulder_gear"
+  | "upper_arm"
+  | "elbow_gear"
+  | "forearm";
+
+export interface ModularArmSlots {
+  shoulder_mount?: Record<string, any> | null;
+  shoulder_mount_variant: string;
+  shoulder_gear?: Record<string, any> | null;
+  shoulder_gear_variant: string;
+  upper_arm?: Record<string, any> | null;
+  upper_arm_variant: string;
+  elbow_gear?: Record<string, any> | null;
+  elbow_gear_variant: string;
+  forearm?: Record<string, any> | null;
+  forearm_variant: string;
+}
+
+export interface ModularArmRequest {
+  dof: number;
+  payload_kg: number;
+  material_id: string;
+  printer_id?: string | null;
+  base_height_mm: number;
+  wrist_mm: number;
+  max_accel_rad_s2: number;
+  joint_angles_deg: [number, number, number];
+  slots: ModularArmSlots;
+  auto_fix?: boolean;
+}
+
+export interface CompatibilityIssue {
+  severity: "ok" | "warning" | "critical";
+  slot: string;
+  parameter: string;
+  current_value: string;
+  suggested_value: string;
+  message: string;
+}
+
+export interface PartPhysicsMetric {
+  slot: string;
+  part_name: string;
+  variant: string;
+  mass_g: number;
+  volume_mm3: number;
+  safety_factor: number;
+  torque_nm: number;
+  status: "ok" | "warning" | "critical";
+}
+
+export interface ModularArmResponse {
+  design_hash: string;
+  compatible: boolean;
+  auto_fixed: boolean;
+  auto_fix_notes: string[];
+  compatibility_issues: CompatibilityIssue[];
+  per_part_metrics: PartPhysicsMetric[];
+  total_mass_g: number;
+  reach_mm: number;
+  shoulder_torque_nm: number;
+  min_safety_factor: number;
+  tcp_position_mm: number[];
+  explode_vectors: Record<string, number[]>;
+  files: Record<string, string>;
+  slots_used: ModularArmSlots;
+  joints: JointTorqueSummary[];
+  bom: BOMItem[];
+}

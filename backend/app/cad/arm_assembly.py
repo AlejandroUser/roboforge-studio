@@ -27,13 +27,26 @@ from ..schemas import (
     EndInterfaceParams,
     JointTorqueSummary,
     LinkDesignRequest,
+    ModularArmRequest,
 )
+from .gear_variants import _build_gear_solid, _build_gear_spoked, _build_gear_webbed
+from .mount_variants import (
+    _build_mount_gusseted,
+    _build_mount_lightweight,
+    _build_mount_standard,
+    _compute_mount_envelope,
+)
+from .threemf_exporter import compute_modifier_box_for_mesh, export_smart_3mf
 from .variants import (
     _build_hollow_cobot,
     _build_organic_ibeam,
+    _build_organic_topopt,
     _build_rounded_truss,
     _build_tapered_solid,
 )
+
+# In-memory cache of generated build123d sub-parts for < 1s modular re-assembly
+_SUBPART_CACHE: dict[str, Part] = {}
 
 
 def compute_arm_design_hash(req: ArmAssemblyRequest) -> str:
@@ -617,3 +630,310 @@ def export_bom_csv(bom: list[BOMItem], output_path: Path) -> Path:
                 ]
             )
     return output_path
+
+
+def compute_modular_arm_hash(req: ModularArmRequest) -> str:
+    """Compute a deterministic 16-char SHA-256 hex digest for a ModularArmRequest."""
+    canonical = "modarm:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
+def _get_or_build_subpart(kind: str, variant: str, spec_model: Any, builder_fn: Any) -> Part:
+    """Build or retrieve a cached build123d Part for a modular arm slot."""
+    key_raw = f"{kind}:{variant}:" + json.dumps(spec_model.model_dump(), sort_keys=True, separators=(",", ":"))
+    key = hashlib.sha256(key_raw.encode("utf-8")).hexdigest()[:20]
+    cached = _SUBPART_CACHE.get(key)
+    if cached is not None:
+        return cached
+    part = builder_fn(spec_model)
+    if len(_SUBPART_CACHE) > 96:
+        _SUBPART_CACHE.clear()
+    _SUBPART_CACHE[key] = part
+    return part
+
+
+def _export_part_step_and_3mf(part: Part, out_dir: Path, stem: str, variant_hint: str) -> tuple[Path, Path]:
+    """Export an individual solid to <stem>.step and smart <stem>.3mf."""
+    step_path = out_dir / f"{stem}.step"
+    threemf_path = out_dir / f"{stem}.3mf"
+    if not (step_path.exists() and step_path.stat().st_size > 0):
+        export_step(part, str(step_path))
+    if not (threemf_path.exists() and threemf_path.stat().st_size > 0):
+        with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
+            tmp_stl = Path(tmp.name)
+        try:
+            export_stl(part, str(tmp_stl), tolerance=0.10, angular_tolerance=0.18)
+            mod_center, mod_size = compute_modifier_box_for_mesh(tmp_stl, variant_hint)
+            export_smart_3mf(
+                stl_path=tmp_stl,
+                output_3mf_path=threemf_path,
+                part_name=f"RoboForge_{stem}",
+                modifier_box_center=mod_center,
+                modifier_box_size=mod_size,
+            )
+        finally:
+            if tmp_stl.exists():
+                try:
+                    tmp_stl.unlink()
+                except OSError:
+                    pass
+    return step_path, threemf_path
+
+
+def build_modular_arm_assembly(
+    req: ModularArmRequest,
+    material: dict[str, Any],
+    output_dir: Path,
+    design_hash: str,
+) -> dict[str, Any]:
+    """Assemble real CAD solids from variants.py, mount_variants.py, and gear_variants.py
+    using local mounting frames and axial Y-layers to avoid coplanar collisions.
+    """
+    from ..physics.arm_compatibility import resolve_default_slots
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    slots = resolve_default_slots(req)
+
+    assert slots.shoulder_mount is not None
+    assert slots.shoulder_gear is not None
+    assert slots.upper_arm is not None
+    assert slots.elbow_gear is not None
+    assert slots.forearm is not None
+
+    link_builders = {
+        "tapered_solid": _build_tapered_solid,
+        "organic_ibeam": _build_organic_ibeam,
+        "rounded_truss": _build_rounded_truss,
+        "hollow_cobot": _build_hollow_cobot,
+        "organic_topopt": _build_organic_topopt,
+    }
+    mount_builders = {
+        "mount_standard": _build_mount_standard,
+        "mount_gusseted": _build_mount_gusseted,
+        "mount_lightweight": _build_mount_lightweight,
+    }
+    gear_builders = {
+        "gear_solid": _build_gear_solid,
+        "gear_webbed": _build_gear_webbed,
+        "gear_spoked": _build_gear_spoked,
+    }
+
+    # 1. Instantiate real CAD sub-parts (with sub-part hash caching)
+    scale = max(0.82, min(1.35, 0.88 + 0.12 * math.sqrt(req.payload_kg)))
+    base_raw = _build_base_pedestal(req.base_height_mm, scale)
+
+    mount_raw = _get_or_build_subpart(
+        "mount",
+        slots.shoulder_mount_variant,
+        slots.shoulder_mount,
+        mount_builders.get(slots.shoulder_mount_variant, _build_mount_gusseted),
+    )
+    sh_gear_raw = _get_or_build_subpart(
+        "gear",
+        slots.shoulder_gear_variant,
+        slots.shoulder_gear,
+        gear_builders.get(slots.shoulder_gear_variant, _build_gear_spoked),
+    )
+    upper_raw = _get_or_build_subpart(
+        "link",
+        slots.upper_arm_variant,
+        slots.upper_arm,
+        link_builders.get(slots.upper_arm_variant, _build_organic_ibeam),
+    )
+    el_gear_raw = _get_or_build_subpart(
+        "gear",
+        slots.elbow_gear_variant,
+        slots.elbow_gear,
+        gear_builders.get(slots.elbow_gear_variant, _build_gear_webbed),
+    )
+    forearm_raw = _get_or_build_subpart(
+        "link",
+        slots.forearm_variant,
+        slots.forearm,
+        link_builders.get(slots.forearm_variant, _build_hollow_cobot),
+    )
+
+    # 2. Kinematics & Axial Y-Layer Offsets (prevents coplanar overlap & Z-fighting)
+    a1_deg, a2_rel_deg, a3_rel_deg = (
+        float(req.joint_angles_deg[0]),
+        float(req.joint_angles_deg[1]),
+        float(req.joint_angles_deg[2]),
+    )
+    a2_deg = a1_deg + a2_rel_deg
+    a3_deg = a2_deg + a3_rel_deg
+    a1 = math.radians(a1_deg)
+    a2 = math.radians(a2_deg)
+    a3 = math.radians(a3_deg)
+
+    l1 = float(slots.upper_arm.length_mm)
+    l2 = float(slots.forearm.length_mm)
+    upper_t = float(slots.upper_arm.thickness_mm)
+    forearm_t = float(slots.forearm.thickness_mm)
+    clearance = 1.2
+
+    y_upper = 0.0
+    y_mount_face = -(upper_t / 2.0 + clearance)
+    y_sh_gear = +(upper_t / 2.0 + clearance)
+    y_el_gear = -(upper_t / 2.0 + clearance)
+    y_forearm = +(upper_t / 2.0 + forearm_t / 2.0 + clearance)
+
+    p0 = (0.0, y_upper, float(req.base_height_mm))
+    p1 = (p0[0] + l1 * math.cos(a1), y_upper, p0[2] + l1 * math.sin(a1))
+    p1_fore = (p1[0], y_forearm, p1[2])
+    p2_fore = (p1_fore[0] + l2 * math.cos(a2), y_forearm, p1_fore[2] + l2 * math.sin(a2))
+
+    # Place shoulder mount: rotate 180° around Z so faceplate faces +Y and base extends along -Y
+    _, _, _, mount_shaft_z = _compute_mount_envelope(slots.shoulder_mount)
+    mount_rot = Location((0.0, 0.0, 0.0), (0.0, 0.0, 180.0)) * mount_raw
+    shoulder_mount_placed = Location((0.0, y_mount_face, float(req.base_height_mm) - mount_shaft_z)) * mount_rot
+
+    # Place shoulder gear coaxially at P0 on +Y side (rotate -90° around X so gear +Z aligns with +Y)
+    shoulder_gear_placed = Location((0.0, y_sh_gear, float(req.base_height_mm))) * (
+        Location((0.0, 0.0, 0.0), (-90.0, 0.0, 0.0)) * sh_gear_raw
+    )
+
+    # Place upper arm link in XZ plane at y = 0
+    upper_arm_placed = _place_link_in_xz(upper_raw, p0, a1_deg)
+
+    # Place elbow gear coaxially at P1 on -Y side (rotate +90° around X so gear +Z aligns with -Y)
+    elbow_gear_placed = Location((p1[0], y_el_gear, p1[2])) * (
+        Location((0.0, 0.0, 0.0), (90.0, 0.0, 0.0)) * el_gear_raw
+    )
+
+    # Place forearm link in XZ plane at y = y_forearm
+    forearm_placed = _place_link_in_xz(forearm_raw, p1_fore, a2_deg)
+
+    # Wrist tube + TCP flange coaxial with forearm
+    wrist_tube_placed, tcp_flange_placed = _build_wrist_and_tcp(p2_fore, req.wrist_mm, a3_deg, scale)
+
+    # Joint hardware (bearing collars & shafts spanning axial layers cleanly)
+    sh_hw_len = upper_t + float(slots.shoulder_gear.face_width_mm) + float(slots.shoulder_mount.wall_thickness_mm) + 12.0
+    el_hw_len = upper_t + forearm_t + float(slots.elbow_gear.face_width_mm) + 10.0
+    wr_hw_len = forearm_t + 14.0
+
+    joint_hw_shoulder = _build_joint_housing(
+        (0.0, 0.0, float(req.base_height_mm)),
+        radius=max(10.0, float(slots.upper_arm.root_end.bore_diameter_mm) * 0.48),
+        length_y=sh_hw_len,
+    )
+    joint_hw_elbow = _build_joint_housing(
+        (p1[0], y_forearm * 0.4, p1[2]),
+        radius=max(8.0, float(slots.forearm.root_end.bore_diameter_mm) * 0.48),
+        length_y=el_hw_len,
+    )
+    joint_hw_wrist = _build_joint_housing(
+        p2_fore,
+        radius=max(7.0, float(slots.forearm.tip_end.bore_diameter_mm) * 0.46),
+        length_y=wr_hw_len,
+    )
+
+    # Real CAD volumes per slot (mm³)
+    real_volumes_mm3 = {
+        "base_pedestal": float(max(base_raw.volume, 1.0)),
+        "shoulder_mount": float(max(mount_raw.volume, 1.0)),
+        "shoulder_gear": float(max(sh_gear_raw.volume, 1.0)),
+        "upper_arm_link": float(max(upper_raw.volume, 1.0)),
+        "elbow_gear": float(max(el_gear_raw.volume, 1.0)),
+        "forearm_link": float(max(forearm_raw.volume, 1.0)),
+        "wrist_tube": float(max(wrist_tube_placed.volume + tcp_flange_placed.volume, 1.0)),
+    }
+
+    # 3. Export individual print-ready STEP + 3MF files for each component
+    individual_files: list[Path] = []
+    indiv_specs = [
+        (base_raw, "base_pedestal", "tapered_solid"),
+        (mount_raw, "shoulder_mount", slots.shoulder_mount_variant),
+        (sh_gear_raw, "shoulder_gear", slots.shoulder_gear_variant),
+        (upper_raw, "upper_arm_link", slots.upper_arm_variant),
+        (el_gear_raw, "elbow_gear", slots.elbow_gear_variant),
+        (forearm_raw, "forearm_link", slots.forearm_variant),
+        (wrist_tube_placed + tcp_flange_placed, "wrist_tcp", "tapered_solid"),
+    ]
+    for part_solid, stem, vhint in indiv_specs:
+        s_path, m_path = _export_part_step_and_3mf(part_solid, output_dir, stem, vhint)
+        individual_files.extend([s_path, m_path])
+
+    # 4. Export combined assembly STEP, STL, and semantic multi-node GLB
+    full_compound = Compound(
+        children=[
+            base_raw,
+            shoulder_mount_placed,
+            shoulder_gear_placed,
+            upper_arm_placed,
+            elbow_gear_placed,
+            forearm_placed,
+            wrist_tube_placed,
+            tcp_flange_placed,
+            joint_hw_shoulder,
+            joint_hw_elbow,
+            joint_hw_wrist,
+        ]
+    )
+    step_path = output_dir / "arm_assembly.step"
+    stl_path = output_dir / "arm_assembly.stl"
+    glb_path = output_dir / "arm_assembly.glb"
+
+    if not (step_path.exists() and step_path.stat().st_size > 0):
+        export_step(full_compound, str(step_path))
+    if not (stl_path.exists() and stl_path.stat().st_size > 0):
+        export_stl(full_compound, str(stl_path), tolerance=0.12, angular_tolerance=0.20)
+
+    if not (glb_path.exists() and glb_path.stat().st_size > 0):
+        link_rgba = _hex_to_rgba(str(material.get("color_hex", "")), [62, 184, 204, 255])
+        scene = trimesh.Scene()
+        node_specs = [
+            ("base_pedestal", base_raw, [68, 82, 102, 255], 0.72, 0.32),
+            ("shoulder_mount", shoulder_mount_placed, [92, 134, 182, 255], 0.78, 0.28),
+            ("shoulder_gear", shoulder_gear_placed, [224, 174, 72, 255], 0.74, 0.28),
+            ("upper_arm_link", upper_arm_placed, link_rgba, 0.52, 0.32),
+            ("elbow_gear", elbow_gear_placed, [196, 152, 68, 255], 0.74, 0.28),
+            ("forearm_link", forearm_placed, link_rgba, 0.52, 0.32),
+            ("wrist_tube", wrist_tube_placed, link_rgba, 0.55, 0.30),
+            ("tcp_flange", tcp_flange_placed, [242, 182, 58, 255], 0.80, 0.26),
+            ("joint_hw_shoulder", joint_hw_shoulder, [42, 48, 62, 255], 0.78, 0.28),
+            ("joint_hw_elbow", joint_hw_elbow, [42, 48, 62, 255], 0.78, 0.28),
+            ("joint_hw_wrist", joint_hw_wrist, [42, 48, 62, 255], 0.78, 0.28),
+        ]
+        for node_name, solid, rgba, met, rough in node_specs:
+            mesh = _part_to_trimesh(solid, rgba, met, rough, node_name)
+            scene.add_geometry(mesh, node_name=node_name, geom_name=node_name)
+        scene.export(str(glb_path), file_type="glb")
+
+    # 5. Explode vectors in exact GLB spatial units (mm) for 3D Exploded View slider
+    u1_x, u1_z = math.cos(a1), math.sin(a1)
+    u2_x, u2_z = math.cos(a2), math.sin(a2)
+    u3_x, u3_z = math.cos(a3), math.sin(a3)
+
+    explode_vectors: dict[str, list[float]] = {
+        "base_pedestal": [0.0, 0.0, -40.0],
+        "shoulder_mount": [0.0, -52.0, 0.0],
+        "shoulder_gear": [0.0, 56.0, 0.0],
+        "upper_arm_link": [round(32.0 * u1_x, 2), 0.0, round(32.0 * u1_z, 2)],
+        "elbow_gear": [round(32.0 * u1_x, 2), -56.0, round(32.0 * u1_z, 2)],
+        "forearm_link": [round(32.0 * u1_x + 42.0 * u2_x, 2), 48.0, round(32.0 * u1_z + 42.0 * u2_z, 2)],
+        "wrist_tube": [
+            round(32.0 * u1_x + 42.0 * u2_x + 36.0 * u3_x, 2),
+            48.0,
+            round(32.0 * u1_z + 42.0 * u2_z + 36.0 * u3_z, 2),
+        ],
+        "tcp_flange": [
+            round(32.0 * u1_x + 42.0 * u2_x + 70.0 * u3_x, 2),
+            48.0,
+            round(32.0 * u1_z + 42.0 * u2_z + 70.0 * u3_z, 2),
+        ],
+        "joint_hw_shoulder": [0.0, -22.0, 0.0],
+        "joint_hw_elbow": [round(32.0 * u1_x, 2), 20.0, round(32.0 * u1_z, 2)],
+        "joint_hw_wrist": [round(32.0 * u1_x + 42.0 * u2_x, 2), 76.0, round(32.0 * u1_z + 42.0 * u2_z, 2)],
+    }
+
+    return {
+        "real_volumes_mm3": real_volumes_mm3,
+        "explode_vectors": explode_vectors,
+        "individual_files": individual_files,
+        "step_path": step_path,
+        "stl_path": stl_path,
+        "glb_path": glb_path,
+        "slots_used": slots,
+        "design_hash": design_hash,
+    }
+

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -321,3 +322,26 @@ def load_cached_gear_metadata(
                 return None
 
     return meta
+
+
+def build_arm_manufacturing_zip(
+    out_dir: Path,
+    included_files: list[Path],
+    zip_filename: str = "arm_manufacturing_pack.zip",
+) -> Path:
+    """Package individual part STEP/3MF files, full arm STEP, URDF, MuJoCo XML, and BOM CSV into a ZIP."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = out_dir / zip_filename
+    seen_names: set[str] = set()
+
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for fp in included_files:
+            if not (fp.exists() and fp.is_file() and fp.stat().st_size > 0):
+                continue
+            arcname = fp.name
+            if arcname in seen_names:
+                continue
+            seen_names.add(arcname)
+            zf.write(fp, arcname=arcname)
+
+    return zip_path

@@ -468,3 +468,73 @@ class GyroidResult(BaseModel):
     stl_url: str
     threemf_url: str
     notes: list[str] = Field(default_factory=list)
+
+
+# v3.0: Ensamblador Modular Real + Contrato de Acoples + Cascada con Masas Reales
+class ModularArmSlots(BaseModel):
+    shoulder_mount: Optional[MountDesignRequest] = None
+    shoulder_mount_variant: MountVariantKind = "mount_gusseted"
+    shoulder_gear: Optional[GearDesignRequest] = None
+    shoulder_gear_variant: GearVariantKind = "gear_spoked"
+    upper_arm: Optional[LinkDesignRequest] = None
+    upper_arm_variant: VariantKind = "organic_ibeam"
+    elbow_gear: Optional[GearDesignRequest] = None
+    elbow_gear_variant: GearVariantKind = "gear_webbed"
+    forearm: Optional[LinkDesignRequest] = None
+    forearm_variant: VariantKind = "hollow_cobot"
+
+
+class ModularArmRequest(BaseModel):
+    dof: int = Field(6, ge=4, le=6)
+    payload_kg: float = Field(1.0, ge=0.1, le=8.0)
+    material_id: str = "petg_cf"
+    printer_id: Optional[str] = "bambu_x1c"
+    base_height_mm: float = Field(95.0, ge=50.0, le=200.0)
+    wrist_mm: float = Field(75.0, ge=40.0, le=160.0)
+    max_accel_rad_s2: float = Field(12.0, ge=1.0, le=100.0)
+    joint_angles_deg: list[float] = Field(
+        default_factory=lambda: [35.0, -55.0, 20.0],
+        min_length=3,
+        max_length=3,
+    )
+    slots: ModularArmSlots = Field(default_factory=ModularArmSlots)
+    auto_fix: bool = False
+
+
+class CompatibilityIssue(BaseModel):
+    severity: Literal["ok", "warning", "critical"]
+    slot: str
+    parameter: str
+    current_value: str
+    suggested_value: str
+    message: str
+
+
+class PartPhysicsMetric(BaseModel):
+    slot: str
+    part_name: str
+    variant: str
+    mass_g: float
+    volume_mm3: float
+    safety_factor: float
+    torque_nm: float
+    status: Literal["ok", "warning", "critical"]
+
+
+class ModularArmResponse(BaseModel):
+    design_hash: str
+    compatible: bool
+    auto_fixed: bool
+    auto_fix_notes: list[str] = Field(default_factory=list)
+    compatibility_issues: list[CompatibilityIssue] = Field(default_factory=list)
+    per_part_metrics: list[PartPhysicsMetric] = Field(default_factory=list)
+    total_mass_g: float
+    reach_mm: float
+    shoulder_torque_nm: float
+    min_safety_factor: float
+    tcp_position_mm: list[float] = Field(default_factory=list)
+    explode_vectors: dict[str, list[float]] = Field(default_factory=dict)
+    files: dict[str, str] = Field(default_factory=dict)
+    slots_used: ModularArmSlots
+    joints: list[JointTorqueSummary] = Field(default_factory=list)
+    bom: list[BOMItem] = Field(default_factory=list)

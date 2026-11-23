@@ -14,7 +14,9 @@ from fastapi.staticfiles import StaticFiles
 
 from .cad.arm_assembly import (
     build_and_export_arm_assembly,
+    build_modular_arm_assembly,
     compute_arm_design_hash,
+    compute_modular_arm_hash,
     export_arm_mujoco,
     export_arm_urdf,
     export_bom_csv,
@@ -22,6 +24,7 @@ from .cad.arm_assembly import (
 from .cad.exporter import (
     EXPORTS_ROOT,
     PROJECT_ROOT,
+    build_arm_manufacturing_zip,
     compute_design_hash,
     compute_gear_design_hash,
     compute_mount_design_hash,
@@ -38,6 +41,11 @@ from .cad.mount_variants import generate_all_mount_variants
 from .cad.sdf_gyroid import generate_field_driven_gyroid
 from .cad.step_analyzer import analyze_step_file
 from .cad.variants import generate_all_variants
+from .physics.arm_compatibility import (
+    auto_match_interfaces,
+    evaluate_modular_arm,
+    validate_arm_compatibility,
+)
 from .physics.arm_kinematics import evaluate_arm_assembly, load_arm_presets
 from .physics.copilot import analyze_2d_blueprint, run_closed_loop_copilot
 from .physics.dfm_rules import evaluate_global_alerts
@@ -83,6 +91,8 @@ from .schemas import (
     GyroidRequest,
     GyroidResult,
     LinkDesignRequest,
+    ModularArmRequest,
+    ModularArmResponse,
     MountDesignRequest,
     MountFEARequest,
     MountGenerateResponse,
@@ -118,7 +128,7 @@ GEAR_VARIANT_ORDER: tuple[GearVariantKind, ...] = (
 )
 
 HASH_PATTERN = re.compile(r"^(?:[a-f0-9]{8,64}|ref_[a-f0-9]{12}|gyr_[a-f0-9]{12})$")
-FILENAME_PATTERN = re.compile(r"^[a-z0-9_]+\.(glb|step|stl|3mf|urdf|xml|csv)$")
+FILENAME_PATTERN = re.compile(r"^[a-z0-9_]+\.(glb|step|stl|3mf|urdf|xml|csv|zip)$")
 
 MEDIA_TYPES: dict[str, str] = {
     ".glb": "model/gltf-binary",
@@ -128,6 +138,7 @@ MEDIA_TYPES: dict[str, str] = {
     ".urdf": "application/xml",
     ".xml": "application/xml",
     ".csv": "text/csv; charset=utf-8",
+    ".zip": "application/zip",
 }
 
 app = FastAPI(
@@ -836,6 +847,131 @@ def generate_gyroid_sdf_endpoint(req: GyroidRequest) -> GyroidResult:
             status_code=500,
             detail=f"Error generando celosía implícita SDF Gyroid: {exc}",
         ) from exc
+
+
+@app.post("/api/arm/auto-match")
+def auto_match_modular_arm(req: ModularArmRequest) -> dict[str, Any]:
+    matched_req, notes = auto_match_interfaces(req)
+    issues = validate_arm_compatibility(matched_req)
+    compatible = not any(i.severity == "critical" for i in issues)
+    return {
+        "compatible": compatible,
+        "auto_fixed": len(notes) > 0,
+        "auto_fix_notes": notes,
+        "compatibility_issues": [i.model_dump() for i in issues],
+        "slots": matched_req.slots.model_dump(),
+        "request": matched_req.model_dump(),
+    }
+
+
+@app.post("/api/arm/assemble", response_model=ModularArmResponse)
+def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
+    materials = load_materials()
+    if req.material_id not in materials:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Material '{req.material_id}' no encontrado en la base de datos.",
+        )
+
+    auto_fixed = False
+    auto_fix_notes: list[str] = []
+    effective_req = req
+    if req.auto_fix:
+        effective_req, auto_fix_notes = auto_match_interfaces(req)
+        auto_fixed = len(auto_fix_notes) > 0
+
+    material = materials[effective_req.material_id]
+    design_hash = compute_modular_arm_hash(effective_req)
+    out_dir = get_export_dir(design_hash)
+
+    cad_res = build_modular_arm_assembly(
+        req=effective_req,
+        material=material,
+        output_dir=out_dir,
+        design_hash=design_hash,
+    )
+
+    phys_res = evaluate_modular_arm(
+        req=effective_req,
+        real_volumes_mm3=cad_res["real_volumes_mm3"],
+    )
+
+    slots_used = phys_res["slots_used"]
+    joints = phys_res["joints"]
+    bom = phys_res["bom"]
+
+    # Export URDF, MuJoCo XML, and BOM CSV for the modular arm
+    proxy_style = (
+        slots_used.upper_arm_variant
+        if slots_used.upper_arm_variant in ("organic_ibeam", "hollow_cobot", "rounded_truss", "tapered_solid")
+        else "organic_ibeam"
+    )
+    proxy_arm_req = ArmAssemblyRequest(
+        preset="parol6_desktop",
+        dof=effective_req.dof,
+        payload_kg=effective_req.payload_kg,
+        base_height_mm=effective_req.base_height_mm,
+        upper_arm_mm=float(slots_used.upper_arm.length_mm) if slots_used.upper_arm else 200.0,
+        forearm_mm=float(slots_used.forearm.length_mm) if slots_used.forearm else 170.0,
+        wrist_mm=effective_req.wrist_mm,
+        link_style=proxy_style,  # type: ignore[arg-type]
+        shoulder_joint_deg=float(effective_req.joint_angles_deg[0]),
+        elbow_joint_deg=float(effective_req.joint_angles_deg[1]),
+        wrist_joint_deg=float(effective_req.joint_angles_deg[2]),
+        max_accel_rad_s2=effective_req.max_accel_rad_s2,
+        material_id=effective_req.material_id,
+        printer_id=effective_req.printer_id,
+    )
+
+    urdf_path = out_dir / "arm_assembly.urdf"
+    mujoco_path = out_dir / "arm_mujoco.xml"
+    bom_csv_path = out_dir / "arm_bom.csv"
+
+    export_arm_urdf(proxy_arm_req, joints, urdf_path)
+    export_arm_mujoco(proxy_arm_req, joints, mujoco_path)
+    export_bom_csv(bom, bom_csv_path)
+
+    # Package full manufacturing kit ZIP (individual part STEP/3MF + full STEP + URDF + MuJoCo + BOM)
+    zip_path = build_arm_manufacturing_zip(
+        out_dir=out_dir,
+        included_files=[
+            *cad_res["individual_files"],
+            cad_res["step_path"],
+            urdf_path,
+            mujoco_path,
+            bom_csv_path,
+        ],
+        zip_filename="arm_manufacturing_pack.zip",
+    )
+
+    files = {
+        "glb": f"/api/files/{design_hash}/arm_assembly.glb",
+        "step": f"/api/files/{design_hash}/arm_assembly.step",
+        "stl": f"/api/files/{design_hash}/arm_assembly.stl",
+        "urdf": f"/api/files/{design_hash}/arm_assembly.urdf",
+        "mujoco": f"/api/files/{design_hash}/arm_mujoco.xml",
+        "bom_csv": f"/api/files/{design_hash}/arm_bom.csv",
+        "zip": f"/api/files/{design_hash}/{zip_path.name}",
+    }
+
+    return ModularArmResponse(
+        design_hash=design_hash,
+        compatible=bool(phys_res["compatible"]),
+        auto_fixed=auto_fixed,
+        auto_fix_notes=auto_fix_notes,
+        compatibility_issues=phys_res["compatibility_issues"],
+        per_part_metrics=phys_res["per_part_metrics"],
+        total_mass_g=float(phys_res["total_mass_g"]),
+        reach_mm=float(phys_res["reach_mm"]),
+        shoulder_torque_nm=float(phys_res["shoulder_torque_nm"]),
+        min_safety_factor=float(phys_res["min_safety_factor"]),
+        tcp_position_mm=phys_res["tcp_position_mm"],
+        explode_vectors=cad_res["explode_vectors"],
+        files=files,
+        slots_used=slots_used,
+        joints=joints,
+        bom=bom,
+    )
 
 
 @app.get("/api/files/{design_hash}/{filename}")

@@ -5,6 +5,8 @@ import type {
   FEAResult,
   GenerateResponse,
   GyroidResult,
+  ModularArmRequest,
+  ModularArmResponse,
 } from "./types";
 
 async function reqJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -42,6 +44,10 @@ export const api = {
     reqJson<GenerateResponse>("/api/gears/generate", { method: "POST", body: JSON.stringify(body) }),
   generateArm: (body: any) =>
     reqJson<ArmAssemblyResponse>("/api/arm/generate", { method: "POST", body: JSON.stringify(body) }),
+  autoMatchArm: (body: ModularArmRequest) =>
+    reqJson<ModularArmResponse>("/api/arm/auto-match", { method: "POST", body: JSON.stringify(body) }),
+  assembleModularArm: (body: ModularArmRequest) =>
+    reqJson<ModularArmResponse>("/api/arm/assemble", { method: "POST", body: JSON.stringify(body) }),
 
   runFea: (family: "links" | "mounts" | "gears", body: any) => {
     const endpoint =

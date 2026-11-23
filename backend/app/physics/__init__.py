@@ -1,3 +1,9 @@
+from .arm_compatibility import (
+    auto_match_interfaces,
+    evaluate_modular_arm,
+    resolve_default_slots,
+    validate_arm_compatibility,
+)
 from .arm_kinematics import evaluate_arm_assembly, load_arm_presets
 from .copilot import run_closed_loop_copilot
 from .dfm_rules import evaluate_global_alerts
@@ -40,6 +46,10 @@ __all__ = [
     "evaluate_mount_metrics",
     "evaluate_gear_metrics",
     "evaluate_arm_assembly",
+    "resolve_default_slots",
+    "validate_arm_compatibility",
+    "auto_match_interfaces",
+    "evaluate_modular_arm",
     "evaluate_global_alerts",
     "evaluate_mount_global_alerts",
     "evaluate_gear_global_alerts",

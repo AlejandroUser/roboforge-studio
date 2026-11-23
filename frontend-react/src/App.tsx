@@ -1,14 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import { AssemblyTree } from "./components/AssemblyTree";
+import { ModularArmPanel } from "./components/ModularArmPanel";
 import { ParetoChart } from "./components/ParetoChart";
 import { ViewportR3F } from "./components/ViewportR3F";
 import type {
   ArmAssemblyResponse,
+  ArmSlotKey,
   FEAResult,
   FamilyId,
   GenerateResponse,
   GyroidResult,
+  ModularArmRequest,
+  ModularArmResponse,
+  ModularArmSlots,
   VariantResult,
 } from "./types";
 
@@ -193,6 +198,35 @@ export default function App() {
   const [showGhost, setShowGhost] = useState(false);
   const [selectedArmNode, setSelectedArmNode] = useState<string | null>(null);
 
+  // v3.0 Modular Arm (Mix & Match) + 60 FPS Exploded View
+  const [armSlots, setArmSlots] = useState<ModularArmSlots>({
+    shoulder_mount: null,
+    shoulder_mount_variant: "mount_gusseted",
+    shoulder_gear: null,
+    shoulder_gear_variant: "gear_spoked",
+    upper_arm: null,
+    upper_arm_variant: "organic_ibeam",
+    elbow_gear: null,
+    elbow_gear_variant: "gear_webbed",
+    forearm: null,
+    forearm_variant: "hollow_cobot",
+  });
+  const [slotSummaries, setSlotSummaries] = useState<Partial<Record<ArmSlotKey, string>>>({});
+  const [modularArmRes, setModularArmRes] = useState<ModularArmResponse | null>(null);
+  const [isAssemblingModularArm, setIsAssemblingModularArm] = useState(false);
+  const [explodeFactor, setExplodeFactor] = useState(0);
+  const [hoveredArmPart, setHoveredArmPart] = useState<string | null>(null);
+
+  const assignedSlotCount = useMemo(() => {
+    let n = 0;
+    if (armSlots.shoulder_mount) n++;
+    if (armSlots.shoulder_gear) n++;
+    if (armSlots.upper_arm) n++;
+    if (armSlots.elbow_gear) n++;
+    if (armSlots.forearm) n++;
+    return n;
+  }, [armSlots]);
+
   // Eje 4 Copilot state
   const [copilotPrompt, setCopilotPrompt] = useState("");
   const [copilotVerifyFea, setCopilotVerifyFea] = useState(true);
@@ -267,6 +301,7 @@ export default function App() {
       if (state.family === "arm") {
         const res = await api.generateArm(state.arm);
         setArmRes(res);
+        setModularArmRes(null);
         setGenRes(null);
         setActiveVariant(null);
       } else if (state.family === "mounts") {
@@ -412,6 +447,99 @@ export default function App() {
     }
   };
 
+  const assignToArmSlot = useCallback(
+    (slot: ArmSlotKey, payload: Record<string, any>, variantId: string, summary: string) => {
+      const variantKey = `${slot}_variant` as keyof ModularArmSlots;
+      setArmSlots((prev) => ({
+        ...prev,
+        [slot]: structuredClone(payload),
+        [variantKey]: variantId,
+      }));
+      setSlotSummaries((prev) => ({ ...prev, [slot]: summary }));
+      const slotNames: Record<ArmSlotKey, string> = {
+        shoulder_mount: "Montura Hombro",
+        shoulder_gear: "Transmisión Hombro",
+        upper_arm: "Brazo Superior",
+        elbow_gear: "Transmisión Codo",
+        forearm: "Antebrazo",
+      };
+      showToast(`Asignado a ${slotNames[slot]} (${summary}) en Brazo Completo.`);
+    },
+    [showToast]
+  );
+
+  const clearArmSlot = useCallback((slot: ArmSlotKey) => {
+    setArmSlots((prev) => ({ ...prev, [slot]: null }));
+    setSlotSummaries((prev) => {
+      const next = { ...prev };
+      delete next[slot];
+      return next;
+    });
+  }, []);
+
+  const buildModularArmRequest = useCallback(
+    (autoFix = false): ModularArmRequest => ({
+      dof: state.arm.dof,
+      payload_kg: state.arm.payload_kg,
+      material_id: state.arm.material_id,
+      printer_id: state.arm.printer_id,
+      base_height_mm: state.arm.base_height_mm,
+      wrist_mm: state.arm.wrist_mm,
+      max_accel_rad_s2: state.arm.max_accel_rad_s2,
+      joint_angles_deg: [
+        state.arm.shoulder_joint_deg,
+        state.arm.elbow_joint_deg,
+        state.arm.wrist_joint_deg,
+      ],
+      slots: armSlots,
+      auto_fix: autoFix,
+    }),
+    [state.arm, armSlots]
+  );
+
+  const handleAutoMatchArm = useCallback(async () => {
+    setIsAssemblingModularArm(true);
+    setBusyLabel("Auto-ajustando interfaces mecánicas del brazo...");
+    try {
+      const res = await api.autoMatchArm(buildModularArmRequest(true));
+      setModularArmRes(res);
+      if (res.slots_used) {
+        setArmSlots(res.slots_used);
+      }
+      showToast(
+        res.auto_fix_notes.length > 0
+          ? `Interfaces ajustadas (${res.auto_fix_notes.length} cambios).`
+          : "Todas las interfaces ya son compatibles."
+      );
+    } catch (err: any) {
+      showToast(`Error auto-ajustando interfaces: ${err.message}`, true);
+    } finally {
+      setIsAssemblingModularArm(false);
+      setBusyLabel(null);
+    }
+  }, [buildModularArmRequest, showToast]);
+
+  const handleAssembleModularArm = useCallback(async () => {
+    setIsAssemblingModularArm(true);
+    setBusyLabel("Ensamblando Brazo Real (build123d + Kit .ZIP)...");
+    try {
+      const res = await api.assembleModularArm(buildModularArmRequest(false));
+      setModularArmRes(res);
+      setExplodeFactor(0);
+      showToast(
+        res.compatible
+          ? `Brazo modular ensamblado (${(res.total_mass_g / 1000).toFixed(2)} kg, FS mín ${res.min_safety_factor.toFixed(2)}×).`
+          : `Brazo ensamblado con ${res.compatibility_issues.length} alertas de compatibilidad.`,
+        !res.compatible
+      );
+    } catch (err: any) {
+      showToast(`Error ensamblando brazo real: ${err.message}`, true);
+    } finally {
+      setIsAssemblingModularArm(false);
+      setBusyLabel(null);
+    }
+  }, [buildModularArmRequest, showToast]);
+
   // Live 60 FPS TCP readout for Brazo Completo
   const liveTcp = useMemo(() => {
     const a1 = (state.arm.shoulder_joint_deg * Math.PI) / 180;
@@ -424,7 +552,7 @@ export default function App() {
 
   const activeGlbUrl =
     state.family === "arm"
-      ? armRes?.glb_url || null
+      ? modularArmRes?.files?.glb || armRes?.glb_url || null
       : viewingGyroid && gyroidRes
         ? gyroidRes.glb_url
         : viewingFea && feaRes
@@ -469,7 +597,7 @@ export default function App() {
         <div className="header-left">
           <div className="brand">
             <span>RoboForge</span>
-            <span className="brand-badge">PRO v2.0 · R3F</span>
+            <span className="brand-badge">PRO v3.0 · R3F</span>
           </div>
           <nav className="family-tabs">
             {(
@@ -487,6 +615,11 @@ export default function App() {
                 onClick={() => pushState((s) => ({ ...s, family: fid }))}
               >
                 {label}
+                {fid === "arm" && assignedSlotCount > 0 && (
+                  <span className="tab-count-badge" title={`${assignedSlotCount} piezas asignadas al ensamblador modular`}>
+                    {assignedSlotCount}
+                  </span>
+                )}
               </button>
             ))}
           </nav>
@@ -1100,6 +1233,11 @@ export default function App() {
             armBaseHeightMm={state.arm.base_height_mm}
             selectedArmNode={selectedArmNode}
             onSelectArmNode={setSelectedArmNode}
+            explodeVectors={modularArmRes?.explode_vectors || null}
+            explodeFactor={explodeFactor}
+            onExplodeFactorChange={setExplodeFactor}
+            hoveredArmPart={hoveredArmPart}
+            onHoverArmPart={setHoveredArmPart}
             cameraPreset={camPreset}
           />
 
@@ -1267,45 +1405,141 @@ export default function App() {
                       <a className="dl-link" href={v.threemf_url} download>.3MF</a>
                     )}
                   </div>
+                  <div className="assign-row" onClick={(e) => e.stopPropagation()}>
+                    {state.family === "links" && (
+                      <>
+                        <button
+                          type="button"
+                          className="btn-assign"
+                          onClick={() =>
+                            assignToArmSlot(
+                              "upper_arm",
+                              state.link,
+                              v.variant_id,
+                              `${v.name} · ${state.link.length_mm}mm`
+                            )
+                          }
+                        >
+                          → Brazo Sup.
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-assign"
+                          onClick={() =>
+                            assignToArmSlot(
+                              "forearm",
+                              state.link,
+                              v.variant_id,
+                              `${v.name} · ${state.link.length_mm}mm`
+                            )
+                          }
+                        >
+                          → Antebrazo
+                        </button>
+                      </>
+                    )}
+                    {state.family === "mounts" && (
+                      <button
+                        type="button"
+                        className="btn-assign"
+                        onClick={() =>
+                          assignToArmSlot(
+                            "shoulder_mount",
+                            state.mount,
+                            v.variant_id,
+                            `${v.name} · ${state.mount.actuator_type.toUpperCase()}`
+                          )
+                        }
+                      >
+                        → Montura Hombro
+                      </button>
+                    )}
+                    {state.family === "gears" && (
+                      <>
+                        <button
+                          type="button"
+                          className="btn-assign"
+                          onClick={() =>
+                            assignToArmSlot(
+                              "shoulder_gear",
+                              state.gear,
+                              v.variant_id,
+                              `${v.name} · ${state.gear.teeth}T`
+                            )
+                          }
+                        >
+                          → Transm. Hombro
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-assign"
+                          onClick={() =>
+                            assignToArmSlot(
+                              "elbow_gear",
+                              state.gear,
+                              v.variant_id,
+                              `${v.name} · ${state.gear.teeth}T`
+                            )
+                          }
+                        >
+                          → Transm. Codo
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
             </>
           )}
 
-          {armRes && state.family === "arm" && (
+          {state.family === "arm" && (
             <>
-              <div className="fea-card">
-                <div className="pareto-head">
-                  <strong>{armRes.preset_name} ({armRes.dof}-DOF)</strong>
-                  <span className="badge good">${armRes.estimated_total_cost_usd.toFixed(0)} USD</span>
-                </div>
-                <div className="metrics-grid">
-                  <div className="metric-box"><span>Alcance</span><strong>{Math.round(armRes.max_reach_mm)} mm</strong></div>
-                  <div className="metric-box"><span>Masa Total</span><strong>{armRes.total_arm_mass_kg.toFixed(2)} kg</strong></div>
-                  <div className="metric-box"><span>Impreso 3D</span><strong>{armRes.printed_mass_g.toFixed(0)} g</strong></div>
-                </div>
-                <div className="dl-row">
-                  <a className="dl-link" href={armRes.step_url} download>.STEP</a>
-                  <a className="dl-link" href={armRes.stl_url} download>.STL</a>
-                  <a className="dl-link" href={armRes.urdf_url} download>.URDF</a>
-                  <a className="dl-link" href={armRes.mujoco_url} download>.XML</a>
-                  <a className="dl-link" href={armRes.bom_csv_url} download>BOM .CSV</a>
-                </div>
-              </div>
-
-              <AssemblyTree
-                arm={armRes}
-                selectedNode={selectedArmNode}
-                onSelectNode={setSelectedArmNode}
-                onInspectSegmentInLinks={(lengthMm, loadN, label) => {
-                  pushState((s) => ({
-                    ...s,
-                    family: "links",
-                    link: { ...s.link, length_mm: Math.max(80, Math.min(400, lengthMm)), tip_load_n: loadN },
-                  }));
-                  showToast(`Editando ${label} (${lengthMm} mm, ${loadN} N) en Eslabones Robóticos.`);
-                }}
+              <ModularArmPanel
+                slots={armSlots}
+                slotSummaries={slotSummaries}
+                result={modularArmRes}
+                isBusy={isAssemblingModularArm || Boolean(busyLabel)}
+                onClearSlot={clearArmSlot}
+                onAutoMatch={handleAutoMatchArm}
+                onAssemble={handleAssembleModularArm}
               />
+
+              {armRes && (
+                <>
+                  <div className="fea-card">
+                    <div className="pareto-head">
+                      <strong>{armRes.preset_name} ({armRes.dof}-DOF)</strong>
+                      <span className="badge good">${armRes.estimated_total_cost_usd.toFixed(0)} USD</span>
+                    </div>
+                    <div className="metrics-grid">
+                      <div className="metric-box"><span>Alcance</span><strong>{Math.round(armRes.max_reach_mm)} mm</strong></div>
+                      <div className="metric-box"><span>Masa Total</span><strong>{armRes.total_arm_mass_kg.toFixed(2)} kg</strong></div>
+                      <div className="metric-box"><span>Impreso 3D</span><strong>{armRes.printed_mass_g.toFixed(0)} g</strong></div>
+                    </div>
+                    <div className="dl-row">
+                      <a className="dl-link" href={armRes.step_url} download>.STEP</a>
+                      <a className="dl-link" href={armRes.stl_url} download>.STL</a>
+                      <a className="dl-link" href={armRes.urdf_url} download>.URDF</a>
+                      <a className="dl-link" href={armRes.mujoco_url} download>.XML</a>
+                      <a className="dl-link" href={armRes.bom_csv_url} download>BOM .CSV</a>
+                    </div>
+                  </div>
+
+                  <AssemblyTree
+                    arm={armRes}
+                    selectedNode={selectedArmNode}
+                    onSelectNode={setSelectedArmNode}
+                    onInspectSegmentInLinks={(lengthMm, loadN, label) => {
+                      pushState((s) => ({
+                        ...s,
+                        family: "links",
+                        link: { ...s.link, length_mm: Math.max(80, Math.min(400, lengthMm)), tip_load_n: loadN },
+                      }));
+                      showToast(`Editando ${label} (${lengthMm} mm, ${loadN} N) en Eslabones Robóticos.`);
+                    }}
+                  />
+                </>
+              )}
             </>
           )}
         </aside>
