@@ -180,6 +180,8 @@ class FEAResult(BaseModel):
     passes_fea: bool
     is_orthotropic: bool = True
     first_natural_freq_hz: Optional[float] = None
+    buckling_critical_load_n: Optional[float] = None
+    buckling_safety_factor: Optional[float] = None
     fea_glb_url: str
     notes: list[str] = Field(default_factory=list)
 

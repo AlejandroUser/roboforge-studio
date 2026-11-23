@@ -392,6 +392,36 @@ def _solve_tet4_and_export(
     output_glb_path.parent.mkdir(parents=True, exist_ok=True)
     mesh.export(str(output_glb_path), file_type="glb")
 
+    # Euler Buckling Analysis (critical axial/compressive load P_cr for slender links/columns)
+    buckling_critical_load_n: float | None = None
+    buckling_safety_factor: float | None = None
+    try:
+        span_x = float(np.max(coords[:, 0]) - np.min(coords[:, 0]))
+        span_y = float(np.max(coords[:, 1]) - np.min(coords[:, 1]))
+        span_z = float(np.max(coords[:, 2]) - np.min(coords[:, 2]))
+        dims_sorted = sorted([span_x, span_y, span_z])
+        l_eff = 2.0 * dims_sorted[2]  # cantilever effective length K=2.0
+        b_min, h_min = dims_sorted[1], dims_sorted[0]
+        # Effective moment of inertia scaled by solid fill ratio
+        bbox_vol = max(span_x * span_y * span_z, 1.0)
+        fill_ratio = np.clip(float(np.sum(vols)) / bbox_vol, 0.12, 1.0)
+        i_min = (b_min * (h_min ** 3) / 12.0) * fill_ratio
+        e_min = min(e_xy, e_z)
+        p_cr = (np.pi ** 2 * e_min * i_min) / max(l_eff ** 2, 1.0)
+        if np.isfinite(p_cr) and p_cr > 0.0:
+            buckling_critical_load_n = round(float(p_cr), 1)
+            buckling_safety_factor = round(float(p_cr / max(float(load_n), 1e-6)), 2)
+            if buckling_safety_factor < target_safety_factor:
+                notes.append(
+                    f"⚠ Pandeo (Buckling): carga crítica Pcr={buckling_critical_load_n:.1f} N (FS={buckling_safety_factor:.2f} < {target_safety_factor:.2f})."
+                )
+            else:
+                notes.append(
+                    f"Pandeo (Euler): carga crítica Pcr={buckling_critical_load_n:.1f} N (FS pandeo {buckling_safety_factor:.2f}×)."
+                )
+    except Exception:
+        pass
+
     solve_time_s = time.perf_counter() - t0
     tensor_label = (
         f"tensor ortotrópico 6×6 (Exy={e_xy:.0f} / Ez={e_z:.0f} MPa, {print_orientation})"
@@ -436,6 +466,8 @@ def _solve_tet4_and_export(
         passes_fea=passes_fea,
         is_orthotropic=is_orthotropic,
         first_natural_freq_hz=first_natural_freq_hz,
+        buckling_critical_load_n=buckling_critical_load_n,
+        buckling_safety_factor=buckling_safety_factor,
         fea_glb_url=f"/api/files/{design_hash}/{output_glb_path.name}",
         notes=notes,
     )

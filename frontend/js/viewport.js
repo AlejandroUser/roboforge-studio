@@ -610,6 +610,83 @@ export class Viewport3D {
     }
   }
 
+  /**
+   * Adjust active FEA / CAD mesh opacity (0.25..1.0) to inspect internal structure.
+   */
+  setMeshOpacity(alpha = 1.0) {
+    if (!this.activeGroup) return;
+    const clamped = Math.max(0.2, Math.min(1.0, Number(alpha) || 1.0));
+    this.activeGroup.traverse((obj) => {
+      if (!obj.isMesh || !obj.material) return;
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      mats.forEach((m) => {
+        m.transparent = clamped < 0.99;
+        m.opacity = clamped;
+        m.needsUpdate = true;
+      });
+    });
+  }
+
+  /**
+   * Side-by-side Split Comparison: loads a secondary variant (e.g. baseline) offset along Z.
+   */
+  async setSplitCompare(secondaryGlbUrl, enabled = true) {
+    this.clearSplitCompare();
+    this.splitCompareEnabled = Boolean(enabled);
+    if (!enabled || !secondaryGlbUrl || !this.activeGroup) return;
+
+    const gltf = await this.loader.loadAsync(secondaryGlbUrl);
+    const root = gltf.scene;
+    root.rotation.x = -Math.PI / 2;
+    root.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(root);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+    root.position.x -= center.x;
+    root.position.z -= center.z;
+    root.position.y -= box.min.y;
+
+    const activeBox = new THREE.Box3().setFromObject(this.activeGroup);
+    const activeSize = new THREE.Vector3();
+    activeBox.getSize(activeSize);
+    const offsetZ = Math.max(activeSize.z, size.z) + 22.0;
+
+    root.traverse((obj) => {
+      if (!obj.isMesh) return;
+      obj.material = new THREE.MeshStandardMaterial({
+        color: 0x94a3b8,
+        metalness: 0.35,
+        roughness: 0.5,
+        transparent: true,
+        opacity: 0.72,
+      });
+    });
+
+    const wrapper = new THREE.Group();
+    wrapper.name = "split_compare_group";
+    wrapper.add(root);
+    wrapper.position.z = offsetZ;
+    this.splitGroup = wrapper;
+    this.scene.add(wrapper);
+  }
+
+  clearSplitCompare() {
+    if (this.splitGroup) {
+      this.scene.remove(this.splitGroup);
+      this.splitGroup.traverse((obj) => {
+        if (!obj.isMesh) return;
+        obj.geometry?.dispose?.();
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach((m) => m?.dispose?.());
+      });
+      this.splitGroup = null;
+    }
+    this.splitCompareEnabled = false;
+  }
+
   setCameraView(viewName = "iso", animate = true) {
     const r = this.modelRadius;
     const fovRad = THREE.MathUtils.degToRad(this.camera.fov);

@@ -330,6 +330,26 @@ class RoboForgeApp {
       this._refreshEngineeringOverlays();
     });
 
+    // Side-by-side Split Comparison vs baseline variant
+    const btnSplit = document.getElementById("btn-split-compare");
+    btnSplit?.addEventListener("click", async () => {
+      const variants = this.currentResponse?.variants || [];
+      if (variants.length < 2) {
+        this.showToast("Disponible en vistas con múltiples variantes.", false);
+        return;
+      }
+      const next = !this.viewport.splitCompareEnabled;
+      const baseline = variants[0];
+      const secondary =
+        baseline.variant_id === this.activeVariant?.variant_id ? variants[1] : baseline;
+      await this.viewport.setSplitCompare(secondary.glb_url, next);
+      btnSplit.classList.toggle("active", next);
+      this.showToast(
+        next ? `Comparando lado a lado con: ${secondary.name}` : "Comparación lado a lado desactivada.",
+        false
+      );
+    });
+
     // Ghost Overlay .STEP toggle
     this.btnGhostStep?.addEventListener("click", async () => {
       if (!this.referenceGlbUrl) return;
@@ -747,6 +767,7 @@ class RoboForgeApp {
       this.viewingFeaMesh,
       {
         onToggleMesh: () => this.toggleFeaMeshView(),
+        onChangeOpacity: (alpha) => this.viewport.setMeshOpacity(alpha),
         loadDirection: this.feaLoadDirection || "y_inplane",
         deformScale: this.feaDeformScale || 0,
         onChangeOptions: ({ loadDirection, deformScale }) => {

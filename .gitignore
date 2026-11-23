@@ -4,6 +4,8 @@ __pycache__/
 exports/
 node_modules/
 dist/
+build/
+*.spec
 .pytest_cache/
 *.step
 *.stl

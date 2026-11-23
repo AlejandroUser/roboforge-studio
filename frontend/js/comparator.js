@@ -149,6 +149,15 @@ export class ComparatorController {
         </div>`
             : ""
         }
+        ${
+          feaResult.buckling_critical_load_n != null
+            ? `<div class="metric-cell">
+          <span class="metric-label">Pandeo Pcr</span>
+          <span class="metric-val ${feaResult.buckling_safety_factor >= 2 ? "good" : "warn"}">${fmt(feaResult.buckling_critical_load_n, 0)} N</span>
+          <span class="metric-sub">FS ${fmt(feaResult.buckling_safety_factor, 1)}×</span>
+        </div>`
+            : ""
+        }
       </div>
 
       <div class="fea-card-actions" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
@@ -162,6 +171,10 @@ export class ComparatorController {
           <option value="10" ${Number(options?.deformScale || 0) === 10 ? "selected" : ""}>Deform. 10×</option>
           <option value="25" ${Number(options?.deformScale || 0) === 25 ? "selected" : ""}>Deform. 25×</option>
         </select>
+        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#94a3b8;margin-left:auto;">
+          Opacidad
+          <input type="range" id="fea-opacity-slider" min="25" max="100" step="5" value="100" style="width:68px;" />
+        </label>
       </div>
 
       <ul class="fea-notes-list">${notesHtml}</ul>
@@ -170,6 +183,10 @@ export class ComparatorController {
     const toggleBtn = this.feaCardEl.querySelector("#btn-fea-card-toggle");
     toggleBtn?.addEventListener("click", () => {
       options?.onToggleMesh?.();
+    });
+    const opSlider = this.feaCardEl.querySelector("#fea-opacity-slider");
+    opSlider?.addEventListener("input", () => {
+      options?.onChangeOpacity?.(Number(opSlider.value) / 100);
     });
     const dirSel = this.feaCardEl.querySelector("#fea-load-dir");
     const defSel = this.feaCardEl.querySelector("#fea-deform-scale");
