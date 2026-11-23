@@ -112,12 +112,12 @@ function StudioEnvironment() {
         position={[9, 5, 6]}
         target={[0, 0, 0]}
       />
-      {/* Soft neutral side fill */}
+      {/* Soft neutral front-side fill for dark anodized / carbon vertical faces */}
       <Lightformer
         form="ring"
-        intensity={0.95}
-        color="#cbd5e1"
-        scale={7}
+        intensity={1.4}
+        color="#e2e8f0"
+        scale={8}
         position={[0, 3, 10]}
         target={[0, 0, 0]}
       />
@@ -465,10 +465,14 @@ function CameraController({
   bounds,
   preset,
   autoRotate,
+  family,
+  explodeFactor,
 }: {
   bounds: THREE.Box3 | null;
   preset: { view: "iso" | "top" | "front" | "side"; nonce: number };
   autoRotate: boolean;
+  family: FamilyId;
+  explodeFactor: number;
 }) {
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
@@ -479,7 +483,11 @@ function CameraController({
     bounds.getBoundingSphere(sphere);
     const r = Math.max(sphere.radius, 30);
     const target = sphere.center.clone();
-    const dist = r * 2.55;
+    const isExplodedArm = family === "arm" && explodeFactor > 0.01;
+    if (isExplodedArm) {
+      target.x += explodeFactor * r * 0.22;
+    }
+    const dist = r * (2.55 + (isExplodedArm ? explodeFactor * 0.85 : 0));
 
     let dir = new THREE.Vector3(0.72, 0.55, 0.78);
     if (preset.view === "top") dir = new THREE.Vector3(0.001, 1, 0.001);
@@ -495,7 +503,7 @@ function CameraController({
       controlsRef.current.target.copy(target);
       controlsRef.current.update();
     }
-  }, [bounds, preset.view, preset.nonce, camera]);
+  }, [bounds, preset.view, preset.nonce, family, explodeFactor, camera]);
 
   return <OrbitControls ref={controlsRef} makeDefault enableDamping autoRotate={autoRotate} autoRotateSpeed={1.6} />;
 }
@@ -596,7 +604,7 @@ export const ViewportR3F: React.FC<ViewportR3FProps> = (props) => {
       return "Aristas omitidas en malla FEA";
     }
     if (modelMeta.triangles > MAX_EDGE_TRIANGLES) {
-      return `Omitido (>40k triángulos: ${modelMeta.triangles.toLocaleString("es")})`;
+      return `Omitido (>90k triángulos: ${modelMeta.triangles.toLocaleString("es")})`;
     }
     return "Alternar aristas técnicas CAD (umbral 28°)";
   }, [props.isFeaMesh, modelMeta]);
@@ -620,12 +628,13 @@ export const ViewportR3F: React.FC<ViewportR3FProps> = (props) => {
           background: "radial-gradient(circle at 50% 42%, #131c2b 0%, #090d14 78%)",
         }}
       >
-        {/* 100% offline procedural IBL + subtle studio key/fill */}
+        {/* 100% offline procedural IBL + studio key/fill + front fill for dark faces */}
         <StudioEnvironment />
-        <ambientLight intensity={0.28} />
-        <hemisphereLight args={["#dbeafe", "#0f172a", 0.35]} />
+        <ambientLight intensity={0.42} />
+        <hemisphereLight args={["#e0f2fe", "#1e293b", 0.52]} />
         <directionalLight position={[180, 280, 180]} intensity={1.15} color="#ffffff" />
-        <directionalLight position={[-170, 120, -150]} intensity={0.45} color="#7dd3fc" />
+        <directionalLight position={[40, 95, 260]} intensity={0.55} color="#e2e8f0" />
+        <directionalLight position={[-170, 120, -150]} intensity={0.48} color="#7dd3fc" />
 
         <ContactShadows
           key={`shadow-${props.glbUrl || "none"}-${props.family}`}
@@ -690,7 +699,13 @@ export const ViewportR3F: React.FC<ViewportR3FProps> = (props) => {
           />
         )}
 
-        <CameraController bounds={bounds} preset={props.cameraPreset} autoRotate={props.autoRotate} />
+        <CameraController
+          bounds={bounds}
+          preset={props.cameraPreset}
+          autoRotate={props.autoRotate}
+          family={props.family}
+          explodeFactor={explodeFactor}
+        />
       </Canvas>
 
       {/* Floating hovered/selected part label in Arm mode */}

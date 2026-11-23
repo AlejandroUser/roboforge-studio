@@ -1144,8 +1144,13 @@ export default function App() {
               </button>
             ))}
             {state.family !== "arm" && (
-              <button type="button" className="btn-tool btn-fea" onClick={() => runFea()}>
-                FEA 3D
+              <button
+                type="button"
+                className={`btn-tool btn-fea ${viewingFea ? "active" : ""}`}
+                onClick={() => (viewingFea ? setViewingFea(false) : runFea())}
+                title={viewingFea ? "Volver al modelo CAD 3D" : "Ejecutar análisis FEA 3D (Von Mises)"}
+              >
+                {viewingFea ? "FEA 3D ✓" : "FEA 3D"}
               </button>
             )}
             {state.family === "links" && (
