@@ -35,6 +35,21 @@ const SEMANTIC_PART_KEYS = [
   "gripper_base",
   "gripper_finger_left",
   "gripper_finger_right",
+  "cycloidal_j1",
+  "cycloidal_j2",
+  "planetary_j1",
+  "planetary_j2",
+  "belt_scara",
+  "linear_rail_z",
+  "z_carriage",
+  "scara_arm_1",
+  "scara_arm_2",
+  "z_quill",
+  "upper_arm_roll_j3",
+  "wrist_j4_roll",
+  "wrist_j5_pitch",
+  "wrist_j6_flange",
+  "homing_sensor_j1",
 ] as const;
 
 const FALLBACK_EXPLODE_VECTORS: Record<string, [number, number, number]> = {
@@ -43,17 +58,26 @@ const FALLBACK_EXPLODE_VECTORS: Record<string, [number, number, number]> = {
   shoulder_mount: [0, -35, 0],
   clevis_shoulder: [0, 0, 20],
   shoulder_gear: [0, -60, 15],
+  cycloidal_j1: [0, -65, 18],
+  planetary_j1: [0, -62, 16],
   motor_j1_shoulder: [0, -90, 10],
   bearing_j1: [0, -45, 25],
   horn_25t_j1: [0, -72, 15],
+  homing_sensor_j1: [-35, -35, 10],
   upper_arm_link: [35, 0, 35],
+  upper_arm_roll_j3: [48, 0, 42],
   clevis_elbow: [55, 0, 48],
   elbow_gear: [55, 45, 50],
+  cycloidal_j2: [55, 55, 52],
+  planetary_j2: [55, 52, 50],
   motor_j2_elbow: [55, 80, 50],
   bearing_j2: [55, 30, 50],
   horn_25t_j2: [55, 62, 50],
   forearm_link: [90, 0, 65],
   wrist_tube: [130, 0, 80],
+  wrist_j4_roll: [122, 0, 76],
+  wrist_j5_pitch: [142, 0, 84],
+  wrist_j6_flange: [160, 0, 92],
   motor_j3_wrist: [130, 65, 80],
   bearing_j3: [130, 30, 80],
   horn_25t_j3: [130, 48, 80],
@@ -62,6 +86,12 @@ const FALLBACK_EXPLODE_VECTORS: Record<string, [number, number, number]> = {
   gripper_base: [175, 0, 95],
   gripper_finger_left: [195, -24, 100],
   gripper_finger_right: [195, 24, 100],
+  linear_rail_z: [0, -45, 20],
+  z_carriage: [25, 0, 35],
+  scara_arm_1: [55, 0, 45],
+  belt_scara: [75, 0, 62],
+  scara_arm_2: [110, 0, 55],
+  z_quill: [145, 0, -25],
   fasteners_kit: [0, 75, 15],
 };
 
@@ -71,10 +101,18 @@ const PART_LABELS_ES: Record<string, string> = {
   clevis_shoulder: "Horquilla Hombro",
   clevis_elbow: "Horquilla Codo",
   shoulder_gear: "Transmisión Hombro",
+  cycloidal_j1: "Reductor Cicloidal J1",
+  cycloidal_j2: "Reductor Cicloidal J2",
+  planetary_j1: "Reductor Planetario J1",
+  planetary_j2: "Reductor Planetario J2",
   upper_arm_link: "Brazo Superior",
+  upper_arm_roll_j3: "Eje Redundante Roll J3 (7-DOF)",
   elbow_gear: "Transmisión Codo",
   forearm_link: "Antebrazo",
   wrist_tube: "Muñeca",
+  wrist_j4_roll: "Muñeca J4 Roll",
+  wrist_j5_pitch: "Muñeca J5 Pitch",
+  wrist_j6_flange: "Muñeca J6 Brida",
   tcp_flange: "Brida TCP",
   motor_j1_shoulder: "Motor J1 Hombro",
   motor_j2_elbow: "Motor J2 Codo",
@@ -91,6 +129,13 @@ const PART_LABELS_ES: Record<string, string> = {
   gripper_base: "Base de Pinza",
   gripper_finger_left: "Dedo Pinza Izq.",
   gripper_finger_right: "Dedo Pinza Der.",
+  linear_rail_z: "Guía Lineal Prismática Z (MGN12)",
+  z_carriage: "Carro Vertical Z",
+  scara_arm_1: "Brazo SCARA 1 (Horizontal)",
+  belt_scara: "Correa Cerrada GT2 SCARA",
+  scara_arm_2: "Antebrazo SCARA 2",
+  z_quill: "Husillo / Quill Z",
+  homing_sensor_j1: "Sensor Inductivo Homing J1",
 };
 
 function resolveSemanticKey(obj: THREE.Object3D | null): string | null {
@@ -123,6 +168,8 @@ export interface ViewportR3FProps {
     elbow: number;
     wrist: number;
     gripperOpenPct?: number;
+    kinematicsType?: "articulated" | "scara";
+    zAxisMm?: number;
   };
   armReachMm?: number;
   armBaseHeightMm?: number;
@@ -235,6 +282,8 @@ function LoadedModel({
     elbow: number;
     wrist: number;
     gripperOpenPct?: number;
+    kinematicsType?: "articulated" | "scara";
+    zAxisMm?: number;
   };
   selectedArmNode?: string | null;
   hoveredArmPart?: string | null;
@@ -414,13 +463,30 @@ function LoadedModel({
         gripY = gripOffsetMm;
       }
 
-      if (vec || gripY !== 0) {
-        obj.position.set(base.x + ex, base.y + ey + gripY, base.z + ez);
+      // v5.0 SCARA prismatic Z-axis vertical translation (Z-up in GLB -> Y-up in Three.js)
+      let scaraZ = 0;
+      if (
+        armAngles?.kinematicsType === "scara" &&
+        (lower.includes("z_quill") || lower.includes("z_carriage"))
+      ) {
+        scaraZ = -(armAngles.zAxisMm ?? 0);
+      }
+
+      if (vec || gripY !== 0 || scaraZ !== 0) {
+        obj.position.set(base.x + ex, base.y + ey + gripY, base.z + ez + scaraZ);
         displaced.add(obj);
       }
     });
     sceneObj.updateMatrixWorld(true);
-  }, [sceneObj, family, explodeFactor, explodeVectors, armAngles?.gripperOpenPct]);
+  }, [
+    sceneObj,
+    family,
+    explodeFactor,
+    explodeVectors,
+    armAngles?.gripperOpenPct,
+    armAngles?.kinematicsType,
+    armAngles?.zAxisMm,
+  ]);
 
   // Apply / remove technical CAD Edges (28 deg threshold), skipped for FEA or >40k triangles
   useEffect(() => {
@@ -457,23 +523,37 @@ function LoadedModel({
     };
   }, [sceneObj, showEdges, wireframe, isFeaMesh, meshOpacity]);
 
-  // 60 FPS real-time GPU FK for J0 Base Yaw + hierarchical arm_assembly.glb
+  // 60 FPS real-time GPU FK for J0 Base Yaw, hierarchical articulated J1/J2/J3, and SCARA horizontal arms
   useEffect(() => {
     if (!sceneObj || !armAngles) return;
     const turret = sceneObj.getObjectByName("__turret_yaw_pivot");
     if (turret) {
       turret.rotation.set(0, 0, THREE.MathUtils.degToRad(armAngles.baseYaw || 0));
     }
-    const j1 = sceneObj.getObjectByName("joint_shoulder");
-    const j2 = sceneObj.getObjectByName("joint_elbow");
-    const j3 = sceneObj.getObjectByName("joint_wrist");
-    if (j1 && j2 && j3) {
-      j1.rotation.set(0, -THREE.MathUtils.degToRad(armAngles.shoulder), 0);
-      j2.rotation.set(0, -THREE.MathUtils.degToRad(armAngles.elbow), 0);
-      j3.rotation.set(0, -THREE.MathUtils.degToRad(armAngles.wrist), 0);
+    if (armAngles.kinematicsType === "scara") {
+      const s1 = sceneObj.getObjectByName("scara_arm_1");
+      const s2 = sceneObj.getObjectByName("scara_arm_2");
+      if (s1) s1.rotation.set(0, 0, THREE.MathUtils.degToRad(armAngles.shoulder || 0));
+      if (s2) s2.rotation.set(0, 0, THREE.MathUtils.degToRad(armAngles.elbow || 0));
+    } else {
+      const j1 = sceneObj.getObjectByName("joint_shoulder");
+      const j2 = sceneObj.getObjectByName("joint_elbow");
+      const j3 = sceneObj.getObjectByName("joint_wrist");
+      if (j1 && j2 && j3) {
+        j1.rotation.set(0, -THREE.MathUtils.degToRad(armAngles.shoulder), 0);
+        j2.rotation.set(0, -THREE.MathUtils.degToRad(armAngles.elbow), 0);
+        j3.rotation.set(0, -THREE.MathUtils.degToRad(armAngles.wrist), 0);
+      }
     }
     sceneObj.updateMatrixWorld(true);
-  }, [sceneObj, armAngles?.baseYaw, armAngles?.shoulder, armAngles?.elbow, armAngles?.wrist]);
+  }, [
+    sceneObj,
+    armAngles?.kinematicsType,
+    armAngles?.baseYaw,
+    armAngles?.shoulder,
+    armAngles?.elbow,
+    armAngles?.wrist,
+  ]);
 
   if (!sceneObj) return null;
   return (

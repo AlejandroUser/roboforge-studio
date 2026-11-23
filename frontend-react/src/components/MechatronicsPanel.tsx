@@ -19,6 +19,10 @@ const FALLBACK_ACTUATORS = [
   { id: "bldc_qdd_8308", name: "BLDC QDD 8308 (High-Torque QDD)" },
   { id: "servo_td8120mg", name: "TD-8120MG 20kg·cm (Metal Gear Servo)" },
   { id: "servo_ds3218", name: "DS3218MG 20kg·cm (Digital Servo)" },
+  { id: "servo_sts3215", name: "Feetech STS3215 30kg·cm (UART Bus)" },
+  { id: "damiao_dm_j4310", name: "Damiao DM-J4310 QDD (7 N·m)" },
+  { id: "damiao_dm_j4340", name: "Damiao DM-J4340 QDD (27 N·m)" },
+  { id: "nema14_34mm", name: "NEMA 14 34mm (Compact Stepper)" },
 ];
 
 const FALLBACK_REDUCERS = [
@@ -253,6 +257,8 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
   const harnessYmlUrl = files?.harness_yml;
   const masterBomCsvUrl = files?.master_bom_csv;
   const firmwareInoUrl = files?.firmware_ino;
+  const cncDxfUrl = files?.cnc_dxf;
+  const lerobotJsonUrl = files?.lerobot_json;
 
   const formatVoltage = (v: number) =>
     Number.isInteger(v) ? `${v.toFixed(0)} V DC` : `${v.toFixed(1)} V DC`;
@@ -301,16 +307,26 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
                 value={config.bus_architecture}
                 onChange={(e) => {
                   const nextBus = e.target.value as BusArchitecture;
+                  const nextVolt =
+                    nextBus === "arduino_pca9685_i2c"
+                      ? 6.5
+                      : nextBus === "uart_serial_bus"
+                        ? 7.4
+                        : config.system_voltage_v < 12
+                          ? 24
+                          : config.system_voltage_v;
                   onChangeConfig({
                     ...config,
                     bus_architecture: nextBus,
-                    system_voltage_v: nextBus === "arduino_pca9685_i2c" ? 6.5 : config.system_voltage_v < 12 ? 24 : config.system_voltage_v,
+                    system_voltage_v: nextVolt,
                   });
                 }}
               >
                 <option value="can_fd_bus">Bus CAN-FD (4 Hilos)</option>
                 <option value="stm32_step_dir">Estrella STM32 Step/Dir</option>
                 <option value="arduino_pca9685_i2c">Arduino UNO + PCA9685 I2C · 6V/10A</option>
+                <option value="uart_serial_bus">Bus Serie UART (STS3215 / LeRobot)</option>
+                <option value="teensy_dm542">Teensy 4.1 + DM542T (Industrial)</option>
               </select>
             </div>
             <div className="field-row">
@@ -323,6 +339,7 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
               >
                 <option value={6}>6 V DC (Servos)</option>
                 <option value={6.5}>6.5 V DC (Servos 10A)</option>
+                <option value={7.4}>7.4 V DC (STS3215)</option>
                 <option value={24}>24 V DC</option>
                 <option value={48}>48 V DC</option>
               </select>
@@ -489,6 +506,16 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
                     Firmware .INO
                   </a>
                 )}
+                {cncDxfUrl && (
+                  <a className="dl-link dl-zip" href={cncDxfUrl} download title="Placas laterales CNC Aluminio 6061-T6 (.DXF R12)">
+                    CNC .DXF
+                  </a>
+                )}
+                {lerobotJsonUrl && (
+                  <a className="dl-link dl-zip" href={lerobotJsonUrl} download title="Configuración calibrada HuggingFace LeRobot (.JSON)">
+                    LeRobot .JSON
+                  </a>
+                )}
               </div>
             </>
           ) : (
@@ -573,9 +600,13 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
                 Esquemático Eléctrico &amp; Arnés (
                 {config.bus_architecture === "arduino_pca9685_i2c"
                   ? "Arduino UNO + PCA9685 I2C"
-                  : config.bus_architecture === "can_fd_bus"
-                    ? "CAN-FD"
-                    : "STM32 Step/Dir"}
+                  : config.bus_architecture === "uart_serial_bus"
+                    ? "Bus Serie UART (STS3215 / LeRobot)"
+                    : config.bus_architecture === "teensy_dm542"
+                      ? "Teensy 4.1 + DM542T"
+                      : config.bus_architecture === "can_fd_bus"
+                        ? "CAN-FD"
+                        : "STM32 Step/Dir"}
                 )
               </strong>
               <button type="button" className="btn-tool" onClick={() => setShowSvgModal(false)}>

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import math
 from html import escape
 
@@ -163,6 +164,78 @@ ACTUATOR_CATALOG: dict[str, dict] = {
         "unit_cost_usd": 12.0,
         "bus_supported": ["arduino_pca9685_i2c"],
     },
+    "servo_sts3215": {
+        "id": "servo_sts3215",
+        "name": "Feetech STS3215 30kg·cm (Bus Serie UART)",
+        "motor_type": "serial_bus_servo",
+        "voltage_v": 7.4,
+        "rated_torque_nm": 1.45,
+        "peak_torque_nm": 2.94,
+        "no_load_rpm": 50.0,
+        "corner_rpm": 32.0,
+        "rated_current_a": 0.9,
+        "peak_current_a": 2.7,
+        "mass_g": 55.0,
+        "shaft_d_mm": 6.0,
+        "bolt_pcd_mm": 16.0,
+        "bolt_size": "M3",
+        "unit_cost_usd": 18.0,
+        "bus_supported": ["uart_serial_bus"],
+    },
+    "damiao_dm_j4310": {
+        "id": "damiao_dm_j4310",
+        "name": "Damiao DM-J4310 QDD (FOC CAN-FD)",
+        "motor_type": "bldc_qdd",
+        "voltage_v": 24.0,
+        "rated_torque_nm": 3.0,
+        "peak_torque_nm": 7.0,
+        "no_load_rpm": 200.0,
+        "corner_rpm": 130.0,
+        "rated_current_a": 2.5,
+        "peak_current_a": 7.5,
+        "mass_g": 305.0,
+        "shaft_d_mm": 10.0,
+        "bolt_pcd_mm": 44.0,
+        "bolt_size": "M3",
+        "unit_cost_usd": 85.0,
+        "bus_supported": ["can_fd_bus"],
+    },
+    "damiao_dm_j4340": {
+        "id": "damiao_dm_j4340",
+        "name": "Damiao DM-J4340 High-Torque QDD (CAN-FD)",
+        "motor_type": "bldc_qdd",
+        "voltage_v": 24.0,
+        "rated_torque_nm": 9.0,
+        "peak_torque_nm": 27.0,
+        "no_load_rpm": 95.0,
+        "corner_rpm": 60.0,
+        "rated_current_a": 4.0,
+        "peak_current_a": 12.0,
+        "mass_g": 465.0,
+        "shaft_d_mm": 14.0,
+        "bolt_pcd_mm": 56.0,
+        "bolt_size": "M4",
+        "unit_cost_usd": 135.0,
+        "bus_supported": ["can_fd_bus"],
+    },
+    "nema14_34mm": {
+        "id": "nema14_34mm",
+        "name": "NEMA 14 34 mm (Muñeca Compacta)",
+        "motor_type": "stepper",
+        "voltage_v": 24.0,
+        "rated_torque_nm": 0.26,
+        "peak_torque_nm": 0.32,
+        "no_load_rpm": 720.0,
+        "corner_rpm": 160.0,
+        "rated_current_a": 1.0,
+        "peak_current_a": 1.3,
+        "mass_g": 180.0,
+        "shaft_d_mm": 5.0,
+        "bolt_pcd_mm": 26.0,
+        "bolt_size": "M3",
+        "unit_cost_usd": 14.0,
+        "bus_supported": ["stm32_step_dir", "teensy_dm542"],
+    },
 }
 
 REDUCER_CATALOG: dict[str, dict] = {
@@ -247,6 +320,16 @@ ARCHITECTURES_CATALOG: list[dict] = [
         "name": "Arduino UNO + PCA9685 I2C (6.5V / 10A)",
         "description": "Controlador Arduino UNO + Servo Shield PCA9685 I2C de 16 canales para 8× servos TD-8120MG (doble servo paralelo en hombro y codo) + garra.",
     },
+    {
+        "id": "uart_serial_bus",
+        "name": "Bus Serie UART 1 Mbps (STS3215 / LeRobot)",
+        "description": "Bus TTL half-duplex 3 hilos en cadena (Waveshare USB-TTL) para servos inteligentes Feetech STS3215 con retroalimentación de posición y carga.",
+    },
+    {
+        "id": "teensy_dm542",
+        "name": "Teensy 4.1 + Drivers DM542T (Industrial AR4)",
+        "description": "Controlador Teensy 4.1 + drivers externos DM542T 4.2A, encoders ópticos 1000 PPR y sensores inductivos de homing (arquitectura AR4-MK3).",
+    },
 ]
 
 CATEGORY_LABELS: dict[str, str] = {
@@ -285,7 +368,7 @@ def _motor_torque_at_rpm(motor: dict, motor_rpm: float) -> tuple[float, float]:
     if rpm >= no_load:
         return 0.0, 0.0
 
-    if m_type in ("bldc_qdd", "rc_servo"):
+    if m_type in ("bldc_qdd", "rc_servo", "serial_bus_servo"):
         if rpm <= corner:
             return t_rated, t_peak
         frac = max(0.0, (no_load - rpm) / max(no_load - corner, 1.0))
@@ -308,6 +391,25 @@ def _default_spec_for_joint(
     bus_arch: str,
 ) -> JointActuatorSpec:
     """Choose sensible default motor + reducer for joint J1..J6."""
+    if bus_arch == "uart_serial_bus":
+        return JointActuatorSpec(
+            motor_id="servo_sts3215",
+            reducer_id="direct",
+            target_rpm=32.0,
+            parallel_count=1,
+        )
+    if bus_arch == "teensy_dm542":
+        if joint_idx == 1:
+            return JointActuatorSpec(
+                motor_id="nema23_76mm", reducer_id="planetary_20", target_rpm=25.0
+            )
+        if joint_idx == 2:
+            return JointActuatorSpec(
+                motor_id="nema17_48mm", reducer_id="planetary_10", target_rpm=30.0
+            )
+        return JointActuatorSpec(
+            motor_id="nema14_34mm", reducer_id="gt2_belt_3", target_rpm=40.0
+        )
     if bus_arch == "arduino_pca9685_i2c":
         if joint_idx in (1, 2):
             return JointActuatorSpec(
@@ -412,6 +514,8 @@ def evaluate_mechatronics(
         joint_defs.append(("J5", "J5 Muñeca (Roll)", j3_s * 0.65, j3_d * 0.75))
     if req.dof >= 6:
         joint_defs.append(("J6", "J6 Brida TCP (Roll)", j3_s * 0.45, j3_d * 0.55))
+    if req.dof >= 7:
+        joint_defs.append(("J7", "J7 Brazo Redundante (Roll)", j2_s * 0.40, j2_d * 0.55))
 
     joint_reports: list[JointMechatronicsReport] = []
     motor_counts: dict[str, int] = {}
@@ -507,13 +611,15 @@ def evaluate_mechatronics(
 
     # Power Budget
     is_pca_servo = bus_arch == "arduino_pca9685_i2c"
+    is_uart_bus = bus_arch == "uart_serial_bus"
+    is_teensy_dm = bus_arch == "teensy_dm542"
+
     if is_pca_servo:
         system_v = (
             float(cfg.system_voltage_v)
             if 5.5 <= float(cfg.system_voltage_v) <= 7.4
             else 6.5
         )
-        # Include gripper servo (~0.6A cont / 1.5A peak) + Arduino/PCA9685 logic (0.3A)
         cont_i_total = round(sum_cont_i * 0.65 + 0.9, 2)
         peak_i_total = round(min(10.0, sum_peak_i * 0.65 + 1.5), 2)
         cont_w = round(system_v * cont_i_total, 1)
@@ -522,6 +628,16 @@ def evaluate_mechatronics(
         psu_cost = 16.5
         power_awg = "16 AWG (Jack DC → PCA9685 V+)"
         signal_awg = "22 AWG Extensiones Servo (10/30/50 cm)"
+    elif is_uart_bus:
+        system_v = 12.0 if float(cfg.system_voltage_v) >= 10.0 else 7.4
+        cont_i_total = round(sum_cont_i * 0.65 + 0.4, 2)
+        peak_i_total = round(sum_peak_i * 0.72 + 0.6, 2)
+        cont_w = round(system_v * cont_i_total, 1)
+        peak_w = round(system_v * peak_i_total, 1)
+        psu_name = f"Fuente Conmutada {system_v:.1f}V 5A (Jack DC / XT30)"
+        psu_cost = 15.0
+        power_awg = "18 AWG (Silicona)"
+        signal_awg = "22 AWG Bus Serie TTL 3-Pin Half-Duplex (1 Mbps)"
     else:
         system_v = 48.0 if max_motor_voltage >= 40.0 else 24.0
         cont_i_total = round(sum_cont_i * 0.72 + 0.8, 2)
@@ -530,11 +646,12 @@ def evaluate_mechatronics(
         peak_w = round(system_v * peak_i_total, 1)
         psu_name, psu_cost = _select_psu(system_v, peak_w)
         power_awg = _select_power_awg(peak_i_total)
-        signal_awg = (
-            "24 AWG Par Trenzado 120Ω (CAN-FD)"
-            if bus_arch == "can_fd_bus"
-            else "26 AWG Apantallado (Step/Dir)"
-        )
+        if is_teensy_dm:
+            signal_awg = "24 AWG Apantallado (Step/Dir + Encoders + Homing)"
+        elif bus_arch == "can_fd_bus":
+            signal_awg = "24 AWG Par Trenzado 120Ω (CAN-FD)"
+        else:
+            signal_awg = "26 AWG Apantallado (Step/Dir)"
 
     # Harness length (m): sum real arm segment runs * 1.20 dynamic service loop
     h_base_m = float(req.base_height_mm) / 1000.0
@@ -612,6 +729,15 @@ def evaluate_mechatronics(
         1,
         max(2.5, 0.195 * mat_cost_kg * 1.2 + 1.5),
     )
+    if req.cnc_plate_mode:
+        _add_bom(
+            "printed_cnc",
+            "CNC-AL6061-PLT",
+            "Placas Laterales CNC Aluminio 6061-T6 (DXF)",
+            "Corte 2.5D espesor 6 mm · rigidez torsional industrial",
+            2,
+            24.0,
+        )
 
     # Category 2, 3, 4: actuators_reducers, electronics_wiring, fasteners_hardware
     if is_pca_servo:
@@ -726,7 +852,49 @@ def evaluate_mechatronics(
             )
 
         # Category 3: electronics_wiring
-        if bus_arch == "can_fd_bus":
+        if is_uart_bus:
+            _add_bom(
+                "electronics_wiring",
+                "EL-WS-TTL",
+                "Waveshare Bus Servo Adapter (USB-TTL 1 Mbps)",
+                "Bus serie half-duplex 3 hilos · compatible LeRobot / Feetech",
+                1,
+                11.0,
+            )
+            _add_bom(
+                "electronics_wiring",
+                "EL-CONN-3PIN",
+                "Cables Bus Serie 3-Pin Molex/JST (Daisy-Chain)",
+                "22 AWG · conexión en cadena ID1..ID6",
+                req.dof,
+                1.2,
+            )
+        elif is_teensy_dm:
+            _add_bom(
+                "electronics_wiring",
+                "EL-TEENSY41",
+                "Controlador Teensy 4.1 + Breakout AR4",
+                "ARM Cortex-M7 600 MHz · Step/Dir + Encoders + Homing",
+                1,
+                36.0,
+            )
+            _add_bom(
+                "electronics_wiring",
+                "EL-DRV-DM542T",
+                "Driver Industrial DM542T (4.2 A · 24–50V)",
+                "Microstepping configurable · entradas optoaisladas",
+                req.dof,
+                22.0,
+            )
+            _add_bom(
+                "electronics_wiring",
+                "EL-SENS-HOMING",
+                "Sensores Inductivos de Homing (LJ12A3 / Final Carrera)",
+                "Detección de cero mecánico en cada eje",
+                req.dof,
+                4.2,
+            )
+        elif bus_arch == "can_fd_bus":
             _add_bom(
                 "electronics_wiring",
                 "EL-MCU-CANFD",
@@ -853,14 +1021,51 @@ def evaluate_mechatronics(
             4,
             1.1,
         )
+        if req.kinematics_type == "scara":
+            _add_bom(
+                "fasteners_hardware",
+                "LIN-MGN12H",
+                "Guía Lineal MGN12H + Carro de Precisión",
+                f"Acero endurecido · carrera Z {req.z_stroke_mm:.0f} mm",
+                2,
+                16.5,
+            )
+            _add_bom(
+                "fasteners_hardware",
+                "LIN-T8-LEAD",
+                "Husillo Trapezoidal T8 + Tuerca Anti-Backlash",
+                f"Paso 8 mm · eje prismático Z SCARA ({req.z_stroke_mm + 60:.0f} mm)",
+                1,
+                9.5,
+            )
+        if is_teensy_dm or req.payload_kg >= 2.0:
+            _add_bom(
+                "fasteners_hardware",
+                "BRG-CRB-RU42",
+                "Rodamiento Rodillos Cruzados CRB RU42",
+                "Alta rigidez a momento de vuelco (Base / Hombro)",
+                2,
+                32.0,
+            )
+            _add_bom(
+                "fasteners_hardware",
+                "BRG-TAP-30205",
+                "Rodamiento de Rodillos Cónicos 30205",
+                "25×52×16.25 mm · carga axial + radial combinada",
+                2,
+                6.5,
+            )
 
     total_bom_cost_usd = round(sum(item.total_cost_usd for item in master_bom), 2)
     if not notes:
-        arch_label = (
-            "Arduino UNO + PCA9685 I2C (8 Servos)"
-            if is_pca_servo
-            else ("Bus CAN-FD 4 hilos" if bus_arch == "can_fd_bus" else "STM32 Step/Dir")
-        )
+        arch_labels = {
+            "arduino_pca9685_i2c": "Arduino UNO + PCA9685 I2C (8 Servos)",
+            "uart_serial_bus": "Bus Serie UART 1 Mbps (STS3215 / LeRobot)",
+            "teensy_dm542": "Teensy 4.1 + Drivers DM542T Industrial",
+            "can_fd_bus": "Bus CAN-FD 4 hilos",
+            "stm32_step_dir": "STM32 Step/Dir",
+        }
+        arch_label = arch_labels.get(bus_arch, bus_arch)
         notes.append(
             f"Arquitectura {arch_label} validada a {system_v:.1f}V con margen térmico y de torque positivos."
         )
@@ -970,10 +1175,21 @@ def generate_circuit_schematic_svg(mechatronics: MechatronicsResponse, dof: int)
     if pb.bus_architecture == "arduino_pca9685_i2c":
         return _generate_pca9685_schematic_svg(mechatronics)
     is_can = pb.bus_architecture == "can_fd_bus"
+    is_uart = pb.bus_architecture == "uart_serial_bus"
+    is_teensy = pb.bus_architecture == "teensy_dm542"
     n_joints = max(1, min(dof, len(mechatronics.joint_reports)))
     svg_h = max(420, 120 + n_joints * 58)
     svg_w = 980
 
+    header_arch = (
+        "BUS CAN-FD 4 HILOS"
+        if is_can
+        else (
+            "BUS SERIE UART 1 Mbps (STS3215 / LEROBOT)"
+            if is_uart
+            else ("TEENSY 4.1 + DM542T INDUSTRIAL" if is_teensy else "STM32 STEP/DIR")
+        )
+    )
     lines: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {svg_w} {svg_h}" width="{svg_w}" height="{svg_h}">',
         "<defs>",
@@ -984,7 +1200,7 @@ def generate_circuit_schematic_svg(mechatronics: MechatronicsResponse, dof: int)
         f'<rect width="{svg_w}" height="{svg_h}" fill="#0b1120"/>',
         f'<rect width="{svg_w}" height="{svg_h}" fill="url(#rf-grid)"/>',
         '<text x="24" y="32" fill="#f8fafc" font-family="ui-monospace,Consolas,monospace" font-size="16" font-weight="700">'
-        f'ROBOFORGE STUDIO v4.0 — ESQUEMÁTICO ELÉCTRICO ({escape("BUS CAN-FD 4 HILOS" if is_can else "STM32 STEP/DIR")})</text>',
+        f'ROBOFORGE STUDIO v5.0 — ESQUEMÁTICO ELÉCTRICO ({escape(header_arch)})</text>',
         '<text x="24" y="52" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="11">'
         f'{escape(pb.recommended_psu)} · Pico {pb.peak_power_w:.0f} W ({pb.peak_current_a:.1f} A) · Potencia {escape(pb.power_wire_awg)} · Arnés {pb.total_harness_length_m:.2f} m</text>',
     ]
@@ -1028,8 +1244,18 @@ def generate_circuit_schematic_svg(mechatronics: MechatronicsResponse, dof: int)
     )
 
     # Block 3: MCU / Distribution
-    mcu_title = "MCU STM32H7 + CAN-FD" if is_can else "MCU STM32F4 + TMC2209"
-    mcu_sub = "Transceptor 5 Mbps · 120Ω" if is_can else f"{n_joints}× Drivers Step/Dir UART"
+    if is_uart:
+        mcu_title = "WAVESHARE USB-TTL BUS"
+        mcu_sub = "Half-Duplex 1 Mbps · 3-Pin"
+    elif is_teensy:
+        mcu_title = "TEENSY 4.1 + DM542T"
+        mcu_sub = f"{n_joints}× Drivers 4.2A + Homing"
+    elif is_can:
+        mcu_title = "MCU STM32H7 + CAN-FD"
+        mcu_sub = "Transceptor 5 Mbps · 120Ω"
+    else:
+        mcu_title = "MCU STM32F4 + TMC2209"
+        mcu_sub = f"{n_joints}× Drivers Step/Dir UART"
     lines.extend(
         [
             '<rect x="428" y="122" width="184" height="112" rx="8" fill="#111827" stroke="#38bdf8" stroke-width="1.8"/>',
@@ -1229,3 +1455,79 @@ def master_bom_to_csv(bom_items: list[MasterBomItem]) -> str:
             ]
         )
     return buf.getvalue()
+
+
+def solve_belt_center_distance(
+    z1: int,
+    z2: int,
+    pitch_mm: float = 2.0,
+    belt_teeth: int = 200,
+) -> dict:
+    """
+    Exact closed timing-belt center distance solver (GT2 / HTD):
+        L = belt_teeth * pitch_mm
+        b = 2*L - pitch_mm * (z1 + z2)
+        C = (b + sqrt(b^2 - 8 * pitch_mm^2 * (z2 - z1)^2 / pi^2)) / 8
+    """
+    z1_i = max(8, int(z1))
+    z2_i = max(8, int(z2))
+    p = max(0.5, float(pitch_mm))
+    zb = max(z1_i + z2_i + 4, int(belt_teeth))
+
+    belt_len_mm = zb * p
+    b = 2.0 * belt_len_mm - p * (z1_i + z2_i)
+    disc = (b**2) - (8.0 * (p**2) * ((z2_i - z1_i) ** 2)) / (math.pi**2)
+    valid = disc > 0.0 and b > 0.0
+    center_dist = (b + math.sqrt(max(disc, 0.0))) / 8.0 if valid else 0.0
+
+    r1_mm = (z1_i * p) / (2.0 * math.pi)
+    r2_mm = (z2_i * p) / (2.0 * math.pi)
+    if center_dist <= (r1_mm + r2_mm + 2.0):
+        valid = False
+
+    return {
+        "center_distance_mm": round(center_dist, 3),
+        "belt_length_mm": round(belt_len_mm, 2),
+        "pitch_mm": round(p, 2),
+        "z1": z1_i,
+        "z2": z2_i,
+        "belt_teeth": zb,
+        "gear_ratio": round(z2_i / float(z1_i), 3),
+        "r1_mm": round(r1_mm, 3),
+        "r2_mm": round(r2_mm, 3),
+        "valid": valid,
+    }
+
+
+def generate_lerobot_config_json(req: ModularArmRequest) -> str:
+    """
+    Generate a calibrated HuggingFace LeRobot follower-arm JSON configuration
+    for Feetech STS3215 UART half-duplex bus arms (SO-ARM100 / SO-ARM101 style).
+    """
+    slots = resolve_default_slots(req)
+    l1 = float(slots.upper_arm.length_mm) if slots.upper_arm else 135.0
+    l2 = float(slots.forearm.length_mm) if slots.forearm else 120.0
+    cfg = {
+        "schema": "roboforge_lerobot_v1",
+        "robot_type": "so100_follower_roboforge",
+        "dof": req.dof,
+        "bus_protocol": "feetech_sts3215_uart_half_duplex",
+        "baudrate": 1000000,
+        "port": "/dev/ttyACM0",
+        "geometry_mm": {
+            "base_height_mm": req.base_height_mm,
+            "upper_arm_mm": l1,
+            "forearm_mm": l2,
+            "wrist_mm": req.wrist_mm,
+        },
+        "motors": {
+            "shoulder_pan": {"id": 1, "model": "sts3215", "homing_offset": 0, "range_deg": [-150, 150]},
+            "shoulder_lift": {"id": 2, "model": "sts3215", "homing_offset": 0, "range_deg": [-60, 90]},
+            "elbow_flex": {"id": 3, "model": "sts3215", "homing_offset": 0, "range_deg": [-130, 130]},
+            "wrist_flex": {"id": 4, "model": "sts3215", "homing_offset": 0, "range_deg": [-90, 90]},
+            "wrist_roll": {"id": 5, "model": "sts3215", "homing_offset": 0, "range_deg": [-180, 180]},
+            "gripper": {"id": 6, "model": "sts3215", "homing_offset": 0, "range_deg": [0, 100]},
+        },
+        "calibration_mode": "zero_center_4096_ticks",
+    }
+    return json.dumps(cfg, indent=2, ensure_ascii=False) + "\n"

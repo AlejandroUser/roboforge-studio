@@ -21,9 +21,11 @@ from .mechatronics import (
     REDUCER_CATALOG,
     evaluate_mechatronics,
     generate_circuit_schematic_svg,
+    generate_lerobot_config_json,
     generate_wireviz_yaml,
     get_mechatronics_catalog,
     master_bom_to_csv,
+    solve_belt_center_distance,
 )
 from .mount_mechanics import (
     evaluate_mount_global_alerts,
@@ -77,5 +79,7 @@ __all__ = [
     "generate_circuit_schematic_svg",
     "generate_wireviz_yaml",
     "master_bom_to_csv",
+    "solve_belt_center_distance",
+    "generate_lerobot_config_json",
     "generate_arduino_pca9685_ino",
 ]

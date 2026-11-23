@@ -119,6 +119,102 @@
         "print_orientation": "xy_flat",
         "printer_id": "bambu_x1c"
       }
+    },
+    "pybot_scara": {
+      "id": "pybot_scara",
+      "name": "PyBot SCARA 4-DOF",
+      "subtitle": "SCARA horizontal R-R-P-R (~340 mm, eje Z lineal MGN12 + T8)",
+      "defaults": {
+        "preset": "pybot_scara",
+        "dof": 4,
+        "payload_kg": 0.5,
+        "base_height_mm": 160.0,
+        "upper_arm_mm": 150.0,
+        "forearm_mm": 140.0,
+        "wrist_mm": 50.0,
+        "link_style": "organic_ibeam",
+        "shoulder_joint_deg": 25.0,
+        "elbow_joint_deg": -45.0,
+        "wrist_joint_deg": 0.0,
+        "gear_ratio_shoulder": 6.0,
+        "gear_ratio_elbow": 6.0,
+        "max_accel_rad_s2": 22.0,
+        "material_id": "petg_cf",
+        "print_orientation": "xy_flat",
+        "printer_id": "bambu_x1c"
+      }
+    },
+    "openarm_7dof": {
+      "id": "openarm_7dof",
+      "name": "OpenArm 7-DOF QDD",
+      "subtitle": "Brazo redundante 7-DOF (~630 mm / 4.0 kg) · Damiao QDD CAN-FD",
+      "defaults": {
+        "preset": "openarm_7dof",
+        "dof": 7,
+        "payload_kg": 4.0,
+        "base_height_mm": 125.0,
+        "upper_arm_mm": 280.0,
+        "forearm_mm": 260.0,
+        "wrist_mm": 90.0,
+        "link_style": "hollow_cobot",
+        "shoulder_joint_deg": 30.0,
+        "elbow_joint_deg": -50.0,
+        "wrist_joint_deg": 20.0,
+        "gear_ratio_shoulder": 25.0,
+        "gear_ratio_elbow": 15.0,
+        "max_accel_rad_s2": 10.0,
+        "material_id": "pa12_cf",
+        "print_orientation": "xy_flat",
+        "printer_id": "voron_24"
+      }
+    },
+    "arctos_6dof": {
+      "id": "arctos_6dof",
+      "name": "Arctos 6-DOF Cicloidal",
+      "subtitle": "6-DOF open-source (~495 mm / 1.0 kg) · Reductores cicloidales + CAN",
+      "defaults": {
+        "preset": "arctos_6dof",
+        "dof": 6,
+        "payload_kg": 1.0,
+        "base_height_mm": 110.0,
+        "upper_arm_mm": 220.0,
+        "forearm_mm": 195.0,
+        "wrist_mm": 80.0,
+        "link_style": "hollow_cobot",
+        "shoulder_joint_deg": 32.0,
+        "elbow_joint_deg": -52.0,
+        "wrist_joint_deg": 20.0,
+        "gear_ratio_shoulder": 25.0,
+        "gear_ratio_elbow": 20.0,
+        "max_accel_rad_s2": 12.0,
+        "material_id": "petg_cf",
+        "print_orientation": "xy_flat",
+        "printer_id": "bambu_x1c"
+      }
+    },
+    "bcn3d_moveo": {
+      "id": "bcn3d_moveo",
+      "name": "BCN3D Moveo 5-DOF",
+      "subtitle": "Clásico educativo 5-DOF (~480 mm / 0.8 kg) · Steppers + correas GT2",
+      "defaults": {
+        "preset": "bcn3d_moveo",
+        "dof": 5,
+        "payload_kg": 0.8,
+        "base_height_mm": 105.0,
+        "upper_arm_mm": 220.0,
+        "forearm_mm": 185.0,
+        "wrist_mm": 75.0,
+        "link_style": "tapered_solid",
+        "shoulder_joint_deg": 35.0,
+        "elbow_joint_deg": -55.0,
+        "wrist_joint_deg": 20.0,
+        "gear_ratio_shoulder": 10.0,
+        "gear_ratio_elbow": 10.0,
+        "max_accel_rad_s2": 10.0,
+        "material_id": "pla_plus",
+        "print_orientation": "xy_flat",
+        "printer_id": "prusa_mk4s"
+      }
     }
   }
 }

@@ -17,6 +17,10 @@ def test_load_arm_presets_validate_against_schema():
         "so_arm_lerobot",
         "cobot_hollow_ur",
         "fabri_arm_5",
+        "pybot_scara",
+        "openarm_7dof",
+        "arctos_6dof",
+        "bcn3d_moveo",
     }
     assert set(data["presets"].keys()) == expected
     for preset_id, entry in data["presets"].items():

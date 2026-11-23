@@ -187,6 +187,11 @@ export interface ModularArmRequest {
   slots: ModularArmSlots;
   auto_fix?: boolean;
   mechatronics?: MechatronicsConfig | null;
+  // v5.0 Universal Arms
+  kinematics_type?: "articulated" | "scara";
+  z_stroke_mm?: number;
+  wrist_3dof?: boolean;
+  cnc_plate_mode?: boolean;
 }
 
 export interface CompatibilityIssue {
@@ -229,9 +234,19 @@ export interface ModularArmResponse {
   mechatronics?: MechatronicsResponse | null;
 }
 
-// v4.0: Mecatrónica Completa — Motores, Curvas Torque–RPM, Presupuesto Eléctrico y BOM Maestro
-export type BusArchitecture = "can_fd_bus" | "stm32_step_dir" | "arduino_pca9685_i2c";
-export type MotorType = "stepper" | "closed_loop_stepper" | "bldc_qdd" | "rc_servo";
+// v4.0/v5.0: Mecatrónica Completa — Motores, Curvas Torque–RPM, Presupuesto Eléctrico y BOM Maestro
+export type BusArchitecture =
+  | "can_fd_bus"
+  | "stm32_step_dir"
+  | "arduino_pca9685_i2c"
+  | "uart_serial_bus"
+  | "teensy_dm542";
+export type MotorType =
+  | "stepper"
+  | "closed_loop_stepper"
+  | "bldc_qdd"
+  | "rc_servo"
+  | "serial_bus_servo";
 
 export interface JointActuatorSpec {
   motor_id: string;
@@ -350,4 +365,34 @@ export interface MechatronicsCatalog {
   actuators: ActuatorCatalogItem[];
   reducers: ReducerCatalogItem[];
   architectures: ArchitectureCatalogItem[];
+}
+
+// v5.0: Base de Datos de Brazos Robóticos Reales
+export interface ArmDatabaseEntry {
+  id: string;
+  name: string;
+  manufacturer_or_project: string;
+  category: string;
+  kinematics_type: string;
+  dof: number;
+  reach_mm: number;
+  payload_kg: number;
+  repeatability_mm: number;
+  mass_kg: number;
+  primary_materials: string[];
+  actuators_summary: string;
+  transmission_summary: string;
+  electronics_summary: string;
+  estimated_cost_usd: number;
+  roboforge_preset_id: string | null;
+  roboforge_replicability_pct: number;
+  supported_today: string[];
+  missing_capabilities: string[];
+}
+
+export interface ArmDatabaseResponse {
+  schema_version?: string;
+  total_arms?: number;
+  average_replicability_pct?: number;
+  arms: ArmDatabaseEntry[];
 }

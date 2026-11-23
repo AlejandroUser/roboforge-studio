@@ -223,6 +223,21 @@ export const ModularArmPanel: React.FC<ModularArmPanelProps> = ({
                 BOM .CSV
               </a>
             )}
+            {result.files?.cnc_dxf && (
+              <a className="dl-link" href={result.files.cnc_dxf} download title="Placas 2.5D CNC Aluminio 6061 (.DXF)">
+                CNC .DXF
+              </a>
+            )}
+            {result.files?.lerobot_json && (
+              <a className="dl-link" href={result.files.lerobot_json} download title="Perfil calibrado HuggingFace LeRobot">
+                LeRobot .JSON
+              </a>
+            )}
+            {result.files?.firmware_ino && (
+              <a className="dl-link" href={result.files.firmware_ino} download title="Sketch Arduino UNO + PCA9685">
+                .INO
+              </a>
+            )}
           </div>
         </>
       )}

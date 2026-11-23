@@ -39,7 +39,9 @@ from .cad.exporter import (
     load_cached_mount_metadata,
 )
 from .cad.gear_variants import generate_all_gear_variants
+from .cad.hardware_parts import export_cnc_plates_dxf
 from .cad.mount_variants import generate_all_mount_variants
+from .cad.scara_assembly import export_scara_urdf
 from .cad.sdf_gyroid import generate_field_driven_gyroid
 from .cad.step_analyzer import analyze_step_file
 from .cad.variants import generate_all_variants
@@ -138,7 +140,7 @@ GEAR_VARIANT_ORDER: tuple[GearVariantKind, ...] = (
 )
 
 HASH_PATTERN = re.compile(r"^(?:[a-f0-9]{8,64}|ref_[a-f0-9]{12}|gyr_[a-f0-9]{12})$")
-FILENAME_PATTERN = re.compile(r"^[a-z0-9_]+\.(glb|step|stl|3mf|urdf|xml|csv|zip|svg|yml|ino)$")
+FILENAME_PATTERN = re.compile(r"^[a-z0-9_]+\.(glb|step|stl|3mf|urdf|xml|csv|zip|svg|yml|ino|dxf|json)$")
 
 MEDIA_TYPES: dict[str, str] = {
     ".glb": "model/gltf-binary",
@@ -152,6 +154,8 @@ MEDIA_TYPES: dict[str, str] = {
     ".svg": "image/svg+xml",
     ".yml": "text/yaml; charset=utf-8",
     ".ino": "text/plain; charset=utf-8",
+    ".dxf": "application/dxf",
+    ".json": "application/json",
 }
 
 app = FastAPI(
@@ -984,7 +988,10 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
     mujoco_path = out_dir / "arm_mujoco.xml"
     bom_csv_path = out_dir / "arm_bom.csv"
 
-    export_arm_urdf(proxy_arm_req, joints, urdf_path)
+    if getattr(effective_req, "kinematics_type", "articulated") == "scara":
+        export_scara_urdf(effective_req, joints, urdf_path)
+    else:
+        export_arm_urdf(proxy_arm_req, joints, urdf_path)
     export_arm_mujoco(proxy_arm_req, joints, mujoco_path)
     export_bom_csv(bom, bom_csv_path)
 
@@ -1041,7 +1048,24 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
         )
         zip_included_files.append(firmware_ino_path)
 
-    # Package full manufacturing kit ZIP (individual part STEP/3MF + full STEP + URDF + MuJoCo + BOM + v4.0/v4.2 Mechatronics)
+    cnc_dxf_path: Path | None = None
+    if getattr(effective_req, "cnc_plate_mode", False):
+        cnc_dxf_path = out_dir / "arm_cnc_plates.dxf"
+        export_cnc_plates_dxf(effective_req, cnc_dxf_path)
+        zip_included_files.append(cnc_dxf_path)
+
+    lerobot_json_path: Path | None = None
+    if mechatronics.bus_architecture == "uart_serial_bus":
+        from .physics.mechatronics import generate_lerobot_config_json
+
+        lerobot_json_path = out_dir / "lerobot_config.json"
+        lerobot_json_path.write_text(
+            generate_lerobot_config_json(effective_req),
+            encoding="utf-8",
+        )
+        zip_included_files.append(lerobot_json_path)
+
+    # Package full manufacturing kit ZIP (individual part STEP/3MF + full STEP + URDF + MuJoCo + BOM + v4.0/v5.0 Mechatronics)
     zip_path = build_arm_manufacturing_zip(
         out_dir=out_dir,
         included_files=zip_included_files,
@@ -1062,6 +1086,10 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
     }
     if firmware_ino_path is not None:
         files["firmware_ino"] = f"/api/files/{design_hash}/{firmware_ino_path.name}"
+    if cnc_dxf_path is not None:
+        files["cnc_dxf"] = f"/api/files/{design_hash}/{cnc_dxf_path.name}"
+    if lerobot_json_path is not None:
+        files["lerobot_json"] = f"/api/files/{design_hash}/{lerobot_json_path.name}"
 
     return ModularArmResponse(
         design_hash=design_hash,

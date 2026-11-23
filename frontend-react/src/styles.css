@@ -701,3 +701,220 @@ input[type="number"], input[type="text"], select { width: 100%; background: #090
   background: rgba(16, 185, 129, 0.25);
   color: #ffffff;
 }
+
+
+/* v5.0 Arm Database Explorer Modal */
+.btn-tool.btn-arm-db {
+  width: 100%;
+  text-align: center;
+  border-color: rgba(56, 189, 248, 0.45);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.16), rgba(167, 139, 250, 0.14));
+  color: #e0f2fe;
+  font-weight: 700;
+  padding: 7px 10px;
+}
+
+.btn-tool.btn-arm-db:hover {
+  border-color: #38bdf8;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.28), rgba(167, 139, 250, 0.24));
+  color: #ffffff;
+}
+
+.arm-db-modal-card {
+  width: min(1080px, 95vw);
+  max-height: 90vh;
+  background: #0b0f17;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.72);
+}
+
+.arm-db-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.arm-db-head h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #f8fafc;
+}
+
+.arm-db-head small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.arm-db-head strong {
+  color: #6ee7b7;
+}
+
+.arm-db-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.arm-db-filter-pill {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.7);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.arm-db-filter-pill:hover {
+  color: var(--text);
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+.arm-db-filter-pill.active {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.18);
+  color: #e0f2fe;
+}
+
+.arm-db-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(305px, 1fr));
+  gap: 12px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.arm-db-card {
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.42) 0%, #0f141e 100%);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.arm-db-card-top {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.arm-db-card-top h4 {
+  margin: 0;
+  font-size: 13.5px;
+  color: #f8fafc;
+}
+
+.arm-db-maker {
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.badge-db-tag {
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #7dd3fc;
+  font-family: var(--mono);
+  font-size: 9.5px;
+}
+
+.arm-db-rep-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.arm-db-rep-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.arm-db-rep-head strong {
+  font-family: var(--mono);
+  color: #e2e8f0;
+}
+
+.arm-db-rep-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.arm-db-rep-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.arm-db-rep-fill.good {
+  background: linear-gradient(90deg, #059669, #34d399);
+}
+
+.arm-db-rep-fill.cyan {
+  background: linear-gradient(90deg, #0284c7, #38bdf8);
+}
+
+.arm-db-rep-fill.warn {
+  background: linear-gradient(90deg, #d97706, #fbbf24);
+}
+
+.arm-db-specs {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  padding: 6px;
+  border-radius: 6px;
+  background: rgba(9, 12, 16, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.arm-db-specs small {
+  display: block;
+  font-size: 9px;
+  color: var(--muted);
+}
+
+.arm-db-specs strong {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: #f8fafc;
+}
+
+.arm-db-desc {
+  margin: 0;
+  font-size: 10.5px;
+  color: #cbd5e1;
+  line-height: 1.4;
+}
+
+.arm-db-limits {
+  font-size: 10px;
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 2px solid #f59e0b;
+  padding: 4px 7px;
+  border-radius: 4px;
+  line-height: 1.35;
+}
+
+.arm-db-card-foot {
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.arm-db-load-btn {
+  width: 100%;
+}

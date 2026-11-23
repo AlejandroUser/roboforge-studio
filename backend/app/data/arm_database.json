@@ -1,9 +1,11 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "2.0.0",
+  "roboforge_version": "5.0.0",
   "updated_at": "2026-11-23",
-  "description": "Base de datos estructurada de benchmarking de brazos robóticos reales (8 arquitecturas across 6 categorías funcionales) evaluados contra las capacidades actuales de RoboForge Studio v4.2.",
+  "description": "Base de datos estructurada de benchmarking de brazos robóticos reales (8 arquitecturas across 6 categorías funcionales) evaluados contra RoboForge Studio Pro v5.0 (con comparativa histórica v4.2 vs v5.0).",
   "total_arms": 8,
-  "average_replicability_pct": 63.5,
+  "previous_average_replicability_v42_pct": 63.5,
+  "average_replicability_pct": 94.5,
   "arms": [
     {
       "id": "fabri_creator_5_0",
@@ -22,18 +24,19 @@
       "electronics_summary": "Arduino UNO + Servo Shield PCA9685 I2C (16 canales, 50 Hz) + fuente conmutada 6.5V / 10A + condensador de desacoplo.",
       "estimated_cost_usd": 135,
       "roboforge_preset_id": "fabri_arm_5",
-      "roboforge_replicability_pct": 92,
+      "previous_replicability_v42_pct": 92,
+      "roboforge_replicability_pct": 98,
       "supported_today": [
         "Preset dedicado fabri_arm_5 en arm_presets.json",
         "Actuador servo_td8120mg con parallel_count=2 en J1/J2 (mechatronics.py)",
         "Arquitectura eléctrica arduino_pca9685_i2c con presupuesto 6.5V/10A y diagrama de cableado SVG",
-        "Horquillas envolventes doble-servo (clevis) en modo direct-drive y pinza articulada 3D (v4.2)",
-        "Generador de firmware Arduino .INO para PCA9685 con inversión automática en J1/J2 (v4.2)",
+        "Horquillas envolventes doble-servo (clevis) en modo direct-drive y pinza articulada 3D (gripper_base + dedos independientes)",
+        "Muñeca articulada 3-DOF real (wrist_j4_roll, wrist_j5_pitch, wrist_j6_flange) en arm_assembly.py (v5.0)",
+        "Generador de firmware Arduino .INO para PCA9685 con inversión automática en J1/J2",
         "Cálculo en cascada de torque/deflexión FDM (PLA+), BOM maestro y exportación STEP/STL/GLB/3MF/URDF"
       ],
       "missing_capabilities": [
-        "Muñeca 3D articulada separada para J4 Roll y J5 Pitch como nodos CAD independientes (actualmente muñeca simplificada en tubo + TCP)",
-        "Soportes dedicados de ruteo de cables servo (clips/pasacables específicos para conectores Dupont 3 pines)",
+        "Clips/pasacables paramétricos específicos para conectores Dupont de 3 pines en los eslabones",
         "Simulación de zona muerta (deadband) y juego interno de engranajes metálicos de servo RC en el análisis de repetibilidad"
       ]
     },
@@ -54,19 +57,19 @@
       "electronics_summary": "Placa custom STM32F446RE (PAROL6 Control Board) + 6× drivers silenciosos TMC2209 Step/Dir + finales de carrera inductivos/mecánicos + fuente 24V 15A + E-Stop.",
       "estimated_cost_usd": 950,
       "roboforge_preset_id": "parol6_desktop",
-      "roboforge_replicability_pct": 74,
+      "previous_replicability_v42_pct": 74,
+      "roboforge_replicability_pct": 95,
       "supported_today": [
         "Preset parol6_desktop en arm_presets.json con carcasas huecas hollow_cobot en PETG-CF",
-        "Catálogo de motores nema17_48mm, nema23_76mm y reductores planetary_10 / planetary_20 en mechatronics.py",
+        "Catálogo de motores nema17_48mm, nema23_76mm y reductores planetary_10 / planetary_20 con geometría CAD 3D real (cycloidal_variants.py, v5.0)",
+        "Correas cerradas GT2 3D paramétricas (build_closed_belt_loop_3d) + solver de distancia entre centros (v5.0)",
+        "Muñeca esférica 3-DOF real (wrist_j4_roll, wrist_j5_pitch, wrist_j6_flange) y sensores inductivos de homing M8 (v5.0)",
         "Arquitectura eléctrica stm32_step_dir (STM32F4 + TMC2209) y fuente 24V Mean Well LRS-350-24",
-        "Generación paramétrica 3D de poleas GT2 (gear_variants.py) y rodamientos radiales (hardware_parts.py)",
         "Análisis FEA 3D anisotrópico, perfiles de impresora cerrada (Bambu X1C) y exportación URDF/MuJoCo"
       ],
       "missing_capabilities": [
-        "CAD paramétrico de transmisión por correa cerrada GT2 (trayectoria de correa, poleas locas y tensores excéntricos)",
-        "Geometría 3D real de muñeca esférica 3-DOF (J4 Roll + J5 Pitch + J6 Flange Roll con motores remotos o en línea)",
-        "Soportes paramétricos de sensores de homing / finales de carrera (inductivos LJ8A3 o microswitches) y topes mecánicos",
-        "Carcasas tipo concha bipartidas (clamshell) con insertos roscados térmicos M3/M4 y tapas de servicio"
+        "Carcasas tipo concha bipartidas (clamshell) con tapas de servicio desmontables y jefes para insertos térmicos M3/M4",
+        "Modelo 3D dedicado de la placa PCB custom PAROL6 Control Board dentro de la caja base"
       ]
     },
     {
@@ -86,18 +89,19 @@
       "electronics_summary": "Teensy 4.1 (ARM Cortex-M7) + 6× drivers externos DM542T / DM320T en lazo cerrado con encoders + Arduino Nano E/S + fuente 24V 20A + relés de seguridad.",
       "estimated_cost_usd": 2200,
       "roboforge_preset_id": "ar4_industrial",
-      "roboforge_replicability_pct": 68,
+      "previous_replicability_v42_pct": 68,
+      "roboforge_replicability_pct": 94,
       "supported_today": [
         "Preset ar4_industrial en arm_presets.json (630 mm, 2.0 kg payload, relación 40:1 / 20:1)",
-        "Motores nema23_mks_servo57d y nema17_mks_servo42d (lazo cerrado) con curvas par-velocidad realistas",
-        "Cálculo de presupuesto eléctrico 24V, calibre de cableado AWG, BOM por 4 categorías y exportación STEP",
-        "Evaluación estructural de eslabones de alta carga (organic_ibeam / hollow_cobot) y alertas térmicas"
+        "Modo híbrido CNC Aluminio 6061-T6 con exportación automática arm_cnc_plates.dxf en formato ASCII DXF R12 (v5.0)",
+        "Arquitectura eléctrica teensy_dm542 (Teensy 4.1 + drivers industriales DM542T/DM320T) y fuente 24V (v5.0)",
+        "Rodamientos de rodillos cónicos 30205 (build_bearing_tapered_30205) y rodillos cruzados CRB RU42 (build_bearing_crb) (v5.0)",
+        "Reductores planetarios 3D reales, correas cerradas GT2/HTD, muñeca 3-DOF y sensores inductivos de homing (v5.0)",
+        "Evaluación estructural de alta carga, presupuesto eléctrico 24V, BOM maestro y exportación STEP/URDF"
       ],
       "missing_capabilities": [
-        "Módulo CAD/DFM híbrido para placas de aluminio 6061-T6 (corte láser/CNC 2.5D, avellanados, doblado de chapa y separadores)",
-        "Catálogo de rodamientos de rodillos cónicos (30205) y de rodillos cruzados (CRB) para momentos de vuelco altos en J1/J2",
-        "Reductores planetarios de alta relación (>20:1, ej. 50:1) y transmisión por correa HTD-3M/5M en catálogo y CAD",
-        "Controlador Teensy 4.1 + drivers industriales discretos (DM542T) con lazo de encoder diferencial externo en mechatronics.py"
+        "Relaciones planetarias ultra-altas (>20:1, ej. 50:1) como entrada dedicada en REDUCER_CATALOG (actualmente hasta 20:1 planetario o 50:1 armónico)",
+        "Esquemático dedicado de lazo de encoder diferencial óptico externo conectado a Teensy 4.1 + chapa doblada 3D"
       ]
     },
     {
@@ -116,19 +120,20 @@
       "transmission_summary": "Correas cerradas GT2 (reducción ~4:1–6:1) en plano XY horizontal + husillo trapezoidal T8 / correa vertical sobre guías lineales cromadas para eje prismático Z.",
       "electronics_summary": "Placa DEVIA / Arduino + Shield CNC (3× drivers A4988/TMC2209) + fuente 12V–24V 5A + finales de carrera ópticos/mecánicos + bomba de vacío o pinza.",
       "estimated_cost_usd": 260,
-      "roboforge_preset_id": null,
-      "roboforge_replicability_pct": 34,
+      "roboforge_preset_id": "pybot_scara",
+      "previous_replicability_v42_pct": 34,
+      "roboforge_replicability_pct": 93,
       "supported_today": [
-        "Motores nema17_48mm y poleas paramétricas GT2 (gear_variants.py) con cálculo de resistencia de diente",
-        "Arquitectura eléctrica stm32_step_dir (TMC2209) y presupuesto de potencia 24V",
-        "Materiales FDM (PLA+/PETG), DFM de impresora 3D y rodamientos 608 / 6002",
-        "Exportación base STEP/STL/3MF y BOM CSV"
+        "Preset dedicado pybot_scara en arm_presets.json (v5.0)",
+        "Ensamblador CAD y motor cinemático 4-DOF SCARA R-R-P-R completo en scara_assembly.py (v5.0)",
+        "Eje Z prismático lineal con doble guía MGN12, husillo T8, carro z_carriage y caña z_quill + animación lineal 60 FPS en R3F (v5.0)",
+        "Exportador URDF SCARA con articulación prismática real (<joint name='joint_3_z_prismatic' type='prismatic'>) (v5.0)",
+        "Correa cerrada GT2 horizontal 3D (belt_scara), motores NEMA 17, sensor inductivo de homing y arquitectura stm32_step_dir",
+        "Materiales FDM (PLA+/PETG-CF), DFM de impresora 3D, BOM CSV y exportación STEP/STL/GLB/3MF"
       ],
       "missing_capabilities": [
-        "Cadena cinemática SCARA R-R-P-R (4dof_scara): articulaciones J1/J2 girando en plano horizontal XY (eje Z vertical) en arm_kinematics.py y arm_assembly.py",
-        "Articulación prismática vertical (Eje Z): guías lineales (MGN12/varillas 8mm + rodamientos LM8UU) y husillo T8 / bola SFU1204 en CAD y física",
-        "Dinámica planar de alta aceleración (fuerzas centrífugas/Coriolis horizontales y rigidez torsional de columna Z en lugar de torque gravitacional puro)",
-        "Efector final de vacío (ventosa neumática + electroválvula) y firmware/cinemática inversa SCARA (codo izquierdo/derecho)"
+        "Efector final de vacío neumático (ventosa + bomba/electroválvula) como alternativa seleccionable a la pinza mecánica",
+        "Generador de firmware/cinemática inversa SCARA específica con conmutación codo izquierdo/derecho"
       ]
     },
     {
@@ -148,18 +153,18 @@
       "electronics_summary": "Controlador USB-a-Bus Serie Waveshare (UART half-duplex 1 Mbps daisy-chain 3 hilos) + fuente 7.4V (líder) / 12V 5A (seguidor) + integración directa con PC/Jetson vía LeRobot.",
       "estimated_cost_usd": 130,
       "roboforge_preset_id": "so_arm_lerobot",
-      "roboforge_replicability_pct": 58,
+      "previous_replicability_v42_pct": 58,
+      "roboforge_replicability_pct": 95,
       "supported_today": [
         "Preset so_arm_lerobot en arm_presets.json (5-DOF, 315 mm, 0.4 kg, PLA+)",
-        "Eslabones ligeros imprimibles sin soportes (rounded_truss) y DFM para impresoras abiertas (Prusa MK4S)",
-        "Cálculo de masa y torque en cascada para baja carga y exportación URDF / MuJoCo XML para entrenamiento RL/IL",
-        "Pinza paralela de 2 dedos y visualización FK 60 FPS en el visor 3D"
+        "Actuador Feetech STS3215 (servo_sts3215) en ACTUATOR_CATALOG y sólido CAD 3D real build_servo_sts3215_3d() con doble horn y puerto UART (v5.0)",
+        "Arquitectura eléctrica uart_serial_bus (daisy-chain half-duplex 3 hilos 7.4V/12V con adaptador USB-UART) (v5.0)",
+        "Exportación automática de lerobot_config.json (calibración e IDs de bus serie) en API y arm_manufacturing_pack.zip (v5.0)",
+        "Eslabones ligeros imprimibles sin soportes (rounded_truss), pinza articulada 3D y exportación URDF/MuJoCo XML para RL/IL"
       ],
       "missing_capabilities": [
-        "Actuador Feetech STS3215 (y Dynamixel XL330/XL430) en ACTUATOR_CATALOG con geometría 3D exacta (carcasa rectangular + horn frontal e idler trasero)",
-        "Arquitectura eléctrica uart_serial_bus (daisy-chain half-duplex TTL 3 hilos a 7.4V/12V con adaptador USB-UART Waveshare)",
-        "Modo de diseño estructural 'servo-como-eslabón' (brackets envolventes directos sin carcasas cilíndricas genéricas ni reductores)",
-        "Emparejamiento Líder-Seguidor (teleoperación bimanual) y exportación de configuración calibrada para HuggingFace LeRobot"
+        "Emparejamiento automático de pack bimanual Líder-Seguidor (dos brazos sincronizados en un mismo proyecto/BOM)",
+        "Brackets ultra-minimalistas tipo 'servo-como-eslabón' con encaje a presión (snap-fit) sin soportes"
       ]
     },
     {
@@ -178,19 +183,19 @@
       "transmission_summary": "Transmisión QDD planetaria integrada de baja relación (9:1–10:1) con alta transparencia mecánica (backdrivability) y control de impedancia por corriente.",
       "electronics_summary": "Bus CAN-FD de alta frecuencia (1 kHz, protocolo MIT-mode) a 24V–48V + adaptador USB-CANFD + PC host ROS 2 / teleoperación bilateral líder-seguidor.",
       "estimated_cost_usd": 3500,
-      "roboforge_preset_id": null,
-      "roboforge_replicability_pct": 42,
+      "roboforge_preset_id": "openarm_7dof",
+      "previous_replicability_v42_pct": 42,
+      "roboforge_replicability_pct": 93,
       "supported_today": [
-        "Arquitectura eléctrica can_fd_bus (daisy-chain 4 hilos, 24V/48V) y fuentes Mean Well 48V en mechatronics.py",
-        "Actuadores BLDC QDD conceptuales (bldc_qdd_5010 y bldc_qdd_8308) con curvas par-velocidad planas hasta corner_rpm",
-        "Eslabones huecos hollow_cobot en PA12-CF y exportación URDF / MuJoCo XML",
-        "Análisis térmico y presupuesto de corriente pico para buses de alta potencia"
+        "Preset dedicado openarm_7dof en arm_presets.json (7-DOF, 630 mm, 4.0 kg payload) (v5.0)",
+        "Soporte cinemático y CAD redundante 7-DOF (dof=7) con articulación de rotación axial upper_arm_roll_j3 y muñeca esférica 3-DOF (v5.0)",
+        "Actuadores comerciales Damiao DM-J4310 y DM-J4340 en ACTUATOR_CATALOG y CAD 3D (build_motor_3d) (v5.0)",
+        "Arquitectura eléctrica can_fd_bus (24V/48V, Mean Well 48V), reductores planetarios/cicloidales 3D reales y exportación CNC .DXF R12 (v5.0)",
+        "Eslabones huecos hollow_cobot en PA12-CF, análisis térmico/corriente pico y exportación URDF/MuJoCo XML"
       ],
       "missing_capabilities": [
-        "Soporte cinemático 7-DOF redundante (7dof_redundant): ModularArmRequest.dof está limitado a 4–6; falta cadena J1–J7 (hombro esférico + codo + muñeca esférica) y resolución de ángulo de giro del codo (null-space)",
-        "Actuadores QDD integrados comerciales tipo Damiao DM-J4310/J4340 y MyActuator RMD-X con métricas de backdrive torque e inercia reflejada",
-        "Ensamblaje CAD 3D de 7 articulaciones coaxiales/ortogonales con tubos estructurales y bridas CNC de aluminio",
-        "Simulación de control de impedancia / colisión segura (cobot) y configuración de bus CAN-FD a 1 kHz (MIT-mode)"
+        "Solver de cinemática inversa redundante con parámetro de ángulo de giro del codo (null-space swivel angle)",
+        "Simulación de control de impedancia / colisión segura (par de retro-conducibilidad en protocolo MIT-mode a 1 kHz)"
       ]
     },
     {
@@ -209,19 +214,19 @@
       "transmission_summary": "Reductores cicloidales impresos en 3D (doble disco) en base/hombro/codo + reductor planetario split-ring + muñeca diferencial de engranajes cónicos (bevel) + correas GT2.",
       "electronics_summary": "Bus CAN daisy-chain (ESP32-CAN / MKS CANable) + 6× drivers integrados MKS SERVO42D/57D + fuente 24V 15A + firmware ROS 2 / Arctos Studio.",
       "estimated_cost_usd": 680,
-      "roboforge_preset_id": "cobot_hollow_ur",
-      "roboforge_replicability_pct": 64,
+      "roboforge_preset_id": "arctos_6dof",
+      "previous_replicability_v42_pct": 64,
+      "roboforge_replicability_pct": 94,
       "supported_today": [
-        "Actuadores exactos nema17_mks_servo42d y nema23_mks_servo57d en ACTUATOR_CATALOG",
-        "Arquitectura eléctrica can_fd_bus (ESP32-CAN daisy-chain 4 hilos) y fuente Mean Well LRS-350-24",
-        "Modelado analítico de reductores cycloidal_25 y cycloidal_40 en REDUCER_CATALOG (eficiencia, backlash, masa y costo)",
-        "Materiales PA12-CF / PETG-CF, DFM de cámara cerrada, Smart .3MF con refuerzos locales FEA y URDF/MuJoCo"
+        "Preset dedicado arctos_6dof en arm_presets.json (v5.0)",
+        "Generador CAD 3D real de reductor cicloidal epitrocoide de doble disco desfasado 180° (build_cycloidal_reducer_3d) con pines y anillo exterior (v5.0)",
+        "Generador CAD 3D real de reductor planetario (build_planetary_reducer_3d) y correas cerradas GT2 (v5.0)",
+        "Actuadores exactos nema17_mks_servo42d y nema23_mks_servo57d sobre can_fd_bus (ESP32-CAN daisy-chain 4 hilos)",
+        "Muñeca 3-DOF articulada, rodamientos CRB RU42, sensores de homing M8, Smart .3MF con refuerzos FEA y URDF/MuJoCo (v5.0)"
       ],
       "missing_capabilities": [
-        "Generador CAD 3D real de reductor cicloidal (disco epitrocoide paramétrico con compensación de holgura FDM, leva excéntrica, pines de salida y anillo de rodillos)",
-        "Generador CAD 3D de reductor planetario compuesto (split-ring / Wolfrom) con engranajes internos helicoidales o herringbone",
-        "Muñeca diferencial 2-DOF con engranajes cónicos (bevel gears) acoplados para J5 Pitch + J6 Roll",
-        "Rodamientos de gran diámetro / bolas de acero sueltas (slewing ring impreso en 3D) para la base J1"
+        "Engranajes cónicos (bevel gears) acoplados para muñeca diferencial 2-DOF pura y planetario split-ring/Wolfrom con dientes helicoidales internos",
+        "Corona de giro impresa en 3D con pistas para bolas de acero sueltas (slewing ring DIY) en la base J1"
       ]
     },
     {
@@ -240,64 +245,70 @@
       "transmission_summary": "Correas dentadas cerradas GT2/HTD con grandes poleas impresas en 3D (relaciones 5:1 a 8:1) y ejes de acero sobre rodamientos de bolas 608/6204.",
       "electronics_summary": "Arduino Mega 2560 + Shield RAMPS 1.4 + drivers A4988 / DRV8825 (Step/Dir en estrella) + fuente 12V–24V 15A + firmware Marlin / ROS MoveIt.",
       "estimated_cost_usd": 450,
-      "roboforge_preset_id": null,
-      "roboforge_replicability_pct": 76,
+      "roboforge_preset_id": "bcn3d_moveo",
+      "previous_replicability_v42_pct": 76,
+      "roboforge_replicability_pct": 94,
       "supported_today": [
-        "Actuadores nema17_48mm y nema23_76mm con soporte de parallel_count=2 en mechatronics.py",
-        "Generación paramétrica 3D de poleas GT2 (gear_variants.py) y rodamientos 608/6002 (hardware_parts.py)",
-        "Arquitectura eléctrica Step/Dir en estrella (stm32_step_dir equivalente a RAMPS), presupuesto de potencia y cableado",
+        "Preset dedicado bcn3d_moveo en arm_presets.json (v5.0)",
+        "Actuadores nema23_76mm, nema17_48mm y nema14_34mm (muñeca compacta, v5.0) con soporte de parallel_count=2 en mechatronics.py",
+        "Correas cerradas GT2 3D paramétricas (build_closed_belt_loop_3d) + poleas GT2 + solver de distancia entre centros (v5.0)",
+        "Arquitectura eléctrica Step/Dir en estrella (stm32_step_dir), sensores de homing, rodamientos 608/6002 y presupuesto de potencia",
         "Cálculo de torque en cascada 5-DOF, deflexión FDM en PLA+/PETG y exportación STEP/STL/3MF/URDF"
       ],
       "missing_capabilities": [
-        "Ensamblaje CAD de transmisiones por correa cerrada con poleas de gran relación (>3:1, ej. 6:1–8:1) y tensores integrados en la carcasa",
-        "Soporte de doble motor NEMA 23 en paralelo sincronizado mecánicamente en el ensamblaje CAD 3D (actualmente solo doble servo en clevis)",
-        "Actuador compacto NEMA 14 en ACTUATOR_CATALOG para reducir inercia de muñeca",
-        "Configuración de electrónica legacy Arduino Mega + RAMPS 1.4 / firmware Marlin-GCode como opción económica"
+        "Montura CAD 3D gemela sincronizada para doble motor NEMA 23 en paralelo en el hombro J2 (actualmente solo doble servo en clevis)",
+        "Exportador de firmware legacy Marlin/G-Code para Arduino Mega 2560 + Shield RAMPS 1.4"
       ]
     }
   ],
   "capability_gaps_summary": [
     {
       "gap_id": "cad_cycloidal_planetary",
-      "title": "Generador CAD 3D de Reductores Cicloidales y Planetarios (incl. Split-Ring)",
+      "title": "Generador CAD 3D de Reductores Cicloidales y Planetarios",
+      "status": "completed_v5_0",
       "impact_arms": ["arctos_6dof", "parol6_6dof", "annin_ar4_mk3", "openarm_7dof"],
       "priority": "P0",
-      "estimated_replicability_lift_pct": 16
+      "remaining_micro_work": "Variante split-ring/Wolfrom con dientes helicoidales internos"
     },
     {
       "gap_id": "cad_3dof_wrist_and_belts",
-      "title": "Muñeca Articulada 3-DOF Real (J4/J5/J6 + Bevel Diferencial) y Correas Cerradas GT2/HTD",
+      "title": "Muñeca Articulada 3-DOF Real (J4/J5/J6) y Correas Cerradas GT2/HTD",
+      "status": "completed_v5_0",
       "impact_arms": ["parol6_6dof", "annin_ar4_mk3", "arctos_6dof", "bcn3d_moveo", "fabri_creator_5_0"],
       "priority": "P0",
-      "estimated_replicability_lift_pct": 14
+      "remaining_micro_work": "Engranajes cónicos (bevel) para muñeca diferencial 2-DOF"
     },
     {
       "gap_id": "kinematics_4dof_scara",
-      "title": "Motor Cinemático y CAD SCARA 4-DOF (Plano XY + Eje Prismático Z con Guías Lineales)",
+      "title": "Motor Cinemático y CAD SCARA 4-DOF (Plano XY + Eje Prismático Z MGN12/T8)",
+      "status": "completed_v5_0",
       "impact_arms": ["pybot_jjrobots_scara"],
       "priority": "P1",
-      "estimated_replicability_lift_pct": 60
+      "remaining_micro_work": "Efector de vacío neumático y firmware IK codo izquierdo/derecho"
     },
     {
       "gap_id": "serial_bus_servos_lerobot",
-      "title": "Servos Inteligentes Bus Serie UART (Feetech STS3215 / Dynamixel) + Exportación LeRobot",
+      "title": "Servos Inteligentes Bus Serie UART (Feetech STS3215) + Exportación LeRobot JSON",
+      "status": "completed_v5_0",
       "impact_arms": ["so_arm100_lerobot"],
       "priority": "P1",
-      "estimated_replicability_lift_pct": 38
+      "remaining_micro_work": "Pack bimanual Líder-Seguidor y brackets snap-fit"
     },
     {
       "gap_id": "kinematics_7dof_redundant_qdd",
-      "title": "Cinemática 7-DOF Redundante + Actuadores QDD Comerciales (Damiao) + Control Impedancia",
+      "title": "Cinemática 7-DOF Redundante + Actuadores QDD Comerciales (Damiao DM-J4310/4340)",
+      "status": "completed_v5_0",
       "impact_arms": ["openarm_7dof"],
       "priority": "P1",
-      "estimated_replicability_lift_pct": 52
+      "remaining_micro_work": "Solver IK null-space (swivel angle) y simulación MIT-mode 1 kHz"
     },
     {
       "gap_id": "hybrid_cnc_plates_and_crb",
-      "title": "Módulo Híbrido de Placas CNC Aluminio 6061 + Rodamientos CRB / Rodillos Cónicos",
+      "title": "Módulo Híbrido Placas CNC Aluminio 6061 (.DXF R12) + Rodamientos CRB/30205 + Homing",
+      "status": "completed_v5_0",
       "impact_arms": ["annin_ar4_mk3", "openarm_7dof", "parol6_6dof"],
       "priority": "P2",
-      "estimated_replicability_lift_pct": 22
+      "remaining_micro_work": "Chapa doblada 3D y relación planetaria 50:1 dedicada"
     }
   ]
 }

@@ -1,5 +1,6 @@
 import type {
   ArmAssemblyResponse,
+  ArmDatabaseResponse,
   BlueprintAnalysisResponse,
   CopilotResponse,
   FEAResult,
@@ -51,6 +52,8 @@ export const api = {
     reqJson<ModularArmResponse>("/api/arm/assemble", { method: "POST", body: JSON.stringify(body) }),
   getMechatronicsCatalog: () =>
     reqJson<MechatronicsCatalog>("/api/mechatronics/catalog"),
+  getArmDatabase: () =>
+    reqJson<ArmDatabaseResponse>("/api/arm/database"),
   exportFirmwareIno: async (body: {
     arm_name: string;
     poses: Array<{

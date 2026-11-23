@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
+from typing import Any
 
 from build123d import (
     Box,
     BuildPart,
     BuildSketch,
+    Circle,
     Compound,
+    Cone,
     Cylinder,
     Location,
     Locations,
@@ -150,8 +154,40 @@ def build_motor_3d(motor_id: str = "nema17_48mm") -> Part:
 
     mid = (motor_id or "nema17_48mm").lower()
 
+    if "sts3215" in mid:
+        return build_servo_sts3215_3d()
+
     if "servo_td" in mid or "servo_ds" in mid or "mg996" in mid:
         return build_servo_3d(motor_id)
+
+    if "nema14" in mid:
+        return _build_nema_body(
+            side_mm=35.2,
+            length_mm=34.0,
+            pilot_d=22.0,
+            pilot_h=2.0,
+            shaft_d=5.0,
+            shaft_len=18.0,
+            has_encoder_cap=False,
+        )
+
+    if "damiao" in mid and "4340" in mid:
+        body = Location((0.0, 0.0, -23.0)) * Cylinder(radius=39.0, height=46.0)
+        collar = Location((0.0, 0.0, -5.0)) * Cylinder(radius=41.0, height=10.0)
+        pilot = Location((0.0, 0.0, 1.5)) * Cylinder(radius=22.0, height=3.0)
+        shaft = Location((0.0, 0.0, 7.0)) * Cylinder(radius=8.0, height=14.0)
+        motor = body + collar + pilot + shaft
+        _HARDWARE_CACHE[cache_key] = motor
+        return motor
+
+    if "damiao" in mid or "4310" in mid:
+        body = Location((0.0, 0.0, -18.0)) * Cylinder(radius=28.0, height=36.0)
+        collar = Location((0.0, 0.0, -4.0)) * Cylinder(radius=29.5, height=8.0)
+        pilot = Location((0.0, 0.0, 1.5)) * Cylinder(radius=16.0, height=3.0)
+        shaft = Location((0.0, 0.0, 6.0)) * Cylinder(radius=6.0, height=12.0)
+        motor = body + collar + pilot + shaft
+        _HARDWARE_CACHE[cache_key] = motor
+        return motor
 
     if "nema23" in mid:
         motor = _build_nema_body(
@@ -426,4 +462,236 @@ def build_gripper_3d() -> Part:
     gripper = base + left + right
     _HARDWARE_CACHE[cache_key] = gripper
     return gripper
+
+
+def build_bearing_crb() -> Part:
+    """Build a Crossed Roller Bearing RU42 (ID 20 mm, OD 70 mm, W 12 mm) with mounting bolt circles."""
+    cache_key = "bearing_crb:ru42"
+    if cache_key in _HARDWARE_CACHE:
+        return _HARDWARE_CACHE[cache_key]
+
+    r_in, r_out, w = 10.0, 35.0, 12.0
+    outer_ring = Cylinder(radius=r_out, height=w) - Cylinder(radius=23.5, height=w + 2.0)
+    inner_ring = Cylinder(radius=22.0, height=w) - Cylinder(radius=r_in, height=w + 2.0)
+    seal = Cylinder(radius=23.8, height=w - 2.0) - Cylinder(radius=21.7, height=w)
+    crb = outer_ring + inner_ring + seal
+
+    # 6×M4 mounting holes on outer ring (PCD 60 mm) and inner ring (PCD 30 mm)
+    for k in range(6):
+        ang = (2.0 * math.pi * k) / 6.0
+        for pcd_r in (30.0, 15.0):
+            hole = Location((pcd_r * math.cos(ang), pcd_r * math.sin(ang), 0.0)) * Cylinder(
+                radius=2.2, height=w + 4.0
+            )
+            try:
+                crb = crb - hole
+            except Exception:
+                pass
+
+    _HARDWARE_CACHE[cache_key] = crb
+    return crb
+
+
+def build_bearing_tapered_30205() -> Part:
+    """Build a tapered roller bearing 30205 (ID 25 mm, OD 52 mm, W 16.25 mm)."""
+    cache_key = "bearing_tapered:30205"
+    if cache_key in _HARDWARE_CACHE:
+        return _HARDWARE_CACHE[cache_key]
+
+    r_in, r_out, w = 12.5, 26.0, 16.25
+    outer_cup = Cylinder(radius=r_out, height=w) - Cylinder(radius=22.0, height=w + 2.0)
+    inner_cone = Cylinder(radius=16.5, height=w) - Cylinder(radius=r_in, height=w + 2.0)
+    cage = Location((0.0, 0.0, -w * 0.4)) * Cone(
+        bottom_radius=21.8, top_radius=19.2, height=w * 0.8
+    ) - Cylinder(radius=16.0, height=w + 2.0)
+    bearing = outer_cup + inner_cone + cage
+
+    _HARDWARE_CACHE[cache_key] = bearing
+    return bearing
+
+
+def build_homing_sensor() -> Part:
+    """Build an M8 inductive proximity homing sensor (Ø8 × 32 mm barrel + dual hex locknuts + LED cap)."""
+    cache_key = "homing_sensor:m8"
+    if cache_key in _HARDWARE_CACHE:
+        return _HARDWARE_CACHE[cache_key]
+
+    barrel = Cylinder(radius=4.0, height=30.0)
+    tip = Location((0.0, 0.0, 16.0)) * Cylinder(radius=3.6, height=3.0)
+    led_cap = Location((0.0, 0.0, -16.5)) * Cylinder(radius=4.4, height=4.0)
+
+    with BuildSketch(Plane.XY) as nut_sk:
+        RegularPolygon(radius=6.8, side_count=6)
+    nut_face = nut_sk.sketch.faces()[0]
+    with BuildPart() as n1_bp:
+        extrude(nut_face.moved(Location((0.0, 0.0, 4.0))), amount=3.2)
+    with BuildPart() as n2_bp:
+        extrude(nut_face.moved(Location((0.0, 0.0, -6.0))), amount=3.2)
+
+    sensor = barrel + tip + led_cap + n1_bp.part + n2_bp.part
+    _HARDWARE_CACHE[cache_key] = sensor
+    return sensor
+
+
+def build_servo_sts3215_3d() -> Part:
+    """Build a Feetech STS3215 serial bus servo (45.2 × 24.7 × 35 mm) with dual front/rear structural horns."""
+    cache_key = "servo:sts3215"
+    if cache_key in _HARDWARE_CACHE:
+        return _HARDWARE_CACHE[cache_key]
+
+    # Body offset +11 mm in X so front output spline is centered at (0, 0)
+    with BuildSketch(Plane.XY) as body_sk:
+        with Locations((11.0, 0.0)):
+            RectangleRounded(45.2, 24.7, radius=2.0)
+    with BuildPart() as body_bp:
+        extrude(body_sk.sketch.faces()[0].moved(Location((0.0, 0.0, -35.0))), amount=35.0)
+
+    # Front output spline horn (+Z) and rear structural idler horn (-Z)
+    front_horn = Location((0.0, 0.0, 2.5)) * Cylinder(radius=9.5, height=5.0)
+    rear_horn = Location((0.0, 0.0, -37.5)) * Cylinder(radius=9.5, height=5.0)
+
+    # 3-pin UART serial bus connector boss on back edge (+X)
+    bus_port = Location((34.5, 0.0, -18.0)) * Box(4.5, 11.0, 8.0)
+
+    servo = body_bp.part + front_horn + rear_horn + bus_port
+    _HARDWARE_CACHE[cache_key] = servo
+    return servo
+
+
+def build_wrist_3dof_parts() -> tuple[Part, Part, Part]:
+    """Build a realistic 3-DOF articulated wrist (J4 Roll, J5 Pitch, J6 Tool Flange) along +X.
+    Returns (wrist_j4_roll, wrist_j5_pitch, wrist_j6_flange) with origin at J4 entry (0, 0, 0).
+    """
+    keys = ("wrist3:j4", "wrist3:j5", "wrist3:j6")
+    if all(k in _HARDWARE_CACHE for k in keys):
+        return (
+            _HARDWARE_CACHE[keys[0]],
+            _HARDWARE_CACHE[keys[1]],
+            _HARDWARE_CACHE[keys[2]],
+        )
+
+    # J4 Roll housing (x = 0..28 mm)
+    j4_tube = Location((14.0, 0.0, 0.0), (0.0, 90.0, 0.0)) * Cylinder(radius=15.0, height=28.0)
+    j4_ring = Location((26.0, 0.0, 0.0), (0.0, 90.0, 0.0)) * Cylinder(radius=17.5, height=6.0)
+    wrist_j4_roll = j4_tube + j4_ring
+
+    # J5 Pitch clevis & pivot housing (x = 28..58 mm)
+    j5_base = Location((36.0, 0.0, 0.0)) * Box(16.0, 28.0, 24.0)
+    j5_pivot = Location((48.0, 0.0, 0.0), (90.0, 0.0, 0.0)) * Cylinder(radius=13.0, height=30.0)
+    j5_neck = Location((56.0, 0.0, 0.0), (0.0, 90.0, 0.0)) * Cylinder(radius=11.0, height=16.0)
+    wrist_j5_pitch = j5_base + j5_pivot + j5_neck
+
+    # J6 ISO 4-bolt rotating tool flange (x = 64..74 mm)
+    j6_disc = Location((69.0, 0.0, 0.0), (0.0, 90.0, 0.0)) * Cylinder(radius=19.0, height=9.0)
+    for k in range(4):
+        ang = math.pi / 4.0 + k * (math.pi / 2.0)
+        hy = 13.0 * math.cos(ang)
+        hz = 13.0 * math.sin(ang)
+        bolt = Location((69.0, hy, hz), (0.0, 90.0, 0.0)) * Cylinder(radius=2.2, height=14.0)
+        try:
+            j6_disc = j6_disc - bolt
+        except Exception:
+            pass
+    wrist_j6_flange = j6_disc
+
+    _HARDWARE_CACHE[keys[0]] = wrist_j4_roll
+    _HARDWARE_CACHE[keys[1]] = wrist_j5_pitch
+    _HARDWARE_CACHE[keys[2]] = wrist_j6_flange
+    return wrist_j4_roll, wrist_j5_pitch, wrist_j6_flange
+
+
+def export_cnc_plates_dxf(req: Any, output_path: Path) -> Path:
+    """Generate a valid ASCII DXF R12 file with 2.5D Aluminum 6061-T6 side-plate profiles and bore circles."""
+    slots = getattr(req, "slots", None)
+    upper = getattr(slots, "upper_arm", None) if slots else None
+    forearm = getattr(slots, "forearm", None) if slots else None
+
+    l1 = float(getattr(upper, "length_mm", 200.0) if upper else 200.0)
+    r1_a = float(getattr(upper.root_end, "outer_diameter_mm", 46.0) / 2.0) if upper else 23.0
+    r1_b = float(getattr(upper.tip_end, "outer_diameter_mm", 34.0) / 2.0) if upper else 17.0
+    b1_a = float(getattr(upper.root_end, "bore_diameter_mm", 22.0) / 2.0) if upper else 11.0
+    b1_b = float(getattr(upper.tip_end, "bore_diameter_mm", 16.0) / 2.0) if upper else 8.0
+
+    l2 = float(getattr(forearm, "length_mm", 170.0) if forearm else 170.0)
+    r2_a = float(getattr(forearm.root_end, "outer_diameter_mm", 36.0) / 2.0) if forearm else 18.0
+    r2_b = float(getattr(forearm.tip_end, "outer_diameter_mm", 28.0) / 2.0) if forearm else 14.0
+    b2_a = float(getattr(forearm.root_end, "bore_diameter_mm", 16.0) / 2.0) if forearm else 8.0
+    b2_b = float(getattr(forearm.tip_end, "bore_diameter_mm", 12.0) / 2.0) if forearm else 6.0
+
+    entities: list[str] = []
+
+    def _dxf_line(x1: float, y1: float, x2: float, y2: float, layer: str = "OUTLINE") -> None:
+        entities.extend(
+            [
+                "0", "LINE",
+                "8", layer,
+                "10", f"{x1:.4f}", "20", f"{y1:.4f}", "30", "0.0",
+                "11", f"{x2:.4f}", "21", f"{y2:.4f}", "31", "0.0",
+            ]
+        )
+
+    def _dxf_circle(cx: float, cy: float, r: float, layer: str = "HOLES") -> None:
+        entities.extend(
+            [
+                "0", "CIRCLE",
+                "8", layer,
+                "10", f"{cx:.4f}", "20", f"{cy:.4f}", "30", "0.0",
+                "40", f"{r:.4f}",
+            ]
+        )
+
+    def _dxf_arc(cx: float, cy: float, r: float, a0: float, a1: float, layer: str = "OUTLINE") -> None:
+        entities.extend(
+            [
+                "0", "ARC",
+                "8", layer,
+                "10", f"{cx:.4f}", "20", f"{cy:.4f}", "30", "0.0",
+                "40", f"{r:.4f}",
+                "50", f"{a0:.4f}",
+                "51", f"{a1:.4f}",
+            ]
+        )
+
+    def _emit_plate(y_off: float, length: float, ra: float, rb: float, ba: float, bb: float) -> None:
+        # Outer tapered plate boundary (two semicircular arcs + top/bottom tangent lines)
+        _dxf_arc(0.0, y_off, ra, 90.0, 270.0)
+        _dxf_arc(length, y_off, rb, 270.0, 90.0)
+        _dxf_line(0.0, y_off + ra, length, y_off + rb)
+        _dxf_line(0.0, y_off - ra, length, y_off - rb)
+        # Main bores
+        _dxf_circle(0.0, y_off, ba, "BORES")
+        _dxf_circle(length, y_off, bb, "BORES")
+        # 4×M4 mounting bolt circles on root boss
+        pcd_r = (ra + ba) * 0.5
+        for k in range(4):
+            ang = math.pi / 4.0 + k * (math.pi / 2.0)
+            _dxf_circle(pcd_r * math.cos(ang), y_off + pcd_r * math.sin(ang), 2.15, "HOLES")
+        # Central lightening holes along plate neutral axis
+        for frac in (0.35, 0.55, 0.72):
+            cx = length * frac
+            r_local = ra + (rb - ra) * frac
+            r_cut = max(3.5, r_local * 0.42)
+            _dxf_circle(cx, y_off, r_cut, "POCKETS")
+
+    # Plate 1: Upper Arm CNC Side Plate (Al 6061-T6)
+    _emit_plate(0.0, l1, r1_a, r1_b, b1_a, b1_b)
+    # Plate 2: Forearm CNC Side Plate (offset in Y by +85 mm for clean nesting)
+    _emit_plate(max(85.0, r1_a + r2_a + 25.0), l2, r2_a, r2_b, b2_a, b2_b)
+
+    dxf_lines = [
+        "0", "SECTION",
+        "2", "HEADER",
+        "9", "$ACADVER", "1", "AC1009",
+        "9", "$INSUNITS", "70", "4",
+        "0", "ENDSEC",
+        "0", "SECTION",
+        "2", "ENTITIES",
+        *entities,
+        "0", "ENDSEC",
+        "0", "EOF",
+    ]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(dxf_lines) + "\n", encoding="utf-8")
+    return output_path
+
 

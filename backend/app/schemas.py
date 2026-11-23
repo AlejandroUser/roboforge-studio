@@ -335,19 +335,23 @@ class CustomMaterialCreate(BaseModel):
     notes: str = ""
 
 
-# Hito 5: Cadena Cinemática Multi-Eslabón (Brazo Completo) + URDF/MuJoCo + BOM
+# Hito 5 + v5.0: Cadena Cinemática Multi-Eslabón (Brazo Completo 4–7 DOF + SCARA) + URDF/MuJoCo + BOM
 ArmPresetType = Literal[
     "parol6_desktop",
     "ar4_industrial",
     "so_arm_lerobot",
     "cobot_hollow_ur",
     "fabri_arm_5",
+    "pybot_scara",
+    "openarm_7dof",
+    "arctos_6dof",
+    "bcn3d_moveo",
 ]
 
 
 class ArmAssemblyRequest(BaseModel):
     preset: ArmPresetType = "parol6_desktop"
-    dof: int = Field(6, ge=4, le=6)
+    dof: int = Field(6, ge=4, le=7)
     payload_kg: float = Field(1.0, ge=0.1, le=8.0)
     base_height_mm: float = Field(95.0, ge=50.0, le=200.0)
     upper_arm_mm: float = Field(200.0, ge=100.0, le=400.0)
@@ -491,7 +495,11 @@ class ModularArmSlots(BaseModel):
 
 
 class ModularArmRequest(BaseModel):
-    dof: int = Field(6, ge=4, le=6)
+    dof: int = Field(6, ge=4, le=7)
+    kinematics_type: Literal["articulated", "scara"] = "articulated"
+    z_stroke_mm: float = Field(default=120.0, ge=40.0, le=300.0)
+    wrist_3dof: bool = True
+    cnc_plate_mode: bool = False
     payload_kg: float = Field(1.0, ge=0.1, le=8.0)
     material_id: str = "petg_cf"
     printer_id: Optional[str] = "bambu_x1c"
@@ -548,8 +556,14 @@ class ModularArmResponse(BaseModel):
     mechatronics: Optional["MechatronicsResponse"] = None
 
 
-# v4.0 + v4.1: Mecatrónica Completa — Motores, Servos Paralelos, Curvas Torque–RPM, Presupuesto Eléctrico y BOM Maestro
-BusArchitectureType = Literal["can_fd_bus", "stm32_step_dir", "arduino_pca9685_i2c"]
+# v4.0 + v4.1 + v5.0: Mecatrónica Universal — Motores, Servos Bus UART, Teensy DM542T, Curvas Torque–RPM y BOM Maestro
+BusArchitectureType = Literal[
+    "can_fd_bus",
+    "stm32_step_dir",
+    "arduino_pca9685_i2c",
+    "uart_serial_bus",
+    "teensy_dm542",
+]
 
 
 class JointActuatorSpec(BaseModel):
@@ -576,7 +590,13 @@ class JointMechatronicsReport(BaseModel):
     joint_name: str
     motor_id: str
     motor_name: str
-    motor_type: Literal["stepper", "closed_loop_stepper", "bldc_qdd", "rc_servo"]
+    motor_type: Literal[
+        "stepper",
+        "closed_loop_stepper",
+        "bldc_qdd",
+        "rc_servo",
+        "serial_bus_servo",
+    ]
     parallel_count: int = 1
     reducer_id: str
     reducer_name: str

@@ -29,17 +29,25 @@ from ..schemas import (
     LinkDesignRequest,
     ModularArmRequest,
 )
+from .cycloidal_variants import (
+    build_cycloidal_reducer_3d,
+    build_planetary_reducer_3d,
+)
 from .gear_variants import _build_gear_solid, _build_gear_spoked, _build_gear_webbed
 from .hardware_parts import (
     build_ball_bearing,
+    build_bearing_crb,
+    build_bearing_tapered_30205,
     build_controller_box,
     build_dual_servo_clevis,
     build_gripper_3d,
     build_gripper_parts,
+    build_homing_sensor,
     build_iso4762_screw,
     build_motor_3d,
     build_servo_3d,
     build_servo_horn_25t,
+    build_wrist_3dof_parts,
 )
 from .mount_variants import (
     _build_mount_gusseted,
@@ -645,7 +653,7 @@ def export_bom_csv(bom: list[BOMItem], output_path: Path) -> Path:
 
 def compute_modular_arm_hash(req: ModularArmRequest) -> str:
     """Compute a deterministic 16-char SHA-256 hex digest for a ModularArmRequest."""
-    canonical = "modarm_v42:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
+    canonical = "modarm_v50:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
@@ -699,7 +707,13 @@ def build_modular_arm_assembly(
 ) -> dict[str, Any]:
     """Assemble real CAD solids from variants.py, mount_variants.py, and gear_variants.py
     using local mounting frames and axial Y-layers to avoid coplanar collisions.
+    Delegates to build_scara_arm_assembly when kinematics_type == 'scara'.
     """
+    if getattr(req, "kinematics_type", "articulated") == "scara":
+        from .scara_assembly import build_scara_arm_assembly
+
+        return build_scara_arm_assembly(req, material, output_dir, design_hash)
+
     from ..physics.arm_compatibility import resolve_default_slots
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -977,21 +991,95 @@ def build_modular_arm_assembly(
             * build_dual_servo_clevis(width_mm=clevis_el_w, depth_mm=40.0, height_mm=42.0)
         )
 
-    # Real Ball Bearings seated coaxially in shoulder, elbow, and wrist bores
+    # Real Ball Bearings (or CRB RU42 / Tapered 30205 on heavy/industrial arms)
     sh_bore = float(slots.upper_arm.root_end.bore_diameter_mm)
     b1_code = "6808" if sh_bore >= 42.0 else ("6002" if sh_bore >= 28.0 else "608")
     el_bore = float(slots.forearm.root_end.bore_diameter_mm)
     b2_code = "6002" if el_bore >= 28.0 else "608"
 
+    use_heavy_bearings = (bus_arch == "teensy_dm542") or (req.payload_kg >= 2.5)
     bearing_j1_placed = Location((0.0, 0.0, float(req.base_height_mm))) * (
-        rot_z_to_plus_y * build_ball_bearing(b1_code)
+        rot_z_to_plus_y * (build_bearing_crb() if use_heavy_bearings else build_ball_bearing(b1_code))
     )
     bearing_j2_placed = Location((p1[0], y_forearm * 0.5, p1[2])) * (
-        rot_z_to_plus_y * build_ball_bearing(b2_code)
+        rot_z_to_plus_y * (build_bearing_tapered_30205() if use_heavy_bearings else build_ball_bearing(b2_code))
     )
     bearing_j3_placed = Location(p2_fore) * (
         rot_z_to_plus_y * build_ball_bearing("608")
     )
+
+    # v5.0: Real 3D Cycloidal / Planetary reducers when selected in mechatronics config
+    j1_reducer_id = str(getattr(j1_spec, "reducer_id", "") or "").lower()
+    j2_reducer_id = str(getattr(j2_spec, "reducer_id", "") or "").lower()
+
+    extra_v5_nodes: list[tuple[str, Part | Compound, list[int], float, float, list[float]]] = []
+    replace_sh_gear = False
+    replace_el_gear = False
+
+    if not is_direct_servo_mode:
+        if j1_reducer_id.startswith("cycloidal"):
+            cyc_ratio = 40 if "40" in j1_reducer_id else 25
+            cyc_j1 = Location((0.0, y_sh_gear + 7.0, float(req.base_height_mm))) * (
+                rot_z_to_plus_y * build_cycloidal_reducer_3d(ratio=cyc_ratio, outer_d_mm=68.0, thickness_mm=14.0)
+            )
+            extra_v5_nodes.append(("cycloidal_j1", cyc_j1, [196, 206, 218, 255], 0.88, 0.22, [0.0, 58.0, 0.0]))
+            replace_sh_gear = True
+        elif j1_reducer_id.startswith("planetary"):
+            plan_ratio = 20 if "20" in j1_reducer_id else 10
+            plan_j1 = Location((0.0, y_sh_gear + 8.0, float(req.base_height_mm))) * (
+                rot_z_to_plus_y * build_planetary_reducer_3d(ratio=plan_ratio, outer_d_mm=58.0, thickness_mm=16.0)
+            )
+            extra_v5_nodes.append(("planetary_j1", plan_j1, [178, 192, 210, 255], 0.84, 0.26, [0.0, 58.0, 0.0]))
+            replace_sh_gear = True
+
+        if j2_reducer_id.startswith("cycloidal"):
+            cyc_ratio = 40 if "40" in j2_reducer_id else 25
+            cyc_j2 = Location((p1[0], y_el_gear - 7.0, p1[2])) * (
+                rot_z_to_minus_y * build_cycloidal_reducer_3d(ratio=cyc_ratio, outer_d_mm=56.0, thickness_mm=13.0)
+            )
+            extra_v5_nodes.append(
+                ("cycloidal_j2", cyc_j2, [196, 206, 218, 255], 0.88, 0.22, [round(32.0 * math.cos(a1), 2), -58.0, round(32.0 * math.sin(a1), 2)])
+            )
+            replace_el_gear = True
+        elif j2_reducer_id.startswith("planetary"):
+            plan_ratio = 20 if "20" in j2_reducer_id else 10
+            plan_j2 = Location((p1[0], y_el_gear - 7.0, p1[2])) * (
+                rot_z_to_minus_y * build_planetary_reducer_3d(ratio=plan_ratio, outer_d_mm=50.0, thickness_mm=14.0)
+            )
+            extra_v5_nodes.append(
+                ("planetary_j2", plan_j2, [178, 192, 210, 255], 0.84, 0.26, [round(32.0 * math.cos(a1), 2), -58.0, round(32.0 * math.sin(a1), 2)])
+            )
+            replace_el_gear = True
+
+    # v5.0: 7-DOF Redundant Upper-Arm Roll Joint Collar (OpenArm 7-DOF)
+    if req.dof >= 7:
+        p_mid = (p0[0] + 0.5 * l1 * math.cos(a1), y_upper, p0[2] + 0.5 * l1 * math.sin(a1))
+        roll_collar_local = Location((0.0, 0.0, 0.0), (0.0, 90.0, 0.0)) * Cylinder(
+            radius=max(20.0, upper_t * 0.92), height=28.0
+        )
+        roll_j3_placed = Location(p_mid) * (Location((0.0, 0.0, 0.0), (0.0, -a1_deg, 0.0)) * roll_collar_local)
+        extra_v5_nodes.append(
+            (
+                "upper_arm_roll_j3",
+                roll_j3_placed,
+                [84, 148, 198, 255],
+                0.78,
+                0.28,
+                [round(38.0 * math.cos(a1), 2), 0.0, round(38.0 * math.sin(a1), 2)],
+            )
+        )
+
+    # v5.0: Inductive homing sensor on industrial arms (Teensy / AR4)
+    if use_heavy_bearings:
+        hs_placed = Location((28.0, 0.0, float(req.base_height_mm) - 24.0), (0.0, 90.0, 0.0)) * build_homing_sensor()
+        extra_v5_nodes.append(("homing_sensor_j1", hs_placed, [216, 172, 58, 255], 0.85, 0.25, [36.0, 0.0, -24.0]))
+
+    # v5.0: 3-DOF Articulated Wrist (J4 Roll, J5 Pitch, J6 Tool Flange)
+    wrist_3dof_placed: tuple[Part, Part, Part] | None = None
+    if getattr(req, "wrist_3dof", False) and gripper_parts_placed is None:
+        w4_raw, w5_raw, w6_raw = build_wrist_3dof_parts()
+        w_pose = Location(p2_fore) * Location((0.0, 0.0, 0.0), (0.0, -a3_deg, 0.0))
+        wrist_3dof_placed = (w_pose * w4_raw, w_pose * w5_raw, w_pose * w6_raw)
 
     # ISO 4762 Fasteners Kit: real socket-head cap screws placed on base flange, shoulder mount, elbow, and TCP PCDs
     fastener_solids: list[Part] = []
@@ -1099,15 +1187,22 @@ def build_modular_arm_assembly(
     if is_direct_servo_mode and clevis_shoulder_placed is not None and clevis_elbow_placed is not None:
         compound_children.extend([clevis_shoulder_placed, clevis_elbow_placed])
     else:
-        compound_children.extend([shoulder_gear_placed, elbow_gear_placed])
+        if not replace_sh_gear:
+            compound_children.append(shoulder_gear_placed)
+        if not replace_el_gear:
+            compound_children.append(elbow_gear_placed)
 
     if gripper_parts_placed is not None:
         compound_children.extend(list(gripper_parts_placed))
+    elif wrist_3dof_placed is not None:
+        compound_children.extend(list(wrist_3dof_placed))
     else:
         compound_children.append(tcp_flange_placed)
 
     for _, h_solid, _ in horn_nodes:
         compound_children.append(h_solid)
+    for _, v5_solid, _, _, _, _ in extra_v5_nodes:
+        compound_children.append(v5_solid)
 
     full_compound = Compound(children=compound_children)
     step_path = output_dir / "arm_assembly.step"
@@ -1146,21 +1241,32 @@ def build_modular_arm_assembly(
             node_specs.append(("clevis_shoulder", clevis_shoulder_placed, [52, 72, 98, 255], 0.48, 0.38))
             node_specs.append(("clevis_elbow", clevis_elbow_placed, [52, 72, 98, 255], 0.48, 0.38))
         else:
-            node_specs.append(("shoulder_gear", shoulder_gear_placed, [224, 174, 72, 255], 0.74, 0.28))
-            node_specs.append(("elbow_gear", elbow_gear_placed, [196, 152, 68, 255], 0.74, 0.28))
+            if not replace_sh_gear:
+                node_specs.append(("shoulder_gear", shoulder_gear_placed, [224, 174, 72, 255], 0.74, 0.28))
+            if not replace_el_gear:
+                node_specs.append(("elbow_gear", elbow_gear_placed, [196, 152, 68, 255], 0.74, 0.28))
 
-        # End effector: 3-part articulated gripper (60 FPS open/close) or ISO TCP flange
+        # End effector: 3-part articulated gripper, 3-DOF articulated wrist, or ISO TCP flange
         if gripper_parts_placed is not None:
             g_base, g_left, g_right = gripper_parts_placed
             node_specs.append(("gripper_base", g_base, [44, 52, 64, 255], 0.45, 0.40))
             node_specs.append(("gripper_finger_left", g_left, [120, 134, 150, 255], 0.72, 0.30))
             node_specs.append(("gripper_finger_right", g_right, [120, 134, 150, 255], 0.72, 0.30))
+        elif wrist_3dof_placed is not None:
+            w4, w5, w6 = wrist_3dof_placed
+            node_specs.append(("wrist_j4_roll", w4, [72, 140, 184, 255], 0.72, 0.30))
+            node_specs.append(("wrist_j5_pitch", w5, [54, 68, 88, 255], 0.75, 0.28))
+            node_specs.append(("wrist_j6_flange", w6, [242, 182, 58, 255], 0.84, 0.24))
         else:
             node_specs.append(("tcp_flange", tcp_flange_placed, [242, 182, 58, 255], 0.80, 0.26))
 
         # v4.1 Red anodized 25T aluminum servo horns
         for h_name, h_solid, _ in horn_nodes:
             node_specs.append((h_name, h_solid, [220, 38, 38, 255], 0.88, 0.24))
+
+        # v5.0 Cycloidal/Planetary reducers, 7-DOF roll joint, and homing sensor
+        for v5_name, v5_solid, v5_rgba, v5_met, v5_rough, _ in extra_v5_nodes:
+            node_specs.append((v5_name, v5_solid, v5_rgba, v5_met, v5_rough))
 
         for node_name, solid, rgba, met, rough in node_specs:
             mesh = _part_to_trimesh(solid, rgba, met, rough, node_name)
@@ -1192,6 +1298,21 @@ def build_modular_arm_assembly(
             round(32.0 * u1_z + 42.0 * u2_z + 36.0 * u3_z, 2),
         ],
         "tcp_flange": tcp_explode,
+        "wrist_j4_roll": [
+            round(32.0 * u1_x + 42.0 * u2_x + 42.0 * u3_x, 2),
+            48.0,
+            round(32.0 * u1_z + 42.0 * u2_z + 42.0 * u3_z, 2),
+        ],
+        "wrist_j5_pitch": [
+            round(32.0 * u1_x + 42.0 * u2_x + 68.0 * u3_x, 2),
+            48.0,
+            round(32.0 * u1_z + 42.0 * u2_z + 68.0 * u3_z, 2),
+        ],
+        "wrist_j6_flange": [
+            round(32.0 * u1_x + 42.0 * u2_x + 96.0 * u3_x, 2),
+            48.0,
+            round(32.0 * u1_z + 42.0 * u2_z + 96.0 * u3_z, 2),
+        ],
         "gripper_base": tcp_explode,
         "gripper_finger_left": [tcp_explode[0], round(tcp_explode[1] - 24.0, 2), tcp_explode[2]],
         "gripper_finger_right": [tcp_explode[0], round(tcp_explode[1] + 24.0, 2), tcp_explode[2]],
@@ -1210,6 +1331,8 @@ def build_modular_arm_assembly(
     }
     for h_name, _, h_vec in horn_nodes:
         explode_vectors[h_name] = h_vec
+    for v5_name, _, _, _, _, v5_vec in extra_v5_nodes:
+        explode_vectors[v5_name] = v5_vec
 
     return {
         "real_volumes_mm3": real_volumes_mm3,

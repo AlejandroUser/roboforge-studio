@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
+import { ArmDatabaseModal } from "./components/ArmDatabaseModal";
 import { AssemblyTree } from "./components/AssemblyTree";
 import { MechatronicsPanel } from "./components/MechatronicsPanel";
 import { ModularArmPanel } from "./components/ModularArmPanel";
@@ -7,6 +8,8 @@ import { ParetoChart } from "./components/ParetoChart";
 import { ViewportR3F } from "./components/ViewportR3F";
 import type {
   ArmAssemblyResponse,
+  ArmDatabaseEntry,
+  ArmDatabaseResponse,
   ArmSlotKey,
   FEAResult,
   FamilyId,
@@ -112,6 +115,11 @@ const DEFAULT_ARM = {
   forearm_mm: 170,
   wrist_mm: 75,
   link_style: "hollow_cobot",
+  kinematics_type: "articulated" as "articulated" | "scara",
+  z_stroke_mm: 120,
+  z_axis_mm: 40,
+  wrist_3dof: true,
+  cnc_plate_mode: false,
   base_yaw_deg: 0,
   shoulder_joint_deg: 35,
   elbow_joint_deg: -55,
@@ -234,6 +242,10 @@ export default function App() {
     },
   });
 
+  // v5.0 Arm Database Modal
+  const [armDatabase, setArmDatabase] = useState<ArmDatabaseResponse | null>(null);
+  const [showArmDbModal, setShowArmDbModal] = useState(false);
+
   // v4.1/v4.2 Pose Sequencer (5-axis 60 FPS GPU FK playback + .INO export)
   const [recordedPoses, setRecordedPoses] = useState<
     Array<{
@@ -298,8 +310,9 @@ export default function App() {
       api.gearPresets(),
       api.armPresets(),
       api.getMechatronicsCatalog().catch(() => null),
+      api.getArmDatabase().catch(() => null),
     ])
-      .then(([m, p, lp, mp, gp, ap, mechCat]) => {
+      .then(([m, p, lp, mp, gp, ap, mechCat, armDb]) => {
         setMaterials(m.materials || m);
         setPrinters(p.printers || p);
         setPresets({
@@ -311,11 +324,14 @@ export default function App() {
         if (mechCat) {
           setMechatronicsCatalog(mechCat);
         }
+        if (armDb) {
+          setArmDatabase(armDb);
+        }
       })
       .catch((err) => showToast(`Error cargando catálogos: ${err.message}`, true));
   }, [showToast]);
 
-  // Debounced auto-generation (skips FK angle & gripper-only changes so arm stays 60 FPS!)
+  // Debounced auto-generation (skips FK angle, SCARA Z & gripper-only changes so arm stays 60 FPS!)
   const structuralKey = useMemo(() => {
     if (state.family === "arm") {
       const {
@@ -324,6 +340,7 @@ export default function App() {
         elbow_joint_deg,
         wrist_joint_deg,
         gripper_open_pct,
+        z_axis_mm,
         ...rest
       } = state.arm;
       return JSON.stringify({ f: "arm", rest });
@@ -538,8 +555,139 @@ export default function App() {
       slots: armSlots,
       auto_fix: autoFix,
       mechatronics: mechatronicsConfig,
+      kinematics_type: state.arm.kinematics_type,
+      z_stroke_mm: state.arm.z_stroke_mm,
+      wrist_3dof: state.arm.wrist_3dof,
+      cnc_plate_mode: state.arm.cnc_plate_mode,
     }),
     [state.arm, armSlots, mechatronicsConfig]
+  );
+
+  const applyArmPresetWithMechatronics = useCallback(
+    (presetId: string, presetDefaults: Record<string, any> = {}) => {
+      const isScara = presetId === "pybot_scara" || presetDefaults.kinematics_type === "scara";
+      const isCnc = presetId === "ar4_industrial" || Boolean(presetDefaults.cnc_plate_mode);
+
+      pushState((s) => ({
+        ...s,
+        family: "arm",
+        arm: {
+          ...s.arm,
+          ...presetDefaults,
+          preset: presetId,
+          kinematics_type: isScara ? "scara" : "articulated",
+          cnc_plate_mode: isCnc,
+          wrist_3dof: !isScara,
+        },
+      }));
+
+      if (presetId === "fabri_arm_5") {
+        setMechatronicsConfig({
+          bus_architecture: "arduino_pca9685_i2c",
+          system_voltage_v: 6.5,
+          joint_actuators: {
+            J1: { motor_id: "servo_td8120mg", reducer_id: "direct", target_rpm: 35, parallel_count: 2 },
+            J2: { motor_id: "servo_td8120mg", reducer_id: "direct", target_rpm: 35, parallel_count: 2 },
+            J3: { motor_id: "servo_td8120mg", reducer_id: "direct", target_rpm: 45, parallel_count: 1 },
+          },
+        });
+        showToast("Preset Brazo Arduino 5.0 (8× Servos TD-8120MG · PCA9685 6.5V) cargado.");
+      } else if (presetId === "pybot_scara") {
+        setMechatronicsConfig({
+          bus_architecture: "stm32_step_dir",
+          system_voltage_v: 24,
+          joint_actuators: {
+            J1: { motor_id: "nema17_48mm", reducer_id: "gt2_belt_3", target_rpm: 60, parallel_count: 1 },
+            J2: { motor_id: "nema17_48mm", reducer_id: "gt2_belt_3", target_rpm: 60, parallel_count: 1 },
+            J3: { motor_id: "nema17_48mm", reducer_id: "direct", target_rpm: 45, parallel_count: 1 },
+          },
+        });
+        showToast("Preset PyBot SCARA 4-DOF (Eje Z Prismático + Correas GT2) cargado.");
+      } else if (presetId === "so_arm_lerobot") {
+        setMechatronicsConfig({
+          bus_architecture: "uart_serial_bus",
+          system_voltage_v: 7.4,
+          joint_actuators: {
+            J1: { motor_id: "servo_sts3215", reducer_id: "direct", target_rpm: 40, parallel_count: 1 },
+            J2: { motor_id: "servo_sts3215", reducer_id: "direct", target_rpm: 40, parallel_count: 1 },
+            J3: { motor_id: "servo_sts3215", reducer_id: "direct", target_rpm: 45, parallel_count: 1 },
+          },
+        });
+        showToast("Preset SO-ARM100 LeRobot (Bus UART STS3215 · 7.4V) cargado.");
+      } else if (presetId === "openarm_7dof") {
+        setMechatronicsConfig({
+          bus_architecture: "can_fd_bus",
+          system_voltage_v: 24,
+          joint_actuators: {
+            J1: { motor_id: "damiao_dm_j4340", reducer_id: "direct", target_rpm: 35, parallel_count: 1 },
+            J2: { motor_id: "damiao_dm_j4340", reducer_id: "direct", target_rpm: 35, parallel_count: 1 },
+            J3: { motor_id: "damiao_dm_j4310", reducer_id: "direct", target_rpm: 45, parallel_count: 1 },
+          },
+        });
+        showToast("Preset OpenArm 7-DOF Redundante (Damiao QDD CAN-FD) cargado.");
+      } else if (presetId === "arctos_6dof" || presetId === "cobot_hollow_ur") {
+        setMechatronicsConfig({
+          bus_architecture: "can_fd_bus",
+          system_voltage_v: 24,
+          joint_actuators: {
+            J1: { motor_id: "nema23_mks_servo57d", reducer_id: "cycloidal_25", target_rpm: 30, parallel_count: 1 },
+            J2: { motor_id: "nema17_mks_servo42d", reducer_id: "cycloidal_25", target_rpm: 35, parallel_count: 1 },
+            J3: { motor_id: "nema17_mks_servo42d", reducer_id: "planetary_10", target_rpm: 45, parallel_count: 1 },
+          },
+        });
+        showToast("Preset Cobot Cicloidal (Reductores Cicloidales 25:1 · CAN-FD) cargado.");
+      } else if (presetId === "ar4_industrial") {
+        setMechatronicsConfig({
+          bus_architecture: "teensy_dm542",
+          system_voltage_v: 24,
+          joint_actuators: {
+            J1: { motor_id: "nema23_mks_servo57d", reducer_id: "planetary_20", target_rpm: 28, parallel_count: 1 },
+            J2: { motor_id: "nema23_mks_servo57d", reducer_id: "planetary_20", target_rpm: 28, parallel_count: 1 },
+            J3: { motor_id: "nema17_mks_servo42d", reducer_id: "planetary_10", target_rpm: 40, parallel_count: 1 },
+          },
+        });
+        showToast("Preset AR4-MK3 Industrial (Teensy 4.1 + DM542T + CNC Al 6061 .DXF) cargado.");
+      } else if (presetId === "bcn3d_moveo") {
+        setMechatronicsConfig({
+          bus_architecture: "stm32_step_dir",
+          system_voltage_v: 24,
+          joint_actuators: {
+            J1: { motor_id: "nema23_76mm", reducer_id: "gt2_belt_3", target_rpm: 30, parallel_count: 1 },
+            J2: { motor_id: "nema17_48mm", reducer_id: "gt2_belt_3", target_rpm: 35, parallel_count: 1 },
+            J3: { motor_id: "nema14_34mm", reducer_id: "gt2_belt_3", target_rpm: 45, parallel_count: 1 },
+          },
+        });
+        showToast("Preset BCN3D Moveo (Correas GT2 + NEMA 23/17/14) cargado.");
+      }
+    },
+    [pushState, showToast]
+  );
+
+  const handleLoadArmFromDatabase = useCallback(
+    (arm: ArmDatabaseEntry) => {
+      const idMap: Record<string, string> = {
+        fabri_creator_5_0: "fabri_arm_5",
+        parol6_6dof: "parol6_desktop",
+        annin_ar4_mk3: "ar4_industrial",
+        pybot_jjrobots_scara: "pybot_scara",
+        so_arm100_lerobot: "so_arm_lerobot",
+        openarm_7dof: "openarm_7dof",
+        arctos_6dof: "arctos_6dof",
+        bcn3d_moveo: "bcn3d_moveo",
+      };
+      const presetId = arm.roboforge_preset_id || idMap[arm.id] || "parol6_desktop";
+      const presetObj = presets.arms?.[presetId];
+      const baseDefaults = presetObj?.defaults || presetObj || {};
+      const isScara = (arm.kinematics_type || "").toLowerCase().includes("scara");
+
+      applyArmPresetWithMechatronics(presetId, {
+        ...baseDefaults,
+        dof: Math.min(Math.max(arm.dof || 6, 4), 7),
+        payload_kg: arm.payload_kg || baseDefaults.payload_kg || 1.0,
+        kinematics_type: isScara ? "scara" : "articulated",
+      });
+    },
+    [presets.arms, applyArmPresetWithMechatronics]
   );
 
   const handleAutoMatchArm = useCallback(async () => {
@@ -741,7 +889,7 @@ export default function App() {
         <div className="header-left">
           <div className="brand">
             <span>RoboForge</span>
-            <span className="brand-badge">PRO v4.0 · R3F</span>
+            <span className="brand-badge">PRO v5.0 · R3F</span>
           </div>
           <nav className="family-tabs">
             {(
@@ -1131,37 +1279,84 @@ export default function App() {
             <>
               <div className="section-card">
                 <div className="section-title">
-                  <span>Brazo Completo (4–6 DOF)</span>
+                  <span>Brazo Completo (4–7 DOF · SCARA)</span>
                 </div>
+                <button
+                  type="button"
+                  className="btn-tool btn-arm-db"
+                  onClick={() => setShowArmDbModal(true)}
+                  title="Explorar los 8 brazos robóticos reales y cargar en 1 clic"
+                >
+                  📚 Base de Datos ({armDatabase?.arms?.length || 8} Brazos Reales)
+                </button>
                 <div className="preset-grid">
                   {Object.entries(presets.arms).map(([id, p]: [string, any]) => (
                     <button
                       key={id}
                       type="button"
                       className={`preset-btn ${state.arm.preset === id ? "active" : ""}`}
-                      onClick={() => {
-                        pushState((s) => ({ ...s, arm: { ...s.arm, ...(p.defaults || p), preset: id } }));
-                        if (id === "fabri_arm_5") {
-                          setMechatronicsConfig({
-                            bus_architecture: "arduino_pca9685_i2c",
-                            system_voltage_v: 6.5,
-                            joint_actuators: {
-                              J1: { motor_id: "servo_td8120mg", reducer_id: "direct", target_rpm: 35, parallel_count: 2 },
-                              J2: { motor_id: "servo_td8120mg", reducer_id: "direct", target_rpm: 35, parallel_count: 2 },
-                              J3: { motor_id: "servo_td8120mg", reducer_id: "direct", target_rpm: 45, parallel_count: 1 },
-                            },
-                          });
-                          showToast(
-                            "Preset Brazo Arduino 5.0 (8× Servos TD-8120MG · PCA9685 6.5V) cargado. Pulsa «Ensamblar Brazo Real»."
-                          );
-                        }
-                      }}
+                      onClick={() => applyArmPresetWithMechatronics(id, p.defaults || p)}
                     >
                       <strong>{p.name || id}</strong>
                       <small>{p.subtitle || ""}</small>
                     </button>
                   ))}
                 </div>
+                <div className="two-col">
+                  <div className="field-row">
+                    <div className="field-head"><span>Cinemática</span></div>
+                    <select
+                      value={state.arm.kinematics_type}
+                      onChange={(e) =>
+                        pushState((s) => ({
+                          ...s,
+                          arm: {
+                            ...s.arm,
+                            kinematics_type: e.target.value as "articulated" | "scara",
+                            dof: e.target.value === "scara" ? 4 : s.arm.dof,
+                          },
+                        }))
+                      }
+                    >
+                      <option value="articulated">Articulado (4–7 DOF)</option>
+                      <option value="scara">SCARA 4-DOF (Z Prismático)</option>
+                    </select>
+                  </div>
+                  <div className="field-row">
+                    <div className="field-head"><span>DOF</span></div>
+                    <select
+                      value={state.arm.dof}
+                      onChange={(e) =>
+                        pushState((s) => ({ ...s, arm: { ...s.arm, dof: Number(e.target.value) } }))
+                      }
+                    >
+                      <option value={4}>4 DOF</option>
+                      <option value={5}>5 DOF</option>
+                      <option value={6}>6 DOF</option>
+                      <option value={7}>7 DOF (Redundante)</option>
+                    </select>
+                  </div>
+                </div>
+                <label className="check-row">
+                  <span>Placas CNC Al 6061 (.DXF)</span>
+                  <input
+                    type="checkbox"
+                    checked={state.arm.cnc_plate_mode}
+                    onChange={(e) =>
+                      pushState((s) => ({ ...s, arm: { ...s.arm, cnc_plate_mode: e.target.checked } }))
+                    }
+                  />
+                </label>
+                <label className="check-row">
+                  <span>Muñeca Esférica 3-DOF (J4/J5/J6)</span>
+                  <input
+                    type="checkbox"
+                    checked={state.arm.wrist_3dof}
+                    onChange={(e) =>
+                      pushState((s) => ({ ...s, arm: { ...s.arm, wrist_3dof: e.target.checked } }))
+                    }
+                  />
+                </label>
                 {(
                   [
                     ["upper_arm_mm", "Brazo Superior (L1)", 120, 350, 10],
@@ -1222,6 +1417,25 @@ export default function App() {
                     />
                   </div>
                 ))}
+
+                {state.arm.kinematics_type === "scara" && (
+                  <div className="field-row">
+                    <div className="field-head">
+                      <span>Eje Z Lineal (SCARA)</span>
+                      <span>{state.arm.z_axis_mm} mm</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={state.arm.z_stroke_mm || 120}
+                      step={1}
+                      value={state.arm.z_axis_mm}
+                      onChange={(e) =>
+                        pushState((s) => ({ ...s, arm: { ...s.arm, z_axis_mm: Number(e.target.value) } }))
+                      }
+                    />
+                  </div>
+                )}
 
                 {/* v4.1/v4.2 Mini-Secuenciador de Poses (5 ejes, 60 FPS + Exportar .INO) */}
                 <div className="sequencer-box">
@@ -1486,6 +1700,8 @@ export default function App() {
               elbow: state.arm.elbow_joint_deg,
               wrist: state.arm.wrist_joint_deg,
               gripperOpenPct: state.arm.gripper_open_pct,
+              kinematicsType: state.arm.kinematics_type,
+              zAxisMm: state.arm.z_axis_mm,
             }}
             armReachMm={state.arm.upper_arm_mm + state.arm.forearm_mm + state.arm.wrist_mm}
             armBaseHeightMm={state.arm.base_height_mm}
@@ -1810,6 +2026,14 @@ export default function App() {
           )}
         </aside>
       </div>
+
+      <ArmDatabaseModal
+        open={showArmDbModal}
+        arms={armDatabase?.arms || []}
+        averageReplicabilityPct={armDatabase?.average_replicability_pct}
+        onClose={() => setShowArmDbModal(false)}
+        onLoadArm={handleLoadArmFromDatabase}
+      />
 
       {toast && <div className={`toast ${toast.err ? "err" : ""}`}>{toast.msg}</div>}
     </div>

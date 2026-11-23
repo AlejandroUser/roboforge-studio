@@ -16,6 +16,12 @@ export type CadMaterialRole =
   | "clevis_polymer"
   | "gripper_graphite"
   | "gripper_finger_metal"
+  | "cycloidal_metal"
+  | "planetary_metal"
+  | "gt2_belt_rubber"
+  | "chrome_linear_rail"
+  | "homing_sensor_brass"
+  | "wrist_roll_node"
   | "matte_polymer"
   | "single_part_enhanced";
 
@@ -124,6 +130,29 @@ export function getSemanticNodeName(obj: THREE.Object3D): string {
 export function detectCadMaterialRole(obj: THREE.Object3D, family: FamilyId): CadMaterialRole {
   const name = getSemanticNodeName(obj);
 
+  if (name.includes("homing_sensor")) {
+    return "homing_sensor_brass";
+  }
+  if (name.includes("cycloidal")) {
+    return "cycloidal_metal";
+  }
+  if (name.includes("planetary")) {
+    return "planetary_metal";
+  }
+  if (name.includes("belt_")) {
+    return "gt2_belt_rubber";
+  }
+  if (name.includes("linear_rail") || name.includes("z_carriage") || name.includes("z_quill")) {
+    return "chrome_linear_rail";
+  }
+  if (
+    name.includes("upper_arm_roll") ||
+    name.includes("wrist_j4") ||
+    name.includes("wrist_j5") ||
+    name.includes("wrist_j6")
+  ) {
+    return "wrist_roll_node";
+  }
   if (name.includes("horn_25t") || name.includes("servo_horn")) {
     return "anodized_horn_red";
   }
@@ -338,6 +367,64 @@ export function createCadPhysicalMaterial(
         metalness: 0.72,
         roughness: 0.28,
         clearcoat: 0.25,
+        clearcoatRoughness: 0.22,
+        envMapIntensity: 1.4,
+      });
+
+    case "cycloidal_metal":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#cbd5e1"),
+        metalness: 0.92,
+        roughness: 0.18,
+        clearcoat: 0.35,
+        clearcoatRoughness: 0.16,
+        envMapIntensity: 1.65,
+      });
+
+    case "planetary_metal":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#94a3b8"),
+        metalness: 0.88,
+        roughness: 0.24,
+        clearcoat: 0.2,
+        clearcoatRoughness: 0.22,
+        envMapIntensity: 1.45,
+      });
+
+    case "gt2_belt_rubber":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#16191f"),
+        metalness: 0.04,
+        roughness: 0.84,
+        clearcoat: 0.0,
+        envMapIntensity: 0.5,
+      });
+
+    case "chrome_linear_rail":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#e2e8f0"),
+        metalness: 0.96,
+        roughness: 0.12,
+        clearcoat: 0.45,
+        clearcoatRoughness: 0.1,
+        envMapIntensity: 1.75,
+      });
+
+    case "homing_sensor_brass":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#d97706"),
+        metalness: 0.86,
+        roughness: 0.25,
+        clearcoat: 0.25,
+        envMapIntensity: 1.45,
+      });
+
+    case "wrist_roll_node":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#38598b"),
+        metalness: 0.8,
+        roughness: 0.28,
+        clearcoat: 0.3,
         clearcoatRoughness: 0.22,
         envMapIntensity: 1.4,
       });
