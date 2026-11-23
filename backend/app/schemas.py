@@ -499,6 +499,7 @@ class ModularArmRequest(BaseModel):
     )
     slots: ModularArmSlots = Field(default_factory=ModularArmSlots)
     auto_fix: bool = False
+    mechatronics: Optional["MechatronicsConfig"] = None
 
 
 class CompatibilityIssue(BaseModel):
@@ -538,3 +539,90 @@ class ModularArmResponse(BaseModel):
     slots_used: ModularArmSlots
     joints: list[JointTorqueSummary] = Field(default_factory=list)
     bom: list[BOMItem] = Field(default_factory=list)
+    mechatronics: Optional["MechatronicsResponse"] = None
+
+
+# v4.0: Mecatrónica Completa — Motores, Curvas Torque–RPM, Presupuesto Eléctrico y BOM Maestro
+class JointActuatorSpec(BaseModel):
+    motor_id: str = "nema17_mks_servo42d"
+    reducer_id: str = "planetary_10"
+    target_rpm: float = Field(30.0, ge=1.0, le=300.0)
+
+
+class MechatronicsConfig(BaseModel):
+    bus_architecture: Literal["can_fd_bus", "stm32_step_dir"] = "can_fd_bus"
+    system_voltage_v: float = Field(24.0, ge=12.0, le=60.0)
+    joint_actuators: dict[str, JointActuatorSpec] = Field(default_factory=dict)
+
+
+class TorqueSpeedPoint(BaseModel):
+    rpm: float
+    continuous_torque_nm: float
+    peak_torque_nm: float
+
+
+class JointMechatronicsReport(BaseModel):
+    joint_id: str
+    joint_name: str
+    motor_id: str
+    motor_name: str
+    motor_type: Literal["stepper", "closed_loop_stepper", "bldc_qdd"]
+    reducer_id: str
+    reducer_name: str
+    gear_ratio: float
+    efficiency: float
+    operating_rpm: float
+    required_rms_torque_nm: float
+    required_peak_torque_nm: float
+    available_continuous_torque_nm: float
+    available_peak_torque_nm: float
+    torque_margin_pct: float
+    thermal_margin_pct: float
+    continuous_current_a: float
+    peak_current_a: float
+    status: Literal["ok", "warning", "critical"]
+    torque_speed_curve: list[TorqueSpeedPoint] = Field(default_factory=list)
+
+
+class PowerBudget(BaseModel):
+    bus_architecture: Literal["can_fd_bus", "stm32_step_dir"]
+    system_voltage_v: float
+    continuous_current_a: float
+    peak_current_a: float
+    continuous_power_w: float
+    peak_power_w: float
+    recommended_psu: str
+    psu_cost_usd: float
+    power_wire_awg: str
+    signal_wire_awg: str
+    total_harness_length_m: float
+    fuse_rating_a: float
+
+
+class MasterBomItem(BaseModel):
+    category: Literal[
+        "printed_cnc",
+        "actuators_reducers",
+        "electronics_wiring",
+        "fasteners_hardware",
+    ]
+    category_label: str
+    part_code: str
+    part_name: str
+    spec: str
+    qty: int
+    unit_cost_usd: float
+    total_cost_usd: float
+
+
+class MechatronicsResponse(BaseModel):
+    bus_architecture: Literal["can_fd_bus", "stm32_step_dir"]
+    joint_reports: list[JointMechatronicsReport] = Field(default_factory=list)
+    power_budget: PowerBudget
+    master_bom: list[MasterBomItem] = Field(default_factory=list)
+    total_bom_cost_usd: float
+    notes: list[str] = Field(default_factory=list)
+
+
+ModularArmRequest.model_rebuild()
+ModularArmResponse.model_rebuild()

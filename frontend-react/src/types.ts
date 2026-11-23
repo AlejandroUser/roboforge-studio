@@ -186,6 +186,7 @@ export interface ModularArmRequest {
   joint_angles_deg: [number, number, number];
   slots: ModularArmSlots;
   auto_fix?: boolean;
+  mechatronics?: MechatronicsConfig | null;
 }
 
 export interface CompatibilityIssue {
@@ -225,4 +226,123 @@ export interface ModularArmResponse {
   slots_used: ModularArmSlots;
   joints: JointTorqueSummary[];
   bom: BOMItem[];
+  mechatronics?: MechatronicsResponse | null;
+}
+
+// v4.0: Mecatrónica Completa — Motores, Curvas Torque–RPM, Presupuesto Eléctrico y BOM Maestro
+export interface JointActuatorSpec {
+  motor_id: string;
+  reducer_id: string;
+  target_rpm: number;
+}
+
+export interface MechatronicsConfig {
+  bus_architecture: "can_fd_bus" | "stm32_step_dir";
+  system_voltage_v: number;
+  joint_actuators: Record<string, JointActuatorSpec>;
+}
+
+export interface TorqueSpeedPoint {
+  rpm: number;
+  continuous_torque_nm: number;
+  peak_torque_nm: number;
+}
+
+export interface JointMechatronicsReport {
+  joint_id: string;
+  joint_name: string;
+  motor_id: string;
+  motor_name: string;
+  motor_type: "stepper" | "closed_loop_stepper" | "bldc_qdd";
+  reducer_id: string;
+  reducer_name: string;
+  gear_ratio: number;
+  efficiency: number;
+  operating_rpm: number;
+  required_rms_torque_nm: number;
+  required_peak_torque_nm: number;
+  available_continuous_torque_nm: number;
+  available_peak_torque_nm: number;
+  torque_margin_pct: number;
+  thermal_margin_pct: number;
+  continuous_current_a: number;
+  peak_current_a: number;
+  status: "ok" | "warning" | "critical";
+  torque_speed_curve: TorqueSpeedPoint[];
+}
+
+export interface PowerBudget {
+  bus_architecture: "can_fd_bus" | "stm32_step_dir";
+  system_voltage_v: number;
+  continuous_current_a: number;
+  peak_current_a: number;
+  continuous_power_w: number;
+  peak_power_w: number;
+  recommended_psu: string;
+  psu_cost_usd: number;
+  power_wire_awg: string;
+  signal_wire_awg: string;
+  total_harness_length_m: number;
+  fuse_rating_a: number;
+}
+
+export type MasterBomCategory =
+  | "printed_cnc"
+  | "actuators_reducers"
+  | "electronics_wiring"
+  | "fasteners_hardware";
+
+export interface MasterBomItem {
+  category: MasterBomCategory;
+  category_label: string;
+  part_code: string;
+  part_name: string;
+  spec: string;
+  qty: number;
+  unit_cost_usd: number;
+  total_cost_usd: number;
+}
+
+export interface MechatronicsResponse {
+  bus_architecture: "can_fd_bus" | "stm32_step_dir";
+  joint_reports: JointMechatronicsReport[];
+  power_budget: PowerBudget;
+  master_bom: MasterBomItem[];
+  total_bom_cost_usd: number;
+  notes: string[];
+}
+
+export interface ActuatorCatalogItem {
+  id: string;
+  name: string;
+  motor_type: "stepper" | "closed_loop_stepper" | "bldc_qdd";
+  voltage_v: number;
+  rated_torque_nm: number;
+  peak_torque_nm: number;
+  no_load_rpm: number;
+  corner_rpm: number;
+  rated_current_a: number;
+  peak_current_a: number;
+  mass_g: number;
+  unit_cost_usd: number;
+}
+
+export interface ReducerCatalogItem {
+  id: string;
+  name: string;
+  ratio: number;
+  efficiency: number;
+  unit_cost_usd?: number;
+}
+
+export interface ArchitectureCatalogItem {
+  id: "can_fd_bus" | "stm32_step_dir";
+  name: string;
+  description?: string;
+}
+
+export interface MechatronicsCatalog {
+  actuators: ActuatorCatalogItem[];
+  reducers: ReducerCatalogItem[];
+  architectures: ArchitectureCatalogItem[];
 }

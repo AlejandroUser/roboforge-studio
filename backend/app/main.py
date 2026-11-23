@@ -61,6 +61,13 @@ from .physics.mechanics import (
     load_materials,
     load_presets,
 )
+from .physics.mechatronics import (
+    evaluate_mechatronics,
+    generate_circuit_schematic_svg,
+    generate_wireviz_yaml,
+    get_mechatronics_catalog,
+    master_bom_to_csv,
+)
 from .physics.mount_mechanics import (
     evaluate_mount_global_alerts,
     evaluate_mount_metrics,
@@ -128,7 +135,7 @@ GEAR_VARIANT_ORDER: tuple[GearVariantKind, ...] = (
 )
 
 HASH_PATTERN = re.compile(r"^(?:[a-f0-9]{8,64}|ref_[a-f0-9]{12}|gyr_[a-f0-9]{12})$")
-FILENAME_PATTERN = re.compile(r"^[a-z0-9_]+\.(glb|step|stl|3mf|urdf|xml|csv|zip)$")
+FILENAME_PATTERN = re.compile(r"^[a-z0-9_]+\.(glb|step|stl|3mf|urdf|xml|csv|zip|svg|yml)$")
 
 MEDIA_TYPES: dict[str, str] = {
     ".glb": "model/gltf-binary",
@@ -139,6 +146,8 @@ MEDIA_TYPES: dict[str, str] = {
     ".xml": "application/xml",
     ".csv": "text/csv; charset=utf-8",
     ".zip": "application/zip",
+    ".svg": "image/svg+xml",
+    ".yml": "text/yaml; charset=utf-8",
 }
 
 app = FastAPI(
@@ -849,6 +858,11 @@ def generate_gyroid_sdf_endpoint(req: GyroidRequest) -> GyroidResult:
         ) from exc
 
 
+@app.get("/api/mechatronics/catalog")
+def get_mechatronics_catalog_endpoint() -> dict[str, Any]:
+    return get_mechatronics_catalog()
+
+
 @app.post("/api/arm/auto-match")
 def auto_match_modular_arm(req: ModularArmRequest) -> dict[str, Any]:
     matched_req, notes = auto_match_interfaces(req)
@@ -931,7 +945,26 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
     export_arm_mujoco(proxy_arm_req, joints, mujoco_path)
     export_bom_csv(bom, bom_csv_path)
 
-    # Package full manufacturing kit ZIP (individual part STEP/3MF + full STEP + URDF + MuJoCo + BOM)
+    # v4.0: Full Mechatronics evaluation + SVG schematic + WireViz YAML + Master BOM CSV
+    mechatronics = evaluate_mechatronics(effective_req, phys_res)
+    circuit_svg_path = out_dir / "arm_circuit_schematic.svg"
+    harness_yml_path = out_dir / "arm_harness.yml"
+    master_bom_csv_path = out_dir / "arm_master_bom.csv"
+
+    circuit_svg_path.write_text(
+        generate_circuit_schematic_svg(mechatronics, effective_req.dof),
+        encoding="utf-8",
+    )
+    harness_yml_path.write_text(
+        generate_wireviz_yaml(mechatronics, effective_req.dof),
+        encoding="utf-8",
+    )
+    master_bom_csv_path.write_text(
+        master_bom_to_csv(mechatronics.master_bom),
+        encoding="utf-8",
+    )
+
+    # Package full manufacturing kit ZIP (individual part STEP/3MF + full STEP + URDF + MuJoCo + BOM + v4.0 Mechatronics)
     zip_path = build_arm_manufacturing_zip(
         out_dir=out_dir,
         included_files=[
@@ -940,6 +973,9 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
             urdf_path,
             mujoco_path,
             bom_csv_path,
+            circuit_svg_path,
+            harness_yml_path,
+            master_bom_csv_path,
         ],
         zip_filename="arm_manufacturing_pack.zip",
     )
@@ -951,6 +987,9 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
         "urdf": f"/api/files/{design_hash}/arm_assembly.urdf",
         "mujoco": f"/api/files/{design_hash}/arm_mujoco.xml",
         "bom_csv": f"/api/files/{design_hash}/arm_bom.csv",
+        "circuit_svg": f"/api/files/{design_hash}/arm_circuit_schematic.svg",
+        "harness_yml": f"/api/files/{design_hash}/arm_harness.yml",
+        "master_bom_csv": f"/api/files/{design_hash}/arm_master_bom.csv",
         "zip": f"/api/files/{design_hash}/{zip_path.name}",
     }
 
@@ -971,6 +1010,7 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
         slots_used=slots_used,
         joints=joints,
         bom=bom,
+        mechatronics=mechatronics,
     )
 
 

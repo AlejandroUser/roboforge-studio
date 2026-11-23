@@ -30,6 +30,12 @@ from ..schemas import (
     ModularArmRequest,
 )
 from .gear_variants import _build_gear_solid, _build_gear_spoked, _build_gear_webbed
+from .hardware_parts import (
+    build_ball_bearing,
+    build_controller_box,
+    build_iso4762_screw,
+    build_motor_3d,
+)
 from .mount_variants import (
     _build_mount_gusseted,
     _build_mount_lightweight,
@@ -827,6 +833,109 @@ def build_modular_arm_assembly(
         length_y=wr_hw_len,
     )
 
+    # 2b. v4.0 Real 3D Hardware: Motors, Ball Bearings, ISO 4762 Fasteners Kit & Controller Box
+    mech_cfg = getattr(req, "mechatronics", None)
+    joint_acts = getattr(mech_cfg, "joint_actuators", None) or {}
+    default_j1_motor = (
+        "nema23_76mm" if slots.shoulder_mount.actuator_type == "nema23" else "nema17_48mm"
+    )
+    j1_spec = joint_acts.get("J1") or joint_acts.get("j1")
+    j2_spec = joint_acts.get("J2") or joint_acts.get("j2")
+    j3_spec = joint_acts.get("J3") or joint_acts.get("j3")
+    j1_motor_id = getattr(j1_spec, "motor_id", None) or default_j1_motor
+    j2_motor_id = getattr(j2_spec, "motor_id", None) or "nema17_48mm"
+    j3_motor_id = getattr(j3_spec, "motor_id", None) or "bldc_qdd_5010"
+
+    # Motors: local motor faceplate is z=0, body extends along -Z, shaft along +Z.
+    # Rotate -90° around X -> local +Z maps to +Y (shaft points into joint along +Y, body along -Y).
+    rot_z_to_plus_y = Location((0.0, 0.0, 0.0), (-90.0, 0.0, 0.0))
+    motor_j1_placed = Location(
+        (0.0, y_mount_face - float(slots.shoulder_mount.wall_thickness_mm), float(req.base_height_mm))
+    ) * (rot_z_to_plus_y * build_motor_3d(j1_motor_id))
+
+    motor_j2_placed = Location(
+        (p1[0], y_el_gear - float(slots.elbow_gear.face_width_mm) - 1.5, p1[2])
+    ) * (rot_z_to_plus_y * build_motor_3d(j2_motor_id))
+
+    # Wrist motor on -Y side of forearm wrist pivot
+    motor_j3_placed = Location(
+        (p2_fore[0], y_forearm - forearm_t / 2.0 - 2.0, p2_fore[2])
+    ) * (rot_z_to_plus_y * build_motor_3d(j3_motor_id))
+
+    # Real Ball Bearings seated coaxially in shoulder, elbow, and wrist bores
+    sh_bore = float(slots.upper_arm.root_end.bore_diameter_mm)
+    b1_code = "6808" if sh_bore >= 42.0 else ("6002" if sh_bore >= 28.0 else "608")
+    el_bore = float(slots.forearm.root_end.bore_diameter_mm)
+    b2_code = "6002" if el_bore >= 28.0 else "608"
+
+    bearing_j1_placed = Location((0.0, 0.0, float(req.base_height_mm))) * (
+        rot_z_to_plus_y * build_ball_bearing(b1_code)
+    )
+    bearing_j2_placed = Location((p1[0], y_forearm * 0.5, p1[2])) * (
+        rot_z_to_plus_y * build_ball_bearing(b2_code)
+    )
+    bearing_j3_placed = Location(p2_fore) * (
+        rot_z_to_plus_y * build_ball_bearing("608")
+    )
+
+    # ISO 4762 Fasteners Kit: real socket-head cap screws placed on base flange, shoulder mount, elbow, and TCP PCDs
+    fastener_solids: list[Part] = []
+    # Base pedestal 4×M5 anchor screws (head up along +Z at z = flange_h)
+    base_flange_h = min(12.0, req.base_height_mm * 0.16)
+    base_pcd_r = 32.0 * scale + 7.5
+    m5_base = build_iso4762_screw("M5", 16.0)
+    for i in range(4):
+        ang = math.pi / 4.0 + i * (math.pi / 2.0)
+        fastener_solids.append(
+            Location((base_pcd_r * math.cos(ang), base_pcd_r * math.sin(ang), base_flange_h)) * m5_base
+        )
+
+    # Shoulder mount 4× motor faceplate bolts (M5 for NEMA23, M3 for NEMA17)
+    is_n23 = slots.shoulder_mount.actuator_type == "nema23"
+    m_sh = build_iso4762_screw("M5" if is_n23 else "M3", 14.0)
+    sh_half_sq = 23.57 if is_n23 else 15.5
+    for sx in (-sh_half_sq, sh_half_sq):
+        for sz in (-sh_half_sq, sh_half_sq):
+            # Head sits on +Y face of mount faceplate (z_local -> +Y)
+            fastener_solids.append(
+                Location((sx, y_mount_face, float(req.base_height_mm) + sz)) * (rot_z_to_plus_y * m_sh)
+            )
+
+    # Elbow 4×M3 joint ring bolts
+    m3_el = build_iso4762_screw("M3", 12.0)
+    el_pcd_r = max(10.0, float(slots.forearm.root_end.bolt_pcd_mm) / 2.0)
+    for i in range(4):
+        ang = math.pi / 4.0 + i * (math.pi / 2.0)
+        fastener_solids.append(
+            Location(
+                (
+                    p1[0] + el_pcd_r * math.cos(ang),
+                    y_forearm + forearm_t / 2.0,
+                    p1[2] + el_pcd_r * math.sin(ang),
+                )
+            )
+            * (rot_z_to_plus_y * m3_el)
+        )
+
+    # TCP 4×M4 tool flange bolts
+    m4_tcp = build_iso4762_screw("M4", 10.0)
+    tcp_pcd_r = (18.5 * scale) * 0.68
+    rot_z_to_plus_x = Location((0.0, 0.0, 0.0), (0.0, 90.0, 0.0))
+    for i in range(4):
+        ang = math.pi / 4.0 + i * (math.pi / 2.0)
+        local_bolt = Location((req.wrist_mm, tcp_pcd_r * math.cos(ang), tcp_pcd_r * math.sin(ang))) * (
+            rot_z_to_plus_x * m4_tcp
+        )
+        fastener_solids.append(
+            Location(p2_fore) * (Location((0.0, 0.0, 0.0), (0.0, -a3_deg, 0.0)) * local_bolt)
+        )
+
+    fasteners_kit = Compound(children=fastener_solids)
+
+    # Industrial STM32 / CAN-FD Controller Box mounted cleanly beside the base pedestal
+    base_flange_r = 32.0 * scale + 14.0
+    controller_box_placed = Location((-(base_flange_r + 42.0), 0.0, 0.0)) * build_controller_box()
+
     # Real CAD volumes per slot (mm³)
     real_volumes_mm3 = {
         "base_pedestal": float(max(base_raw.volume, 1.0)),
@@ -867,6 +976,14 @@ def build_modular_arm_assembly(
             joint_hw_shoulder,
             joint_hw_elbow,
             joint_hw_wrist,
+            motor_j1_placed,
+            motor_j2_placed,
+            motor_j3_placed,
+            bearing_j1_placed,
+            bearing_j2_placed,
+            bearing_j3_placed,
+            fasteners_kit,
+            controller_box_placed,
         ]
     )
     step_path = output_dir / "arm_assembly.step"
@@ -893,6 +1010,15 @@ def build_modular_arm_assembly(
             ("joint_hw_shoulder", joint_hw_shoulder, [42, 48, 62, 255], 0.78, 0.28),
             ("joint_hw_elbow", joint_hw_elbow, [42, 48, 62, 255], 0.78, 0.28),
             ("joint_hw_wrist", joint_hw_wrist, [42, 48, 62, 255], 0.78, 0.28),
+            # v4.0 Hardware semantic nodes
+            ("motor_j1_shoulder", motor_j1_placed, [32, 36, 44, 255], 0.58, 0.42),
+            ("motor_j2_elbow", motor_j2_placed, [32, 36, 44, 255], 0.58, 0.42),
+            ("motor_j3_wrist", motor_j3_placed, [36, 42, 52, 255], 0.62, 0.38),
+            ("bearing_j1", bearing_j1_placed, [215, 222, 232, 255], 0.96, 0.14),
+            ("bearing_j2", bearing_j2_placed, [215, 222, 232, 255], 0.96, 0.14),
+            ("bearing_j3", bearing_j3_placed, [215, 222, 232, 255], 0.96, 0.14),
+            ("fasteners_kit", fasteners_kit, [110, 118, 128, 255], 0.88, 0.26),
+            ("controller_box", controller_box_placed, [34, 62, 56, 255], 0.42, 0.48),
         ]
         for node_name, solid, rgba, met, rough in node_specs:
             mesh = _part_to_trimesh(solid, rgba, met, rough, node_name)
@@ -924,6 +1050,15 @@ def build_modular_arm_assembly(
         "joint_hw_shoulder": [0.0, -22.0, 0.0],
         "joint_hw_elbow": [round(32.0 * u1_x, 2), 20.0, round(32.0 * u1_z, 2)],
         "joint_hw_wrist": [round(32.0 * u1_x + 42.0 * u2_x, 2), 76.0, round(32.0 * u1_z + 42.0 * u2_z, 2)],
+        # v4.0 Hardware explode vectors
+        "motor_j1_shoulder": [0.0, -96.0, 0.0],
+        "motor_j2_elbow": [round(32.0 * u1_x, 2), -98.0, round(32.0 * u1_z, 2)],
+        "motor_j3_wrist": [round(32.0 * u1_x + 42.0 * u2_x, 2), -18.0, round(32.0 * u1_z + 42.0 * u2_z, 2)],
+        "bearing_j1": [0.0, 28.0, 0.0],
+        "bearing_j2": [round(32.0 * u1_x, 2), 24.0, round(32.0 * u1_z, 2)],
+        "bearing_j3": [round(32.0 * u1_x + 42.0 * u2_x, 2), 84.0, round(32.0 * u1_z + 42.0 * u2_z, 2)],
+        "fasteners_kit": [0.0, 0.0, 32.0],
+        "controller_box": [-58.0, 0.0, -24.0],
     }
 
     return {

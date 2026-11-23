@@ -8,6 +8,10 @@ export type CadMaterialRole =
   | "anodized_tcp"
   | "machined_gear"
   | "joint_hardware"
+  | "motor_body"
+  | "chrome_bearing"
+  | "fastener_steel"
+  | "controller_enclosure"
   | "matte_polymer"
   | "single_part_enhanced";
 
@@ -116,6 +120,18 @@ export function getSemanticNodeName(obj: THREE.Object3D): string {
 export function detectCadMaterialRole(obj: THREE.Object3D, family: FamilyId): CadMaterialRole {
   const name = getSemanticNodeName(obj);
 
+  if (name.includes("controller_box") || name.includes("controller")) {
+    return "controller_enclosure";
+  }
+  if (name.includes("fasteners") || name.includes("screw") || name.includes("bolt")) {
+    return "fastener_steel";
+  }
+  if (name.includes("bearing_")) {
+    return "chrome_bearing";
+  }
+  if (name.includes("motor_")) {
+    return "motor_body";
+  }
   if (name.includes("base_pedestal") || name.includes("pedestal")) {
     return "anodized_base";
   }
@@ -228,6 +244,46 @@ export function createCadPhysicalMaterial(
         roughness: 0.3,
         clearcoat: 0.2,
         envMapIntensity: 1.3,
+      });
+
+    case "motor_body":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#1b212c"),
+        metalness: 0.45,
+        roughness: 0.42,
+        clearcoat: 0.25,
+        clearcoatRoughness: 0.32,
+        envMapIntensity: 1.2,
+      });
+
+    case "chrome_bearing":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#e2e8f0"),
+        metalness: 0.96,
+        roughness: 0.14,
+        clearcoat: 0.4,
+        clearcoatRoughness: 0.12,
+        envMapIntensity: 1.7,
+      });
+
+    case "fastener_steel":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#94a3b8"),
+        metalness: 0.88,
+        roughness: 0.26,
+        clearcoat: 0.15,
+        clearcoatRoughness: 0.25,
+        envMapIntensity: 1.45,
+      });
+
+    case "controller_enclosure":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#1e332d"),
+        metalness: 0.28,
+        roughness: 0.44,
+        clearcoat: 0.2,
+        clearcoatRoughness: 0.35,
+        envMapIntensity: 1.1,
       });
 
     case "matte_polymer":

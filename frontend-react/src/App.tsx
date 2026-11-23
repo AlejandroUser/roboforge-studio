@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import { AssemblyTree } from "./components/AssemblyTree";
+import { MechatronicsPanel } from "./components/MechatronicsPanel";
 import { ModularArmPanel } from "./components/ModularArmPanel";
 import { ParetoChart } from "./components/ParetoChart";
 import { ViewportR3F } from "./components/ViewportR3F";
@@ -11,6 +12,8 @@ import type {
   FamilyId,
   GenerateResponse,
   GyroidResult,
+  MechatronicsCatalog,
+  MechatronicsConfig,
   ModularArmRequest,
   ModularArmResponse,
   ModularArmSlots,
@@ -217,6 +220,18 @@ export default function App() {
   const [explodeFactor, setExplodeFactor] = useState(0);
   const [hoveredArmPart, setHoveredArmPart] = useState<string | null>(null);
 
+  // v4.0 Mechatronics Catalog & Config
+  const [mechatronicsCatalog, setMechatronicsCatalog] = useState<MechatronicsCatalog | null>(null);
+  const [mechatronicsConfig, setMechatronicsConfig] = useState<MechatronicsConfig>({
+    bus_architecture: "can_fd_bus",
+    system_voltage_v: 24,
+    joint_actuators: {
+      J1: { motor_id: "nema23_mks_servo57d", reducer_id: "planetary_20", target_rpm: 30 },
+      J2: { motor_id: "nema17_mks_servo42d", reducer_id: "planetary_10", target_rpm: 35 },
+      J3: { motor_id: "nema17_mks_servo42d", reducer_id: "gt2_belt_3", target_rpm: 45 },
+    },
+  });
+
   const assignedSlotCount = useMemo(() => {
     let n = 0;
     if (armSlots.shoulder_mount) n++;
@@ -264,8 +279,9 @@ export default function App() {
       api.mountPresets(),
       api.gearPresets(),
       api.armPresets(),
+      api.getMechatronicsCatalog().catch(() => null),
     ])
-      .then(([m, p, lp, mp, gp, ap]) => {
+      .then(([m, p, lp, mp, gp, ap, mechCat]) => {
         setMaterials(m.materials || m);
         setPrinters(p.printers || p);
         setPresets({
@@ -274,6 +290,9 @@ export default function App() {
           gears: gp.presets || gp,
           arms: ap.presets || ap,
         });
+        if (mechCat) {
+          setMechatronicsCatalog(mechCat);
+        }
       })
       .catch((err) => showToast(`Error cargando catálogos: ${err.message}`, true));
   }, [showToast]);
@@ -493,8 +512,9 @@ export default function App() {
       ],
       slots: armSlots,
       auto_fix: autoFix,
+      mechatronics: mechatronicsConfig,
     }),
-    [state.arm, armSlots]
+    [state.arm, armSlots, mechatronicsConfig]
   );
 
   const handleAutoMatchArm = useCallback(async () => {
@@ -597,7 +617,7 @@ export default function App() {
         <div className="header-left">
           <div className="brand">
             <span>RoboForge</span>
-            <span className="brand-badge">PRO v3.0 · R3F</span>
+            <span className="brand-badge">PRO v4.0 · R3F</span>
           </div>
           <nav className="family-tabs">
             {(
@@ -1507,6 +1527,14 @@ export default function App() {
                 onClearSlot={clearArmSlot}
                 onAutoMatch={handleAutoMatchArm}
                 onAssemble={handleAssembleModularArm}
+              />
+
+              <MechatronicsPanel
+                config={mechatronicsConfig}
+                catalog={mechatronicsCatalog}
+                mechatronics={modularArmRes?.mechatronics}
+                files={modularArmRes?.files}
+                onChangeConfig={setMechatronicsConfig}
               />
 
               {armRes && (

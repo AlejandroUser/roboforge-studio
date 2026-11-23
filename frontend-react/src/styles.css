@@ -324,3 +324,268 @@ input[type="number"], input[type="text"], select { width: 100%; background: #090
   border: 1px solid rgba(148, 163, 184, 0.3);
   color: var(--muted);
 }
+
+
+/* v4.0 Mechatronics Panel (Torque-RPM, Circuit SVG, Master BOM) */
+.mech-card {
+  background: linear-gradient(180deg, rgba(167, 139, 250, 0.07) 0%, var(--surface) 100%);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mech-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 3px;
+  background: rgba(9, 12, 16, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 7px;
+}
+
+.mech-tab {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.mech-tab:hover {
+  color: var(--text);
+}
+
+.mech-tab.active {
+  background: rgba(167, 139, 250, 0.2);
+  color: #ede9fe;
+}
+
+.mech-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.mech-empty {
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px dashed rgba(148, 163, 184, 0.2);
+  background: rgba(9, 12, 16, 0.45);
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+  line-height: 1.45;
+}
+
+.joint-selector-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.joint-selector-row {
+  display: grid;
+  grid-template-columns: 28px 1fr 1fr;
+  gap: 5px;
+  align-items: center;
+}
+
+.joint-pill {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #7dd3fc;
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 4px;
+  text-align: center;
+  padding: 4px 0;
+}
+
+.joint-selector-row select {
+  font-size: 10.5px;
+  padding: 4px 5px;
+}
+
+.joint-chart-pills {
+  display: flex;
+  gap: 5px;
+}
+
+.joint-chart-pill {
+  flex: 1;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(9, 12, 16, 0.55);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 4px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.joint-chart-pill.active {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.16);
+  color: #e0f2fe;
+}
+
+.torque-chart-wrap {
+  background: rgba(9, 12, 16, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 7px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.torque-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--text);
+}
+
+.torque-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.torque-legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.torque-legend-row i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+
+.psu-banner,
+.bom-total-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: rgba(9, 12, 16, 0.65);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  font-size: 11px;
+}
+
+.psu-banner strong,
+.bom-total-banner strong {
+  font-family: var(--mono);
+  color: #6ee7b7;
+}
+
+.circuit-preview-box {
+  position: relative;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 7px;
+  background: #080c12;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.circuit-svg-img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  cursor: zoom-in;
+  border-radius: 4px;
+}
+
+.btn-expand-svg {
+  width: 100%;
+  text-align: center;
+}
+
+.bom-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bom-group-block {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(9, 12, 16, 0.45);
+}
+
+.bom-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  background: rgba(30, 41, 59, 0.55);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+.bom-group-head strong {
+  font-family: var(--mono);
+  color: #7dd3fc;
+}
+
+.svg-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 6, 11, 0.84);
+  backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  z-index: 120;
+  padding: 24px;
+}
+
+.svg-modal-card {
+  width: min(1100px, 95vw);
+  max-height: 90vh;
+  background: #0b0f17;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.svg-modal-body {
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  background: #06090f;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.svg-modal-body img {
+  max-width: 100%;
+  height: auto;
+}

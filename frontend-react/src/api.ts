@@ -5,6 +5,7 @@ import type {
   FEAResult,
   GenerateResponse,
   GyroidResult,
+  MechatronicsCatalog,
   ModularArmRequest,
   ModularArmResponse,
 } from "./types";
@@ -48,6 +49,8 @@ export const api = {
     reqJson<ModularArmResponse>("/api/arm/auto-match", { method: "POST", body: JSON.stringify(body) }),
   assembleModularArm: (body: ModularArmRequest) =>
     reqJson<ModularArmResponse>("/api/arm/assemble", { method: "POST", body: JSON.stringify(body) }),
+  getMechatronicsCatalog: () =>
+    reqJson<MechatronicsCatalog>("/api/mechatronics/catalog"),
 
   runFea: (family: "links" | "mounts" | "gears", body: any) => {
     const endpoint =

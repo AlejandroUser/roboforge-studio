@@ -18,17 +18,33 @@ const SEMANTIC_PART_KEYS = [
   "forearm_link",
   "wrist_tube",
   "tcp_flange",
+  "motor_j1_shoulder",
+  "motor_j2_elbow",
+  "motor_j3_wrist",
+  "bearing_j1",
+  "bearing_j2",
+  "bearing_j3",
+  "fasteners_kit",
+  "controller_box",
 ] as const;
 
 const FALLBACK_EXPLODE_VECTORS: Record<string, [number, number, number]> = {
   base_pedestal: [0, 0, -45],
+  controller_box: [-75, 0, -25],
   shoulder_mount: [0, -35, 0],
   shoulder_gear: [0, -60, 15],
+  motor_j1_shoulder: [0, -90, 10],
+  bearing_j1: [0, -45, 25],
   upper_arm_link: [35, 0, 35],
   elbow_gear: [55, 45, 50],
+  motor_j2_elbow: [55, 80, 50],
+  bearing_j2: [55, 30, 50],
   forearm_link: [90, 0, 65],
   wrist_tube: [130, 0, 80],
+  motor_j3_wrist: [130, 65, 80],
+  bearing_j3: [130, 30, 80],
   tcp_flange: [165, 0, 95],
+  fasteners_kit: [0, 75, 15],
 };
 
 const PART_LABELS_ES: Record<string, string> = {
@@ -40,6 +56,14 @@ const PART_LABELS_ES: Record<string, string> = {
   forearm_link: "Antebrazo",
   wrist_tube: "Muñeca",
   tcp_flange: "Brida TCP",
+  motor_j1_shoulder: "Motor J1 Hombro",
+  motor_j2_elbow: "Motor J2 Codo",
+  motor_j3_wrist: "Motor J3 Muñeca",
+  bearing_j1: "Rodamiento J1",
+  bearing_j2: "Rodamiento J2",
+  bearing_j3: "Rodamiento J3",
+  fasteners_kit: "Kit Tornillería ISO 4762",
+  controller_box: "Caja Controlador STM32 / CAN-FD",
 };
 
 function resolveSemanticKey(obj: THREE.Object3D | null): string | null {
