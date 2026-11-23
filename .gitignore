@@ -1,12 +1,48 @@
+# Python virtual environments & caches
 .venv/
+venv/
+env/
 __pycache__/
-*.pyc
-exports/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Frontend
 node_modules/
+frontend-react/node_modules/
+frontend-react/dist/
+npm-debug.log*
+
+# Build & Packaging artifacts
 dist/
 build/
 *.spec
-.pytest_cache/
+*.exe
+
+# Generated CAD, 3D print & simulation outputs
+backend/generated/
+exports/
 *.step
+*.stp
 *.stl
 *.glb
+*.3mf
+*.dxf
+*.zip
+
+# Secrets & local environment files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OS & Editor artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+*.tmp
