@@ -11,6 +11,7 @@ import type {
   ArmDatabaseEntry,
   ArmDatabaseResponse,
   ArmSlotKey,
+  EnvironmentMode,
   FEAResult,
   FamilyId,
   GenerateResponse,
@@ -125,6 +126,9 @@ const DEFAULT_ARM = {
   four_bar_parallelogram: false,
   bevel_differential_wrist: false,
   vacuum_eoat: false,
+  environment_mode: "earth" as EnvironmentMode,
+  gravity_m_s2: 9.81,
+  counterbalance_j2: false,
   base_yaw_deg: 0,
   shoulder_joint_deg: 35,
   elbow_joint_deg: -55,
@@ -568,6 +572,9 @@ export default function App() {
       four_bar_parallelogram: state.arm.four_bar_parallelogram,
       bevel_differential_wrist: state.arm.bevel_differential_wrist,
       vacuum_eoat: state.arm.vacuum_eoat,
+      environment_mode: state.arm.environment_mode,
+      gravity_m_s2: state.arm.environment_mode === "space_zero_g" ? 0.0 : state.arm.gravity_m_s2,
+      counterbalance_j2: state.arm.counterbalance_j2,
     }),
     [state.arm, armSlots, mechatronicsConfig]
   );
@@ -579,11 +586,20 @@ export default function App() {
       else if (presetId === "lumen_pnp") kinType = "cartesian_gantry";
       else if (presetId === "delta_flexpicker") kinType = "delta_parallel";
       else if (presetId === "surgical_continuum") kinType = "continuum_pcc";
+      else if (presetId === "bimanual_aloha") kinType = "bimanual_dual_arm";
+      else if (presetId === "stewart_hexapod") kinType = "stewart_hexapod";
+      else if (presetId === "festo_bellows") kinType = "soft_pneumatic_bellows";
+
+      let envMode: EnvironmentMode = (presetDefaults.environment_mode as EnvironmentMode) || "earth";
+      if (presetId === "canadarm_space") envMode = "space_zero_g";
+      else if (presetId === "rov_subsea") envMode = "underwater_rov";
 
       const isCnc =
         presetId === "ar4_industrial" ||
         presetId === "barrett_wam" ||
         presetId === "dobot_4bar" ||
+        presetId === "stewart_hexapod" ||
+        presetId === "rov_subsea" ||
         Boolean(presetDefaults.cnc_plate_mode);
       const isCapstan = presetId === "barrett_wam" || Boolean(presetDefaults.remote_base_motors);
       const isFourBar = presetId === "dobot_4bar" || Boolean(presetDefaults.four_bar_parallelogram);
@@ -592,7 +608,9 @@ export default function App() {
         presetId === "lumen_pnp" ||
         presetId === "delta_flexpicker" ||
         presetId === "dobot_4bar" ||
+        presetId === "festo_bellows" ||
         Boolean(presetDefaults.vacuum_eoat);
+      const isCounterbalance = presetId === "kuka_kr210" || Boolean(presetDefaults.counterbalance_j2);
 
       pushState((s) => ({
         ...s,
@@ -602,8 +620,11 @@ export default function App() {
           ...presetDefaults,
           preset: presetId,
           kinematics_type: kinType,
+          environment_mode: envMode,
+          gravity_m_s2: envMode === "space_zero_g" ? 0.0 : 9.81,
+          counterbalance_j2: isCounterbalance,
           cnc_plate_mode: isCnc,
-          wrist_3dof: kinType === "articulated",
+          wrist_3dof: kinType === "articulated" || kinType === "bimanual_dual_arm",
           remote_base_motors: isCapstan,
           four_bar_parallelogram: isFourBar,
           bevel_differential_wrist: isBevel,
@@ -754,6 +775,72 @@ export default function App() {
           },
         });
         showToast("Preset Robot Quirúrgico Continuo PCC (Nitinol + Discos PEEK) cargado.");
+      } else if (presetId === "rov_subsea") {
+        setMechatronicsConfig({
+          bus_architecture: "can_fd_bus",
+          system_voltage_v: 48,
+          joint_actuators: {
+            J1: { motor_id: "damiao_dm_j4340", reducer_id: "harmonic_50", target_rpm: 20, parallel_count: 1 },
+            J2: { motor_id: "damiao_dm_j4310", reducer_id: "cycloidal_25", target_rpm: 25, parallel_count: 1 },
+            J3: { motor_id: "damiao_dm_j4310", reducer_id: "cycloidal_25", target_rpm: 30, parallel_count: 1 },
+          },
+        });
+        showToast("Preset ROV Submarino IP68 (Titanio Ti-6Al-4V · Flotabilidad) cargado.");
+      } else if (presetId === "bimanual_aloha") {
+        setMechatronicsConfig({
+          bus_architecture: "can_fd_bus",
+          system_voltage_v: 24,
+          joint_actuators: {
+            J1: { motor_id: "damiao_dm_j4340", reducer_id: "direct", target_rpm: 35, parallel_count: 1 },
+            J2: { motor_id: "damiao_dm_j4310", reducer_id: "direct", target_rpm: 40, parallel_count: 1 },
+            J3: { motor_id: "damiao_dm_j4310", reducer_id: "direct", target_rpm: 45, parallel_count: 1 },
+          },
+        });
+        showToast("Preset Sistema Bimanual 14-DOF (Torso Dual-Arm ALOHA/YuMi) cargado.");
+      } else if (presetId === "stewart_hexapod") {
+        setMechatronicsConfig({
+          bus_architecture: "can_fd_bus",
+          system_voltage_v: 24,
+          joint_actuators: {
+            J1: { motor_id: "nema17_mks_servo42d", reducer_id: "direct", target_rpm: 60, parallel_count: 1 },
+            J2: { motor_id: "nema17_mks_servo42d", reducer_id: "direct", target_rpm: 60, parallel_count: 1 },
+            J3: { motor_id: "nema17_mks_servo42d", reducer_id: "direct", target_rpm: 60, parallel_count: 1 },
+          },
+        });
+        showToast("Preset Hexápodo Stewart 6-UPS (6 Actuadores Lineales Paralelos) cargado.");
+      } else if (presetId === "canadarm_space") {
+        setMechatronicsConfig({
+          bus_architecture: "can_fd_bus",
+          system_voltage_v: 48,
+          joint_actuators: {
+            J1: { motor_id: "bldc_qdd_8308", reducer_id: "harmonic_50", target_rpm: 8, parallel_count: 1 },
+            J2: { motor_id: "bldc_qdd_8308", reducer_id: "harmonic_50", target_rpm: 8, parallel_count: 1 },
+            J3: { motor_id: "bldc_qdd_5010", reducer_id: "harmonic_50", target_rpm: 12, parallel_count: 1 },
+          },
+        });
+        showToast("Preset Canadarm Espacial 7-DOF (Entorno 0-G · Gravedad 0.0 m/s²) cargado.");
+      } else if (presetId === "festo_bellows") {
+        setMechatronicsConfig({
+          bus_architecture: "can_fd_bus",
+          system_voltage_v: 24,
+          joint_actuators: {
+            J1: { motor_id: "nema14_34mm", reducer_id: "direct", target_rpm: 30, parallel_count: 1 },
+            J2: { motor_id: "nema14_34mm", reducer_id: "direct", target_rpm: 30, parallel_count: 1 },
+            J3: { motor_id: "nema14_34mm", reducer_id: "direct", target_rpm: 30, parallel_count: 1 },
+          },
+        });
+        showToast("Preset Festo Bionic Bellows (3× Fuelles Neumáticos TPU 95A) cargado.");
+      } else if (presetId === "kuka_kr210") {
+        setMechatronicsConfig({
+          bus_architecture: "can_fd_bus",
+          system_voltage_v: 48,
+          joint_actuators: {
+            J1: { motor_id: "bldc_qdd_8308", reducer_id: "cycloidal_40", target_rpm: 18, parallel_count: 2 },
+            J2: { motor_id: "bldc_qdd_8308", reducer_id: "cycloidal_40", target_rpm: 18, parallel_count: 2 },
+            J3: { motor_id: "bldc_qdd_8308", reducer_id: "cycloidal_25", target_rpm: 24, parallel_count: 1 },
+          },
+        });
+        showToast("Preset KUKA KR 210 Heavy (Acero 4140 + Contrapeso J2) cargado.");
       }
     },
     [pushState, showToast]
@@ -776,6 +863,12 @@ export default function App() {
         abb_irb360_flexpicker_delta: "delta_flexpicker",
         barrett_wam_ambidex: "barrett_wam",
         continuum_tendon_surgical: "surgical_continuum",
+        rov_subsea_reach_alpha: "rov_subsea",
+        bimanual_yumi_aloha_14dof: "bimanual_aloha",
+        stewart_hexapod_6dof: "stewart_hexapod",
+        canadarm_space_7dof: "canadarm_space",
+        festo_bionic_pneumatic: "festo_bellows",
+        kuka_kr210_r2700: "kuka_kr210",
       };
       const presetId = arm.roboforge_preset_id || idMap[arm.id] || "parol6_desktop";
       const presetObj = presets.arms?.[presetId];
@@ -786,11 +879,14 @@ export default function App() {
       else if (kt.includes("cartesian")) kinType = "cartesian_gantry";
       else if (kt.includes("delta")) kinType = "delta_parallel";
       else if (kt.includes("continuum")) kinType = "continuum_pcc";
+      else if (kt.includes("bimanual")) kinType = "bimanual_dual_arm";
+      else if (kt.includes("stewart")) kinType = "stewart_hexapod";
+      else if (kt.includes("pneumatic")) kinType = "soft_pneumatic_bellows";
 
       applyArmPresetWithMechatronics(presetId, {
         ...baseDefaults,
-        dof: Math.min(Math.max(arm.dof || 6, 4), 7),
-        payload_kg: Math.max(0.1, arm.payload_kg || baseDefaults.payload_kg || 1.0),
+        dof: Math.min(Math.max(arm.dof || 6, 4), 14),
+        payload_kg: Math.min(250, Math.max(0.05, arm.payload_kg || baseDefaults.payload_kg || 1.0)),
         kinematics_type: kinType,
       });
     },
@@ -996,7 +1092,7 @@ export default function App() {
         <div className="header-left">
           <div className="brand">
             <span>RoboForge</span>
-            <span className="brand-badge">PRO v6.0 · R3F</span>
+            <span className="brand-badge">PRO v7.0 · R3F</span>
           </div>
           <nav className="family-tabs">
             {(
@@ -1392,9 +1488,9 @@ export default function App() {
                   type="button"
                   className="btn-tool btn-arm-db"
                   onClick={() => setShowArmDbModal(true)}
-                  title="Explorar los 14 brazos robóticos reales y cargar en 1 clic"
+                  title="Explorar los 20 brazos robóticos reales y cargar en 1 clic"
                 >
-                  📚 Base de Datos ({armDatabase?.arms?.length || 14} Brazos Reales)
+                  📚 Base de Datos ({armDatabase?.arms?.length || 20} Brazos Reales)
                 </button>
                 <div className="preset-grid">
                   {Object.entries(presets.arms).map(([id, p]: [string, any]) => (
@@ -1424,9 +1520,15 @@ export default function App() {
                             dof:
                               kt === "scara" || kt === "cartesian_gantry" || kt === "delta_parallel"
                                 ? 4
-                                : kt === "continuum_pcc"
-                                  ? 7
-                                  : s.arm.dof,
+                                : kt === "stewart_hexapod"
+                                  ? 6
+                                  : kt === "continuum_pcc"
+                                    ? 7
+                                    : kt === "soft_pneumatic_bellows"
+                                      ? 9
+                                      : kt === "bimanual_dual_arm"
+                                        ? 14
+                                        : s.arm.dof,
                           },
                         }));
                       }}
@@ -1436,6 +1538,9 @@ export default function App() {
                       <option value="cartesian_gantry">Pórtico Cartesiano X-Y-Z</option>
                       <option value="delta_parallel">Delta Paralelo 4-DOF</option>
                       <option value="continuum_pcc">Continuo PCC (Quirúrgico)</option>
+                      <option value="bimanual_dual_arm">Bimanual 14-DOF (Dual-Arm)</option>
+                      <option value="stewart_hexapod">Hexápodo Stewart 6-DOF</option>
+                      <option value="soft_pneumatic_bellows">Fuelle Neumático TPU</option>
                     </select>
                   </div>
                   <div className="field-row">
@@ -1450,9 +1555,42 @@ export default function App() {
                       <option value={5}>5 DOF</option>
                       <option value={6}>6 DOF</option>
                       <option value={7}>7 DOF (Redundante)</option>
+                      <option value={9}>9 DOF (Soft)</option>
+                      <option value={14}>14 DOF (Bimanual)</option>
                     </select>
                   </div>
                 </div>
+                <div className="field-row">
+                  <div className="field-head"><span>Entorno Físico</span></div>
+                  <select
+                    value={state.arm.environment_mode}
+                    onChange={(e) => {
+                      const env = e.target.value as EnvironmentMode;
+                      pushState((s) => ({
+                        ...s,
+                        arm: {
+                          ...s.arm,
+                          environment_mode: env,
+                          gravity_m_s2: env === "space_zero_g" ? 0.0 : 9.81,
+                        },
+                      }));
+                    }}
+                  >
+                    <option value="earth">Tierra (9.81 m/s²)</option>
+                    <option value="space_zero_g">Espacio 0-G (0.0 m/s²)</option>
+                    <option value="underwater_rov">Submarino ROV (Flotabilidad + Morison)</option>
+                  </select>
+                </div>
+                <label className="check-row">
+                  <span>Contrapeso J2 (Cilindro -65% Par)</span>
+                  <input
+                    type="checkbox"
+                    checked={state.arm.counterbalance_j2}
+                    onChange={(e) =>
+                      pushState((s) => ({ ...s, arm: { ...s.arm, counterbalance_j2: e.target.checked } }))
+                    }
+                  />
+                </label>
                 <label className="check-row">
                   <span>Motores en Base (Capstan)</span>
                   <input
@@ -1576,10 +1714,21 @@ export default function App() {
 
                 {(state.arm.kinematics_type === "scara" ||
                   state.arm.kinematics_type === "cartesian_gantry" ||
-                  state.arm.kinematics_type === "delta_parallel") && (
+                  state.arm.kinematics_type === "delta_parallel" ||
+                  state.arm.kinematics_type === "stewart_hexapod") && (
                   <div className="field-row">
                     <div className="field-head">
-                      <span>Eje Z Lineal ({state.arm.kinematics_type === "delta_parallel" ? "Delta" : state.arm.kinematics_type === "cartesian_gantry" ? "Pórtico" : "SCARA"})</span>
+                      <span>
+                        Eje Z Lineal (
+                        {state.arm.kinematics_type === "stewart_hexapod"
+                          ? "Stewart"
+                          : state.arm.kinematics_type === "delta_parallel"
+                            ? "Delta"
+                            : state.arm.kinematics_type === "cartesian_gantry"
+                              ? "Pórtico"
+                              : "SCARA"}
+                        )
+                      </span>
                       <span>{state.arm.z_axis_mm} mm</span>
                     </div>
                     <input
@@ -2140,6 +2289,7 @@ export default function App() {
                 config={mechatronicsConfig}
                 catalog={mechatronicsCatalog}
                 mechatronics={modularArmRes?.mechatronics}
+                printReadiness={modularArmRes?.print_readiness}
                 files={modularArmRes?.files}
                 onChangeConfig={setMechatronicsConfig}
               />

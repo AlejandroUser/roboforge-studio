@@ -1,0 +1,367 @@
+"""3D Print-Readiness Engine: Calibration Fit Test Coupon, Auto-Orient, 2D Plate Bin-Packing (.3MF), and PRINT_GUIDE.md."""
+
+from __future__ import annotations
+
+import math
+import tempfile
+import zipfile
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import trimesh
+from build123d import (
+    BuildPart,
+    BuildSketch,
+    Compound,
+    Cylinder,
+    Location,
+    Part,
+    Plane,
+    RectangleRounded,
+    extrude,
+    export_stl,
+)
+
+from .threemf_exporter import CONTENT_TYPES_XML, RELS_XML, _mesh_to_3mf_object_xml
+
+# Slicer temperature & parameter presets per material family
+MATERIAL_SLICER_RECIPES: dict[str, dict[str, Any]] = {
+    "pla_plus": {"nozzle_c": 215, "bed_c": 60, "infill_pct": 35, "walls": 4, "flow_cm3_h": 11.5},
+    "petg": {"nozzle_c": 245, "bed_c": 80, "infill_pct": 35, "walls": 4, "flow_cm3_h": 10.0},
+    "petg_cf": {"nozzle_c": 255, "bed_c": 80, "infill_pct": 40, "walls": 5, "flow_cm3_h": 9.5},
+    "abs_asa": {"nozzle_c": 260, "bed_c": 105, "infill_pct": 40, "walls": 5, "flow_cm3_h": 9.5},
+    "pa12_cf": {"nozzle_c": 285, "bed_c": 100, "infill_pct": 45, "walls": 5, "flow_cm3_h": 8.0},
+    "tpu_95a": {"nozzle_c": 225, "bed_c": 50, "infill_pct": 25, "walls": 3, "flow_cm3_h": 5.5},
+}
+
+
+def build_calibration_fit_test_coupon(req: Any) -> Part:
+    """Build a compact 15-min printable tolerance calibration coupon (66 × 34 × 7 mm, flat on Z=0)
+    with M3/M4 tolerance step holes (+0.1/+0.2/+0.3 mm), 608 bearing / 25T horn pocket, and 5/6.35 mm shaft bores.
+    """
+    with BuildSketch(Plane.XY) as sk:
+        RectangleRounded(66.0, 34.0, radius=3.5)
+    with BuildPart() as bp:
+        extrude(sk.sketch.faces()[0], amount=7.0)
+    coupon = bp.part
+
+    mech = getattr(req, "mechatronics", None)
+    bus = getattr(mech, "bus_architecture", "can_fd_bus") if mech else "can_fd_bus"
+    big_bore_d = 20.2 if bus == "arduino_pca9685_i2c" else 22.2  # 25T horn vs 608 bearing
+
+    # Cutters: M3 step holes (3.1, 3.2, 3.3), M4 step holes (4.1, 4.2, 4.3), shafts (5.15, 6.50), main pocket
+    holes = [
+        # M3 tolerance row (y = +9.5)
+        (-24.0, 9.5, 3.1),
+        (-15.0, 9.5, 3.2),
+        (-6.0, 9.5, 3.3),
+        # M4 tolerance row (y = -9.5)
+        (-24.0, -9.5, 4.1),
+        (-15.0, -9.5, 4.2),
+        (-6.0, -9.5, 4.3),
+        # Motor shaft test holes (NEMA 17 5mm, NEMA 23 6.35mm)
+        (4.0, 8.5, 5.15),
+        (4.0, -8.5, 6.50),
+        # Main bearing 608 / 25T horn fit bore
+        (19.5, 0.0, big_bore_d),
+    ]
+    for hx, hy, hd in holes:
+        cutter = Location((hx, hy, 3.5)) * Cylinder(radius=hd / 2.0, height=12.0)
+        try:
+            cand = coupon - cutter
+            if cand.is_valid and cand.volume > 0:
+                coupon = cand
+        except Exception:
+            pass
+    return coupon
+
+
+def _orient_part_flat_on_z0(part: Part | Compound) -> tuple[trimesh.Trimesh, tuple[float, float, float]]:
+    """Tessellate a CAD solid, auto-orient its shortest axis to Z (flat for printing), and ground at (0,0,0)."""
+    with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        export_stl(part, str(tmp_path), tolerance=0.14, angular_tolerance=0.22)
+        loaded = trimesh.load(str(tmp_path), force="mesh")
+        mesh = loaded.dump(concatenate=True) if isinstance(loaded, trimesh.Scene) else loaded
+        if not isinstance(mesh, trimesh.Trimesh):
+            raise ValueError("Expected Trimesh for print prep")
+    finally:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+
+    extents = mesh.extents
+    min_axis = int(np.argmin(extents))
+    # Rotate shortest dimension to Z so part prints flat with minimal supports
+    if min_axis == 0:
+        rot = trimesh.transformations.rotation_matrix(math.pi / 2.0, [0.0, 1.0, 0.0])
+        mesh.apply_transform(rot)
+    elif min_axis == 1:
+        rot = trimesh.transformations.rotation_matrix(math.pi / 2.0, [1.0, 0.0, 0.0])
+        mesh.apply_transform(rot)
+
+    # Align longest XY dimension along X for better shelf bin-packing
+    if mesh.extents[1] > mesh.extents[0]:
+        rot_z = trimesh.transformations.rotation_matrix(math.pi / 2.0, [0.0, 0.0, 1.0])
+        mesh.apply_transform(rot_z)
+
+    # Ground bounding box min corner at (0, 0, 0)
+    bmin = mesh.bounds[0]
+    mesh.apply_translation([-float(bmin[0]), -float(bmin[1]), -float(bmin[2])])
+    size = (float(mesh.extents[0]), float(mesh.extents[1]), float(mesh.extents[2]))
+    return mesh, size
+
+
+def _write_multi_mesh_3mf(meshes: list[tuple[str, trimesh.Trimesh]], output_path: Path) -> Path:
+    """Write a valid multi-object OPC ZIP .3MF build plate containing all placed part meshes."""
+    obj_blocks: list[str] = []
+    build_items: list[str] = []
+    for idx, (name, mesh) in enumerate(meshes, start=1):
+        obj_blocks.append(_mesh_to_3mf_object_xml(idx, name, mesh))
+        build_items.append(f'    <item objectid="{idx}" />')
+
+    model_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<model unit="millimeter" xml:lang="es-ES" '
+        'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n'
+        '  <metadata name="Application">RoboForge Studio Pro v7.0</metadata>\n'
+        '  <metadata name="Description">Plato de impresión 3D auto-orientado y empaquetado para Bambu Studio / OrcaSlicer / PrusaSlicer</metadata>\n'
+        "  <resources>\n"
+        + "\n".join(obj_blocks)
+        + "\n  </resources>\n"
+        "  <build>\n"
+        + "\n".join(build_items)
+        + "\n  </build>\n"
+        "</model>\n"
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", CONTENT_TYPES_XML)
+        zf.writestr("_rels/.rels", RELS_XML)
+        zf.writestr("3D/3dmodel.model", model_xml)
+    return output_path
+
+
+def generate_print_readiness_pack(
+    printable_parts: dict[str, Part],
+    req: Any,
+    material: dict[str, Any],
+    printer_profile: dict[str, Any],
+    output_dir: Path,
+    design_hash: str = "",
+) -> tuple[Any, dict[str, Path]]:
+    """Auto-orient printable parts flat on Z=0, pack them into 2D build plates (.3MF) with 8 mm gap,
+    generate calibration_fit_test.stl and PRINT_GUIDE.md, and return (PrintReadinessSummary, files_map).
+    """
+    from ..schemas import PrintPlateInfo, PrintReadinessSummary
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    printer_name = str(printer_profile.get("name", "Bambu Lab X1C"))
+    bed_x = float(printer_profile.get("bed_x_mm", 256.0))
+    bed_y = float(printer_profile.get("bed_y_mm", 256.0))
+    bed_z = float(printer_profile.get("bed_z_mm", 256.0))
+
+    mat_id = str(material.get("id", getattr(req, "material_id", "petg_cf")))
+    mat_name = str(material.get("name", mat_id))
+    mat_category = str(material.get("category", "fdm"))
+    density_g_cm3 = float(material.get("density_g_cm3", 1.29))
+
+    recipe = MATERIAL_SLICER_RECIPES.get(
+        mat_id,
+        {"nozzle_c": 245, "bed_c": 80, "infill_pct": 40, "walls": 4, "flow_cm3_h": 9.5},
+    )
+    layer_h = 0.20
+    wall_loops = int(recipe["walls"])
+    infill_pct = int(recipe["infill_pct"])
+    nozzle_c = int(recipe["nozzle_c"])
+    bed_c = int(recipe["bed_c"])
+    flow_cm3_h = float(recipe["flow_cm3_h"])
+
+    warnings: list[str] = []
+    if mat_category == "cnc":
+        warnings.append(
+            f"Material '{mat_name}' es metálico/CNC: los platos .3MF sirven para prototipado de ajuste en PLA/PETG antes de mecanizar."
+        )
+
+    # 1. Orient all printable parts flat on Z=0 and measure extents
+    oriented_items: list[tuple[str, trimesh.Trimesh, tuple[float, float, float], float]] = []
+    fits_bed = True
+    for part_name, solid in printable_parts.items():
+        try:
+            mesh, size = _orient_part_flat_on_z0(solid)
+            vol_cm3 = max(0.5, float(abs(mesh.volume)) / 1000.0)
+            sx, sy, sz = size
+            # Check if part fits in bed (allowing 90° XY rotation)
+            part_fits = (
+                ((sx <= bed_x - 8.0 and sy <= bed_y - 8.0) or (sy <= bed_x - 8.0 and sx <= bed_y - 8.0))
+                and sz <= bed_z - 4.0
+            )
+            if not part_fits:
+                fits_bed = False
+                warnings.append(
+                    f"Pieza '{part_name}' ({sx:.0f}×{sy:.0f}×{sz:.0f} mm) excede la cama de {printer_name} "
+                    f"({bed_x:.0f}×{bed_y:.0f}×{bed_z:.0f} mm): requiere dividir con cola de milano o impresora mayor."
+                )
+            oriented_items.append((part_name, mesh, size, vol_cm3))
+        except Exception:
+            continue
+
+    # Sort largest footprint first for clean 2D shelf bin-packing
+    oriented_items.sort(key=lambda item: item[2][0] * item[2][1], reverse=True)
+
+    # 2. 2D Shelf Bin-Packing into Build Plates (8 mm gap between parts, 6 mm bed margin)
+    gap = 8.0
+    margin = 6.0
+    usable_x = max(80.0, bed_x - 2.0 * margin)
+    usable_y = max(80.0, bed_y - 2.0 * margin)
+
+    plates_meshes: list[list[tuple[str, trimesh.Trimesh, float]]] = []
+    current_plate: list[tuple[str, trimesh.Trimesh, float]] = []
+    cursor_x = margin
+    cursor_y = margin
+    row_h = 0.0
+
+    for part_name, mesh, (sx, sy, sz), vol_cm3 in oriented_items:
+        placed_mesh = mesh.copy()
+        px, py = sx, sy
+        # Try rotating 90° if it fits better on current shelf
+        if cursor_x + px > bed_x - margin and (cursor_x + py <= bed_x - margin and cursor_y + px <= bed_y - margin):
+            rot90 = trimesh.transformations.rotation_matrix(math.pi / 2.0, [0.0, 0.0, 1.0])
+            placed_mesh.apply_transform(rot90)
+            bmin = placed_mesh.bounds[0]
+            placed_mesh.apply_translation([-float(bmin[0]), -float(bmin[1]), -float(bmin[2])])
+            px, py = float(placed_mesh.extents[0]), float(placed_mesh.extents[1])
+
+        if cursor_x + px > bed_x - margin and current_plate:
+            # Move to next row
+            cursor_x = margin
+            cursor_y += row_h + gap
+            row_h = 0.0
+
+        if cursor_y + py > bed_y - margin and current_plate:
+            # Start a new build plate
+            plates_meshes.append(current_plate)
+            current_plate = []
+            cursor_x = margin
+            cursor_y = margin
+            row_h = 0.0
+
+        placed_mesh.apply_translation([cursor_x, cursor_y, 0.0])
+        current_plate.append((part_name, placed_mesh, vol_cm3))
+        cursor_x += px + gap
+        row_h = max(row_h, py)
+
+    if current_plate:
+        plates_meshes.append(current_plate)
+
+    # Effective plastic fill fraction (walls + gyroid infill)
+    eff_fill = min(1.0, 0.42 + 0.58 * (infill_pct / 100.0))
+
+    exported_files: dict[str, Path] = {}
+    plate_infos: list[PrintPlateInfo] = []
+    total_filament_g = 0.0
+    total_hours = 0.0
+
+    for p_idx, p_items in enumerate(plates_meshes, start=1):
+        plate_filename = f"build_plate_{p_idx}.3mf"
+        plate_path = output_dir / plate_filename
+        _write_multi_mesh_3mf([(name, m) for (name, m, _) in p_items], plate_path)
+        exported_files[f"build_plate_{p_idx}_3mf"] = plate_path
+
+        p_vol_cm3 = sum(v for (_, _, v) in p_items) * eff_fill
+        p_grams = round(p_vol_cm3 * density_g_cm3, 1)
+        p_hours = round(max(0.35, p_vol_cm3 / max(flow_cm3_h, 2.0)), 2)
+        total_filament_g += p_grams
+        total_hours += p_hours
+
+        plate_infos.append(
+            PrintPlateInfo(
+                plate_index=p_idx,
+                filename=plate_filename,
+                url=f"/api/files/{design_hash}/{plate_filename}" if design_hash else plate_filename,
+                parts=[name for (name, _, _) in p_items],
+                estimated_mass_g=p_grams,
+                estimated_hours=p_hours,
+            )
+        )
+
+    # 3. Export 15-min Calibration Fit Test Coupon STL
+    coupon_part = build_calibration_fit_test_coupon(req)
+    cal_path = output_dir / "calibration_fit_test.stl"
+    if not (cal_path.exists() and cal_path.stat().st_size > 0):
+        export_stl(coupon_part, str(cal_path), tolerance=0.06, angular_tolerance=0.12)
+    exported_files["calibration_stl"] = cal_path
+
+    # 4. Write comprehensive Spanish PRINT_GUIDE.md for Bambu Studio / OrcaSlicer / PrusaSlicer
+    plate_md_rows = "\n".join(
+        f"| Plato {pi.plate_index} | `{pi.filename}` | {', '.join(pi.parts)} | {pi.estimated_mass_g:.1f} g | {pi.estimated_hours:.2f} h |"
+        for pi in plate_infos
+    )
+    warn_md = (
+        "\n".join(f"- ⚠️ {w}" for w in warnings)
+        if warnings
+        else "- ✅ Todas las piezas caben planas en la cama sin necesidad de corte."
+    )
+    guide_md = f"""# Guía de Impresión 3D y Ensamblaje — RoboForge Studio Pro v7.0
+
+## 1. Perfil de Impresora y Material
+- **Impresora objetivo:** {printer_name} ({bed_x:.0f} × {bed_y:.0f} × {bed_z:.0f} mm)
+- **Material:** {mat_name} (`{mat_id}`)
+- **Estado de cama:** {"✅ Todas las piezas caben en cama" if fits_bed else "⚠️ Requiere dividir piezas largas"}
+- **Platos totales:** {len(plate_infos)} | **Filamento estimado:** {total_filament_g:.1f} g | **Tiempo total:** {total_hours:.2f} h
+
+## 2. Receta Recomendada (Bambu Studio / OrcaSlicer / PrusaSlicer)
+| Parámetro | Valor Recomendado |
+| :--- | :--- |
+| Altura de capa | `{layer_h:.2f} mm` |
+| Paredes (Wall Loops) | `{wall_loops}` (boquilla 0.4–0.6 mm) |
+| Relleno estructural | `{infill_pct}%` patrón **Gyroid** |
+| Temperatura boquilla | `{nozzle_c} °C` |
+| Temperatura cama | `{bed_c} °C` |
+| Soportes | Mínimos (piezas auto-orientadas planas sobre `Z = 0`) |
+
+## 3. Paso 0 (OBLIGATORIO): Calibración en 15 Minutos
+1. Imprime primero **`calibration_fit_test.stl`** con exactamente la receta de arriba.
+2. Verifica el ajuste de tornillos **M3** (`+0.1 / +0.2 / +0.3 mm`), **M4**, eje de motor (`5.0 / 6.35 mm`) y rodamiento `608` / horn `25T`.
+3. Si entra muy apretado, ajusta *XY Hole Compensation* en OrcaSlicer (`+0.05` a `+0.10 mm`) antes de lanzar el Plato 1.
+
+## 4. Distribución de Platos de Impresión (`.3MF`)
+| Plato | Archivo | Piezas Incluidas | Filamento | Tiempo Est. |
+| :--- | :--- | :--- | ---: | ---: |
+{plate_md_rows}
+
+## 5. Alertas DFM y Notas de Impresión
+{warn_md}
+
+## 6. Checklist Rápido de Ensamblaje
+- [ ] Limpiar rebabas/brim de los alojamientos de rodamientos y juntas.
+- [ ] Instalar insertos térmicos de latón (si aplica) con soldador a `220–240 °C`.
+- [ ] Verificar el giro suave de cada junta antes de apretar los tornillos ISO 4762.
+- [ ] Consultar `arm_circuit_schematic.svg` y `arm_master_bom.csv` para el cableado final.
+"""
+    guide_path = output_dir / "PRINT_GUIDE.md"
+    guide_path.write_text(guide_md, encoding="utf-8")
+    exported_files["print_guide_md"] = guide_path
+
+    summary = PrintReadinessSummary(
+        fits_bed=fits_bed,
+        printer_name=printer_name,
+        bed_mm=[round(bed_x, 1), round(bed_y, 1), round(bed_z, 1)],
+        total_plates=len(plate_infos),
+        total_filament_g=round(total_filament_g, 1),
+        estimated_print_hours=round(total_hours, 2),
+        layer_height_mm=layer_h,
+        wall_loops=wall_loops,
+        infill_pct=infill_pct,
+        infill_pattern="Gyroid",
+        nozzle_temp_c=nozzle_c,
+        bed_temp_c=bed_c,
+        plates=plate_infos,
+        warnings=warnings,
+    )
+    return summary, exported_files

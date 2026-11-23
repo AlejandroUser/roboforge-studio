@@ -27,6 +27,12 @@ def test_load_arm_presets_validate_against_schema():
         "delta_flexpicker",
         "barrett_wam",
         "surgical_continuum",
+        "rov_subsea",
+        "bimanual_aloha",
+        "stewart_hexapod",
+        "canadarm_space",
+        "festo_bellows",
+        "kuka_kr210",
     }
     assert set(data["presets"].keys()) == expected
     for preset_id, entry in data["presets"].items():

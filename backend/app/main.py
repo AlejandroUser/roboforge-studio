@@ -38,13 +38,16 @@ from .cad.exporter import (
     load_cached_metadata,
     load_cached_mount_metadata,
 )
+from .cad.bimanual_assembly import export_bimanual_urdf
 from .cad.cartesian_assembly import export_cartesian_urdf
 from .cad.continuum_assembly import export_continuum_urdf
 from .cad.delta_assembly import export_delta_urdf
 from .cad.gear_variants import generate_all_gear_variants
 from .cad.hardware_parts import export_cnc_plates_dxf
 from .cad.mount_variants import generate_all_mount_variants
+from .cad.print_prep import generate_print_readiness_pack
 from .cad.scara_assembly import export_scara_urdf
+from .cad.stewart_assembly import export_stewart_urdf
 from .cad.sdf_gyroid import generate_field_driven_gyroid
 from .cad.step_analyzer import analyze_step_file
 from .cad.variants import generate_all_variants
@@ -143,7 +146,7 @@ GEAR_VARIANT_ORDER: tuple[GearVariantKind, ...] = (
 )
 
 HASH_PATTERN = re.compile(r"^(?:[a-f0-9]{8,64}|ref_[a-f0-9]{12}|gyr_[a-f0-9]{12})$")
-FILENAME_PATTERN = re.compile(r"^[a-z0-9_]+\.(glb|step|stl|3mf|urdf|xml|csv|zip|svg|yml|ino|dxf|json)$")
+FILENAME_PATTERN = re.compile(r"^[A-Za-z0-9_]+\.(glb|step|stl|3mf|urdf|xml|csv|zip|svg|yml|ino|dxf|json|md)$")
 
 MEDIA_TYPES: dict[str, str] = {
     ".glb": "model/gltf-binary",
@@ -159,6 +162,7 @@ MEDIA_TYPES: dict[str, str] = {
     ".ino": "text/plain; charset=utf-8",
     ".dxf": "application/dxf",
     ".json": "application/json",
+    ".md": "text/markdown; charset=utf-8",
 }
 
 app = FastAPI(
@@ -972,11 +976,11 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
     )
     proxy_arm_req = ArmAssemblyRequest(
         preset="parol6_desktop",
-        dof=effective_req.dof,
-        payload_kg=effective_req.payload_kg,
+        dof=max(4, min(7, int(effective_req.dof))),
+        payload_kg=max(0.1, min(8.0, float(effective_req.payload_kg))),
         base_height_mm=max(40.0, min(200.0, float(effective_req.base_height_mm))),
-        upper_arm_mm=max(40.0, min(400.0, float(slots_used.upper_arm.length_mm) if slots_used.upper_arm else 200.0)),
-        forearm_mm=max(40.0, min(350.0, float(slots_used.forearm.length_mm) if slots_used.forearm else 170.0)),
+        upper_arm_mm=max(40.0, min(1500.0, float(slots_used.upper_arm.length_mm) if slots_used.upper_arm else 200.0)),
+        forearm_mm=max(40.0, min(1500.0, float(slots_used.forearm.length_mm) if slots_used.forearm else 170.0)),
         wrist_mm=max(20.0, min(160.0, float(effective_req.wrist_mm))),
         link_style=proxy_style,  # type: ignore[arg-type]
         shoulder_joint_deg=float(effective_req.joint_angles_deg[0]),
@@ -998,8 +1002,12 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
         export_cartesian_urdf(effective_req, joints, urdf_path)
     elif kin_type == "delta_parallel":
         export_delta_urdf(effective_req, joints, urdf_path)
-    elif kin_type == "continuum_pcc":
+    elif kin_type in ("continuum_pcc", "soft_pneumatic_bellows"):
         export_continuum_urdf(effective_req, joints, urdf_path)
+    elif kin_type == "bimanual_dual_arm":
+        export_bimanual_urdf(effective_req, joints, urdf_path)
+    elif kin_type == "stewart_hexapod":
+        export_stewart_urdf(effective_req, joints, urdf_path)
     else:
         export_arm_urdf(proxy_arm_req, joints, urdf_path)
     export_arm_mujoco(proxy_arm_req, joints, mujoco_path)
@@ -1075,7 +1083,24 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
         )
         zip_included_files.append(lerobot_json_path)
 
-    # Package full manufacturing kit ZIP (individual part STEP/3MF + full STEP + URDF + MuJoCo + BOM + v4.0/v5.0 Mechatronics)
+    # v7.0: 3D Print-Readiness Pack (Auto-Orient, Multi-Plate .3MF Bin-Packing, Calibration STL, PRINT_GUIDE.md)
+    printers_db = load_printers()
+    printer_profile = printers_db.get(
+        effective_req.printer_id or "bambu_x1c",
+        next(iter(printers_db.values()), {"name": "Bambu Lab X1C", "bed_x_mm": 256.0, "bed_y_mm": 256.0, "bed_z_mm": 256.0}),
+    )
+    printable_parts = cad_res.get("printable_parts") or {}
+    print_summary, print_files = generate_print_readiness_pack(
+        printable_parts=printable_parts,
+        req=effective_req,
+        material=material,
+        printer_profile=printer_profile,
+        output_dir=out_dir,
+        design_hash=design_hash,
+    )
+    zip_included_files.extend(print_files.values())
+
+    # Package full manufacturing kit ZIP (individual part STEP/3MF + full STEP + URDF + MuJoCo + BOM + Print Plates + Guide)
     zip_path = build_arm_manufacturing_zip(
         out_dir=out_dir,
         included_files=zip_included_files,
@@ -1094,6 +1119,8 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
         "master_bom_csv": f"/api/files/{design_hash}/arm_master_bom.csv",
         "zip": f"/api/files/{design_hash}/{zip_path.name}",
     }
+    for k, fp in print_files.items():
+        files[k] = f"/api/files/{design_hash}/{fp.name}"
     if firmware_ino_path is not None:
         files["firmware_ino"] = f"/api/files/{design_hash}/{firmware_ino_path.name}"
     if cnc_dxf_path is not None:
@@ -1119,6 +1146,7 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
         joints=joints,
         bom=bom,
         mechatronics=mechatronics,
+        print_readiness=print_summary,
     )
 
 

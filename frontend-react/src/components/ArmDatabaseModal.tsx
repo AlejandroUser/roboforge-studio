@@ -21,10 +21,16 @@ function getTopologyBadges(arm: ArmDatabaseEntry): string[] {
   if (kt.includes("cartesian") || id.includes("lumenpnp")) badges.push("Cartesiano");
   if (kt.includes("delta") || id.includes("delta")) badges.push("Delta");
   if (kt.includes("continuum") || id.includes("continuum")) badges.push("Continuo PCC");
+  if (kt.includes("bimanual") || arm.dof >= 14) badges.push("Bimanual 14-DOF");
+  if (kt.includes("stewart") || id.includes("stewart")) badges.push("Stewart 6-UPS");
+  if (kt.includes("pneumatic") || id.includes("festo")) badges.push("Fuelle TPU");
+  if (kt.includes("zero_g") || id.includes("canadarm")) badges.push("0-G Espacio");
+  if (kt.includes("subsea") || id.includes("rov")) badges.push("Submarino ROV");
+  if (arm.payload_kg >= 50 || id.includes("kuka")) badges.push("Heavy 210kg");
   if (kt.includes("parallelogram") || id.includes("dobot")) badges.push("4-Barras");
   if (kt.includes("cable") || tx.includes("capstan")) badges.push("Capstan");
   if (tx.includes("bevel") || id.includes("thor")) badges.push("Bevel");
-  if (arm.dof >= 7 || kt.includes("7dof")) badges.push("7-DOF");
+  if (arm.dof === 7) badges.push("7-DOF");
   if (tx.includes("cicloidal")) badges.push("Cicloidal");
   if (id.includes("lerobot") || id.includes("so_arm") || elec.includes("sts3215")) badges.push("LeRobot");
   if (id.includes("fabri") || elec.includes("pca9685")) badges.push("Servo 5.0");

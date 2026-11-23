@@ -657,7 +657,7 @@ def export_bom_csv(bom: list[BOMItem], output_path: Path) -> Path:
 
 def compute_modular_arm_hash(req: ModularArmRequest) -> str:
     """Compute a deterministic 16-char SHA-256 hex digest for a ModularArmRequest."""
-    canonical = "modarm_v60:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
+    canonical = "modarm_v70:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
@@ -730,6 +730,18 @@ def build_modular_arm_assembly(
         from .continuum_assembly import build_continuum_pcc_assembly
 
         return build_continuum_pcc_assembly(req, material, output_dir, design_hash)
+    if kin == "soft_pneumatic_bellows":
+        from .continuum_assembly import build_soft_pneumatic_bellows_assembly
+
+        return build_soft_pneumatic_bellows_assembly(req, material, output_dir, design_hash)
+    if kin == "bimanual_dual_arm":
+        from .bimanual_assembly import build_bimanual_arm_assembly
+
+        return build_bimanual_arm_assembly(req, material, output_dir, design_hash)
+    if kin == "stewart_hexapod":
+        from .stewart_assembly import build_stewart_hexapod_assembly
+
+        return build_stewart_hexapod_assembly(req, material, output_dir, design_hash)
 
     from ..physics.arm_compatibility import resolve_default_slots
 
@@ -1437,10 +1449,26 @@ def build_modular_arm_assembly(
     for v5_name, _, _, _, _, v5_vec in extra_v5_nodes:
         explode_vectors[v5_name] = v5_vec
 
+    printable_parts: dict[str, Part] = {
+        "base_pedestal": base_raw,
+        "shoulder_mount": mount_raw,
+        "upper_arm_link": upper_raw,
+        "forearm_link": forearm_raw,
+    }
+    if not is_direct_servo_mode:
+        if not replace_sh_gear:
+            printable_parts["shoulder_gear"] = sh_gear_raw
+        if not replace_el_gear:
+            printable_parts["elbow_gear"] = el_gear_raw
+    elif clevis_shoulder_placed is not None and clevis_elbow_placed is not None:
+        printable_parts["clevis_shoulder"] = clevis_shoulder_placed
+        printable_parts["clevis_elbow"] = clevis_elbow_placed
+
     return {
         "real_volumes_mm3": real_volumes_mm3,
         "explode_vectors": explode_vectors,
         "individual_files": individual_files,
+        "printable_parts": printable_parts,
         "step_path": step_path,
         "stl_path": stl_path,
         "glb_path": glb_path,

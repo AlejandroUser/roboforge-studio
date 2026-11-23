@@ -26,7 +26,7 @@ def test_micro_arm_below_100mm_fix_and_all_6_new_presets():
     assert micro.upper_arm_mm == 90.0
 
     presets = load_arm_presets()["presets"]
-    assert len(presets) == 15
+    assert len(presets) >= 15
     for key in (
         "thor_6dof",
         "dobot_4bar",

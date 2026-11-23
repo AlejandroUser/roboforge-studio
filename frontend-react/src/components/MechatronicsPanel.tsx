@@ -8,6 +8,7 @@ import type {
   MechatronicsCatalog,
   MechatronicsConfig,
   MechatronicsResponse,
+  PrintReadinessSummary,
 } from "../types";
 
 const FALLBACK_ACTUATORS = [
@@ -46,6 +47,7 @@ export interface MechatronicsPanelProps {
   config: MechatronicsConfig;
   catalog: MechatronicsCatalog | null;
   mechatronics: MechatronicsResponse | null | undefined;
+  printReadiness?: PrintReadinessSummary | null;
   files: Record<string, string> | undefined;
   onChangeConfig: (next: MechatronicsConfig) => void;
 }
@@ -204,10 +206,11 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
   config,
   catalog,
   mechatronics,
+  printReadiness,
   files,
   onChangeConfig,
 }) => {
-  const [subTab, setSubTab] = useState<"motors" | "circuit" | "bom">("motors");
+  const [subTab, setSubTab] = useState<"motors" | "circuit" | "bom" | "print">("motors");
   const [selectedJointId, setSelectedJointId] = useState<string>("J1");
   const [showSvgModal, setShowSvgModal] = useState<boolean>(false);
 
@@ -259,6 +262,8 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
   const firmwareInoUrl = files?.firmware_ino;
   const cncDxfUrl = files?.cnc_dxf;
   const lerobotJsonUrl = files?.lerobot_json;
+  const calibrationStlUrl = files?.calibration_stl;
+  const printGuideMdUrl = files?.print_guide_md;
 
   const formatVoltage = (v: number) =>
     Number.isInteger(v) ? `${v.toFixed(0)} V DC` : `${v.toFixed(1)} V DC`;
@@ -266,20 +271,20 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
   return (
     <div className="mech-card">
       <div className="pareto-head">
-        <strong>Mecatrónica v4.0 (Motores · Circuito · BOM)</strong>
+        <strong>Mecatrónica &amp; Impresión 3D (v7.0)</strong>
         {mechatronics && (
           <span className="badge good">${mechatronics.total_bom_cost_usd.toFixed(0)} USD</span>
         )}
       </div>
 
-      {/* 3 Sub-tabs */}
-      <div className="mech-tabs">
+      {/* 4 Sub-tabs */}
+      <div className="mech-tabs four-tabs">
         <button
           type="button"
           className={`mech-tab ${subTab === "motors" ? "active" : ""}`}
           onClick={() => setSubTab("motors")}
         >
-          Motores &amp; Torque
+          Motores
         </button>
         <button
           type="button"
@@ -293,7 +298,14 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
           className={`mech-tab ${subTab === "bom" ? "active" : ""}`}
           onClick={() => setSubTab("bom")}
         >
-          BOM Unitario
+          BOM
+        </button>
+        <button
+          type="button"
+          className={`mech-tab ${subTab === "print" ? "active" : ""}`}
+          onClick={() => setSubTab("print")}
+        >
+          🖨 Impresión 3D
         </button>
       </div>
 
@@ -586,6 +598,114 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
           ) : (
             <div className="mech-empty">
               Ensambla el brazo modular para generar la <strong>Lista de Materiales Unitaria</strong> (tornillos ISO 4762, rodamientos, motores, electrónica e impresión 3D).
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 4: IMPRESIÓN 3D LISTA PARA SLICER */}
+      {subTab === "print" && (
+        <div className="mech-pane">
+          {printReadiness ? (
+            <>
+              <div className="psu-banner">
+                <span>
+                  {printReadiness.printer_name} ({(printReadiness.bed_mm || []).map((v) => Math.round(v)).join("×")} mm)
+                </span>
+                <span className={`badge ${printReadiness.fits_bed ? "good" : "warn"}`}>
+                  {printReadiness.fits_bed ? "✓ Cabe en Cama" : "⚠ Requiere Dividir"}
+                </span>
+              </div>
+
+              <div className="metrics-grid">
+                <div className="metric-box">
+                  <span>Platos</span>
+                  <strong>{printReadiness.total_plates}</strong>
+                </div>
+                <div className="metric-box">
+                  <span>Filamento</span>
+                  <strong>{printReadiness.total_filament_g.toFixed(0)} g</strong>
+                </div>
+                <div className="metric-box">
+                  <span>Tiempo Est.</span>
+                  <strong>{printReadiness.estimated_print_hours.toFixed(1)} h</strong>
+                </div>
+                <div className="metric-box">
+                  <span>Capa / Paredes</span>
+                  <strong>{printReadiness.layer_height_mm.toFixed(2)}mm · {printReadiness.wall_loops}p</strong>
+                </div>
+                <div className="metric-box">
+                  <span>Relleno</span>
+                  <strong>{printReadiness.infill_pct}% {printReadiness.infill_pattern}</strong>
+                </div>
+                <div className="metric-box">
+                  <span>Temp. Boq/Cama</span>
+                  <strong>{printReadiness.nozzle_temp_c}° / {printReadiness.bed_temp_c}°C</strong>
+                </div>
+              </div>
+
+              <div className="slicer-recipe-box">
+                <strong>Receta Bambu Studio / OrcaSlicer / PrusaSlicer:</strong>{" "}
+                Capa {printReadiness.layer_height_mm.toFixed(2)} mm · {printReadiness.wall_loops} paredes ·{" "}
+                {printReadiness.infill_pct}% {printReadiness.infill_pattern} · Boquilla {printReadiness.nozzle_temp_c}°C / Cama{" "}
+                {printReadiness.bed_temp_c}°C.
+              </div>
+
+              {printReadiness.warnings?.length > 0 && (
+                <div className="modular-issues-list">
+                  {printReadiness.warnings.map((w, idx) => (
+                    <div key={idx} className="alert-item warning">
+                      {w}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Build plates list */}
+              <div className="print-plates-list">
+                {(printReadiness.plates || []).map((plate, idx) => {
+                  const pNum = plate.plate_index ?? plate.plate_number ?? idx + 1;
+                  const plateUrl =
+                    plate.url || files?.[`build_plate_${pNum}_3mf`] || (pNum === 1 ? files?.build_plate_1_3mf : undefined);
+                  return (
+                    <div key={pNum} className="print-plate-row">
+                      <div className="print-plate-info">
+                        <strong>
+                          Plato {pNum} ({plate.part_count ?? plate.parts.length} piezas)
+                        </strong>
+                        <small>{plate.parts.join(", ")}</small>
+                      </div>
+                      {plateUrl && (
+                        <a className="dl-link dl-plate-btn" href={plateUrl} download>
+                          Plato {pNum} (.3MF)
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="dl-row modular-dl-row">
+                {calibrationStlUrl && (
+                  <a
+                    className="dl-link dl-zip"
+                    href={calibrationStlUrl}
+                    download
+                    title="Cupón de calibración de tolerancias M3/M4/608/eje imprimible en 15 minutos"
+                  >
+                    Test Tolerancias 15min (.STL)
+                  </a>
+                )}
+                {printGuideMdUrl && (
+                  <a className="dl-link" href={printGuideMdUrl} download>
+                    Guía Slicer (.MD)
+                  </a>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="mech-empty">
+              Pulsa <strong>«Ensamblar Brazo Real»</strong> para generar automáticamente los <strong>Platos `.3MF`</strong>, el <strong>Test de Tolerancias 15min (`.STL`)</strong> y la <strong>Guía de Slicer (`.MD`)</strong>.
             </div>
           )}
         </div>

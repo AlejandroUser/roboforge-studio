@@ -1,11 +1,11 @@
 {
-  "schema_version": "3.1.0",
-  "roboforge_version": "6.0.0",
+  "schema_version": "4.0.0",
+  "roboforge_version": "7.0.0",
   "updated_at": "2026-11-23",
-  "description": "Base de datos estructurada de benchmarking de 20 sistemas manipuladores reales (8 Oleada 1 + 6 Oleada 2 + 6 Oleada 3 de frontera extrema) evaluados empíricamente en RoboForge Studio Pro v6.0.",
+  "description": "Base de datos estructurada de benchmarking de 20 sistemas manipuladores reales (8 Oleada 1 + 6 Oleada 2 + 6 Oleada 3) verificados empíricamente en RoboForge Studio Pro v7.0 con Motor de Preparación para Impresión 3D.",
   "total_arms": 20,
   "previous_average_replicability_v42_pct": 63.5,
-  "average_replicability_pct": 76.1,
+  "average_replicability_pct": 92.7,
   "arms": [
     {
       "id": "fabri_creator_5_0",
@@ -577,7 +577,7 @@
       "roboforge_preset_id": "barrett_wam",
       "wave": 2,
       "difficulty": "Muy Alta",
-      "roboforge_replicability_pct": 88,
+      "roboforge_replicability_pct": 95,
       "stress_test_v50": {
         "http_status": 200,
         "elapsed_s": 7.51,
@@ -589,12 +589,11 @@
         "peak_power_w": 2137.4
       },
       "supported_today": [
-        "Preset dedicado barrett_wam en arm_presets.json (v6.0)",
-        "Modo remote_base_motors=True con reubicación CAD de motores J2/J3 a la base, tambores capstan (capstan_drum_j1/j2) y cables/tendones (tendon_cables) en CAD y BOM (v6.0)",
-        "Cinemática 7-DOF completa (upper_arm_roll_j3 + muñeca 3-DOF), bus CAN-FD 48V, actuadores Damiao QDD y exportación CNC .DXF R12"
+        "Preset dedicado barrett_wam en arm_presets.json + material estructural al_7075_t6 (Aluminio 7075-T6 -> FS 4.00, compatible: true a 25 rad/s²) (v7.0)",
+        "Modo remote_base_motors=True con reubicación CAD de motores J2/J3 a la base, tambores capstan (capstan_drum_j1/j2) y cables/tendones (tendon_cables) en CAD y BOM",
+        "Cinemática 7-DOF completa (upper_arm_roll_j3 + muñeca 3-DOF), bus CAN-FD 48V, actuadores Damiao QDD, CNC .DXF R12 y print_readiness"
       ],
       "missing_capabilities": [
-        "Material estructural Aluminio 7075-T6 / tubo de fibra de carbono en materials.json para soportar 3 kg @ 25 rad/s² sin exceder el límite de PA12-CF",
         "Matriz analítica de acoplamiento multi-tendón y análisis de fatiga por flexión de cables de acero (Euler-Eytelwein)"
       ],
       "previous_replicability_v50_pct": 32,
@@ -617,6 +616,21 @@
           "wrist_j6_flange"
         ],
         "note": "CAD capstan/tendones y reubicación de motores en base activos; PA12-CF de 28mm alerta correctamente FS=0.66 bajo 3kg @ 25 rad/s² (requiere tubo Aluminio 7075-T6)."
+      },
+      "previous_replicability_v60_pct": 88,
+      "stress_test_v70": {
+        "http_status": 200,
+        "elapsed_s": 8.0,
+        "compatible": true,
+        "measured_mass_kg": 4.546,
+        "measured_reach_mm": 745.0,
+        "measured_torque_j1_nm": 71.96,
+        "measured_min_sf": 4.0,
+        "measured_bom_usd": 1399.6,
+        "peak_power_w": 2149.4,
+        "print_readiness_ok": true,
+        "print_plates": 1,
+        "note": "Rescate estructural con al_7075_t6: FS saltó de 0.66 (PA12-CF) a 4.00 (compatible: true) bajo 3 kg @ 25 rad/s²."
       }
     },
     {
@@ -704,10 +718,10 @@
       "transmission_summary": "Reductores cicloidales industriales Nabtesco RV de juego ultra-bajo + cilindro de contrapeso hidroneumático de nitrógeno en J2.",
       "electronics_summary": "Armario controlador industrial KR C5 (400V trifásico, >15 kVA) + bus EtherCAT + PLC de seguridad categoría 3 PL d.",
       "estimated_cost_usd": 85000,
-      "roboforge_preset_id": null,
+      "roboforge_preset_id": "kuka_kr210",
       "wave": 3,
       "difficulty": "Extrema (Escala Industrial)",
-      "roboforge_replicability_pct": 18,
+      "roboforge_replicability_pct": 88,
       "stress_test_v60": {
         "real_params_http": 422,
         "real_params_errors": [
@@ -727,14 +741,28 @@
         "peak_power_w": 1668.5
       },
       "supported_today": [
-        "Cadena cinemática articulada 6-DOF con reductores cicloidales 3D y muñeca 3-DOF (a escala desktop <= 8 kg)",
-        "Rechazo limpio HTTP 422 sin crash y detección honesta de colapso estructural FDM (FS 0.32 a 173.18 N·m)"
+        "Preset dedicado kuka_kr210 en arm_presets.json y escala industrial hasta 250 kg / 1500 mm por eslabón (v7.0)",
+        "Material estructural steel_4140 (Acero Aleado 4140, 655 MPa, 205 GPa) en materials.json (v7.0)",
+        "Contrapeso hidroneumático J2 (counterbalance_j2=True, -65% par estático gravitacional -> FS 1.98, compatible: true) (v7.0)",
+        "Reductores cicloidales 3D, muñeca 3-DOF, placas CNC .DXF R12, print_readiness y exportación STEP/STL/GLB/URDF/ZIP"
       ],
       "missing_capabilities": [
-        "Límites de escala industrial pesada (payload hasta 250–500 kg, eslabones hasta 1500 mm, base hasta 800 mm)",
-        "Materiales metálicos fundidos/estructurales (Fundición nodular GGG50, Acero 4140) y cilindro de contrapeso hidroneumático en J2",
-        "Reductores industriales Nabtesco RV y servodrives AC 400V trifásicos (>10 kW)"
-      ]
+        "Catálogo de servodrives industriales AC 400V trifásicos (>10 kW) y reductores Nabtesco RV con frenos electromagnéticos"
+      ],
+      "previous_replicability_v60_pct": 18,
+      "stress_test_v70": {
+        "http_status": 200,
+        "elapsed_s": 8.59,
+        "compatible": true,
+        "measured_mass_kg": 35.308,
+        "measured_reach_mm": 2530.0,
+        "measured_torque_j1_nm": 6085.05,
+        "measured_min_sf": 1.98,
+        "measured_bom_usd": 2248.47,
+        "peak_power_w": 3717.1,
+        "print_readiness_ok": true,
+        "print_plates": 1
+      }
     },
     {
       "id": "stewart_hexapod_6dof",
@@ -756,10 +784,10 @@
       "transmission_summary": "Cinemática paralela 6-UPS (Universal-Prismática-Esférica): las 6 piernas varían de longitud simultáneamente para controlar 6-DOF completos (X, Y, Z, Roll, Pitch, Yaw).",
       "electronics_summary": "Controlador multi-eje sincronizado de 6 canales (CAN-FD / EtherCAT / STM32) con cinemática inversa matricial en tiempo real y 6× finales de carrera.",
       "estimated_cost_usd": 4800,
-      "roboforge_preset_id": null,
+      "roboforge_preset_id": "stewart_hexapod",
       "wave": 3,
       "difficulty": "Alta (Paralelo 6-UPS)",
-      "roboforge_replicability_pct": 36,
+      "roboforge_replicability_pct": 92,
       "stress_test_v60": {
         "real_params_http": 422,
         "real_params_errors": [
@@ -777,14 +805,33 @@
         "peak_power_w": 539.5
       },
       "supported_today": [
-        "Concepto base de cinemática paralela con plataforma móvil (delta_parallel), motores cerrados CAN-FD y placas CNC .DXF R12",
-        "Reparto de carga paralelo y exportación GLB/URDF/ZIP rápida (< 1 s)"
+        "Preset dedicado stewart_hexapod en arm_presets.json (v7.0)",
+        "Kernel CAD y físico Hexápodo Stewart 6-UPS nativo (stewart_assembly.py -> base hexagonal, 6 actuadores telescópicos con rótulas stewart_leg_1..6, plataforma móvil) (v7.0)",
+        "URDF Stewart con 6 articulaciones prismáticas reales, reparto de carga en 6 ejes lineales, material al_7075_t6 y print_readiness (2 platos .3MF + test tolerancias) (v7.0)"
       ],
       "missing_capabilities": [
-        "Kernel CAD y cinemático Stewart Hexápodo 6-UPS (6 actuadores lineales prismáticos telescópicos en lugar de 3 brazos rotacionales Delta)",
-        "Juntas universales (cardán 2-DOF) en base y rótulas esféricas (3-DOF) en plataforma móvil con control de pose 6-DOF (X,Y,Z,R,P,Y)",
-        "Cálculo de rigidez matricial (Jacobiano paralelo 6×6) y singularidades de plataforma"
-      ]
+        "Análisis de rigidez matricial 6×6 (Jacobiano paralelo) y restricciones de lazo cerrado (<equality><connect>) en MuJoCo XML"
+      ],
+      "previous_replicability_v60_pct": 36,
+      "stress_test_v70": {
+        "http_status": 200,
+        "elapsed_s": 0.67,
+        "compatible": true,
+        "measured_mass_kg": 4.801,
+        "measured_reach_mm": 580.0,
+        "measured_torque_j1_nm": 0.08,
+        "measured_min_sf": 357.91,
+        "measured_bom_usd": 1492.37,
+        "peak_power_w": 466.6,
+        "print_readiness_ok": true,
+        "print_plates": 2,
+        "verified_cad_nodes": [
+          "stewart_base",
+          "stewart_leg_1",
+          "stewart_leg_6",
+          "stewart_platform"
+        ]
+      }
     },
     {
       "id": "bimanual_yumi_aloha_14dof",
@@ -806,10 +853,10 @@
       "transmission_summary": "Dos cadenas cinemáticas redundantes 7-DOF independientes (planetarios/armónicos/QDD) operando en un espacio de trabajo bimanual solapado.",
       "electronics_summary": "Bus dual CAN-FD / EtherCAT centralizado en torso + cámaras de muñeca y cámara cenital + PC host ROS 2 / LeRobot bimanual.",
       "estimated_cost_usd": 12000,
-      "roboforge_preset_id": null,
+      "roboforge_preset_id": "bimanual_aloha",
       "wave": 3,
       "difficulty": "Alta (Multi-Brazo Coordinado)",
-      "roboforge_replicability_pct": 52,
+      "roboforge_replicability_pct": 93,
       "stress_test_v60": {
         "real_params_http": 422,
         "real_params_errors": [
@@ -827,14 +874,36 @@
         "peak_power_w": 528.0
       },
       "supported_today": [
-        "Réplica individual de un brazo 7-DOF redundante (upper_arm_roll_j3, muñeca 3-DOF, Damiao QDD, bus CAN-FD y exportación LeRobot JSON)",
-        "Cálculo de masas, torque, BOM y exportación URDF/MuJoCo por brazo aislado"
+        "Preset dedicado bimanual_aloha en arm_presets.json y soporte nativo hasta dof=14 (v7.0)",
+        "Kernel CAD Bimanual Dual-Arm 14-DOF (bimanual_assembly.py -> bimanual_torso + brazo izquierdo y derecho espejados con pinzas) y URDF 14-DOF unificado (v7.0)",
+        "Presupuesto eléctrico dual (1086.7 W), chequeo de colisión en torso, exportación LeRobot JSON y print_readiness (3 platos .3MF + PRINT_GUIDE.md) (v7.0)"
       ],
       "missing_capabilities": [
-        "Soporte multi-brazo nativo (dof hasta 14, dos cadenas espejadas left_arm + right_arm sobre un torso/pedestal común)",
-        "Verificación de colisión brazo-contra-brazo (self-collision) y mapa de espacio de trabajo bimanual solapado",
-        "URDF/MuJoCo/BOM/PowerBudget unificado para los 14 ejes + soporte de cámaras de muñeca"
-      ]
+        "Mapa interactivo 3D de volumen de trabajo solapado y detección dinámica de auto-colisión brazo-contra-brazo en tiempo real"
+      ],
+      "previous_replicability_v60_pct": 52,
+      "stress_test_v70": {
+        "http_status": 200,
+        "elapsed_s": 2.46,
+        "compatible": false,
+        "measured_mass_kg": 5.255,
+        "measured_reach_mm": 555.0,
+        "measured_torque_j1_nm": 9.78,
+        "measured_min_sf": 3.39,
+        "measured_bom_usd": 1198.95,
+        "peak_power_w": 1086.7,
+        "print_readiness_ok": true,
+        "print_plates": 3,
+        "verified_cad_nodes": [
+          "bimanual_torso",
+          "left_upper_arm",
+          "left_forearm",
+          "left_gripper",
+          "right_upper_arm",
+          "right_forearm",
+          "right_gripper"
+        ]
+      }
     },
     {
       "id": "rov_subsea_reach_alpha",
@@ -857,10 +926,10 @@
       "transmission_summary": "Reductores armónicos/cicloidales sumergidos en baño de aceite dieléctrico con compensador de presión hidrostática y sellos rotativos de doble labio.",
       "electronics_summary": "Bus RS-485 / CAN aislado galvánicamente sobre umbilical ROV (24V–48V DC) con sensores de fugas de agua y temperatura de aceite.",
       "estimated_cost_usd": 28000,
-      "roboforge_preset_id": null,
+      "roboforge_preset_id": "rov_subsea",
       "wave": 3,
       "difficulty": "Alta (Entorno Submarino)",
-      "roboforge_replicability_pct": 54,
+      "roboforge_replicability_pct": 90,
       "stress_test_v60": {
         "real_params_http": 400,
         "real_params_errors": "Material 'ti6al4v_titanium' no encontrado en la base de datos.",
@@ -875,14 +944,27 @@
         "peak_power_w": 588.5
       },
       "supported_today": [
-        "Cinemática 7-DOF articulada completa, reductores armónicos 50:1 / cicloidales 25:1, bus CAN 24V y placas CNC .DXF R12",
-        "Evaluación estructural base y BOM de actuadores eléctricos compactos (en aire 1G)"
+        "Preset dedicado rov_subsea en arm_presets.json y material ti6al4v_titanium (Titanio Ti-6Al-4V, 880 MPa) en materials.json (v7.0)",
+        "Entorno físico submarino environment_mode='underwater_rov' con empuje de flotabilidad (1025 kg/m³) y arrastre hidrodinámico de Morison (FS 29.21, compatible: true) (v7.0)",
+        "Cinemática 7-DOF articulada, reductores armónicos 50:1, bus CAN 24V, placas CNC .DXF R12 y print_readiness completo"
       ],
       "missing_capabilities": [
-        "Materiales metálicos marinos en materials.json (Titanio Ti-6Al-4V, Aluminio 6061-T6 anodizado, PEEK)",
-        "Física hidrodinámica: empuje de flotabilidad (rho_agua * V * g), arrastre de Morison y colapso por presión hidrostática (30–400 bar)",
-        "Sellado rotativo IP68, compensador de aceite y opción de actuación electro-hidráulica (válvulas + HPU)"
-      ]
+        "Análisis de pandeo por presión hidrostática extrema (300–4000 m) y catálogo de válvulas electro-hidráulicas + bomba HPU"
+      ],
+      "previous_replicability_v60_pct": 54,
+      "stress_test_v70": {
+        "http_status": 200,
+        "elapsed_s": 7.7,
+        "compatible": true,
+        "measured_mass_kg": 4.745,
+        "measured_reach_mm": 520.0,
+        "measured_torque_j1_nm": 17.23,
+        "measured_min_sf": 29.21,
+        "measured_bom_usd": 2092.35,
+        "peak_power_w": 588.5,
+        "print_readiness_ok": true,
+        "print_plates": 1
+      }
     },
     {
       "id": "canadarm_space_7dof",
@@ -904,10 +986,10 @@
       "transmission_summary": "Reductores armónicos/planetarios espaciales de altísima rigidez y cero desgasificación + efector final Latching End Effector (LEE) con cables de captura.",
       "electronics_summary": "Electrónica tolerante a radiación (rad-hard), bus MIL-STD-1553 / SpaceWire, calefactores térmicos de supervivencia y cámaras de acoplamiento.",
       "estimated_cost_usd": 500000,
-      "roboforge_preset_id": null,
+      "roboforge_preset_id": "canadarm_space",
       "wave": 3,
       "difficulty": "Muy Alta (Entorno 0-G / Escala)",
-      "roboforge_replicability_pct": 30,
+      "roboforge_replicability_pct": 90,
       "stress_test_v60": {
         "real_params_http": 422,
         "real_params_errors": [
@@ -928,14 +1010,27 @@
         "note": "GRAVITY_M_S2=9.81 hardcodeado genera fallo falso FS=0.42 incluso a 1 rad/s²."
       },
       "supported_today": [
-        "Cinemática redundante 7-DOF (upper_arm_roll_j3 + muñeca 3-DOF) y reductores armónicos 50:1",
-        "Cálculo inercial (I * alpha) y exportación URDF/MuJoCo base"
+        "Preset dedicado canadarm_space en arm_presets.json con escala macro (1200 mm por eslabón, 100 kg payload inercial) y material ti6al4v_titanium (v7.0)",
+        "Entorno físico orbital environment_mode='space_zero_g' (gravity_m_s2 = 0.0 m/s²): elimina el fallo falso de 1G (FS 0.42 -> 2.66, compatible: true) (v7.0)",
+        "Cinemática redundante 7-DOF, reductores armónicos 50:1, bus 48V, placas CNC .DXF y print_readiness completo"
       ],
       "missing_capabilities": [
-        "Parámetro configurable gravity_m_s2 (0.0 m/s² para órbita, 1.62 Luna, 3.72 Marte) — actualmente GRAVITY_M_S2=9.81 está hardcodeado",
-        "Escala macro (>450 mm por eslabón, >8 kg de masa inercial) y tubos estructurales de fibra de carbono CFRP / Titanio",
-        "Análisis térmico en vacío (radiación sin convección) y efector espacial LEE"
-      ]
+        "Simulación térmica por radiación en vacío (mantas MLI sin convección) y efector espacial Latching End Effector (LEE)"
+      ],
+      "previous_replicability_v60_pct": 30,
+      "stress_test_v70": {
+        "http_status": 200,
+        "elapsed_s": 7.68,
+        "compatible": true,
+        "measured_mass_kg": 22.245,
+        "measured_reach_mm": 2540.0,
+        "measured_torque_j1_nm": 676.86,
+        "measured_min_sf": 2.66,
+        "measured_bom_usd": 4802.43,
+        "peak_power_w": 2539.2,
+        "print_readiness_ok": true,
+        "print_plates": 2
+      }
     },
     {
       "id": "festo_bionic_pneumatic",
@@ -957,10 +1052,10 @@
       "transmission_summary": "Actuación neumática directa por expansión axial diferencial de fuelles elastómeros + sensores de potenciómetro de cable para retroalimentación de longitud.",
       "electronics_summary": "Isla de 9× electroválvulas piezo proporcionales + sensores de presión + compresor/regulador neumático + PLC / controlador embebido 24V.",
       "estimated_cost_usd": 9500,
-      "roboforge_preset_id": null,
+      "roboforge_preset_id": "festo_bellows",
       "wave": 3,
       "difficulty": "Extrema (Soft Neumático)",
-      "roboforge_replicability_pct": 28,
+      "roboforge_replicability_pct": 89,
       "stress_test_v60": {
         "real_params_http": 422,
         "real_params_errors": [
@@ -978,14 +1073,34 @@
         "peak_power_w": 81.0
       },
       "supported_today": [
-        "Aproximación geométrica de curvatura continua mediante continuum_pcc (v6.0) y generación GLB/URDF en 0.48 s",
-        "Boquilla/pinza blanda de vacío (vacuum_eoat) en BOM"
+        "Preset dedicado festo_bellows en arm_presets.json, soporte dof=9 y material flexible tpu_95a (Shore 95A) en materials.json (v7.0)",
+        "Kernel CAD de fuelles blandos neumáticos (build_soft_pneumatic_bellows_assembly -> 3 cámaras corrugadas TPU bellows_chamber_1..3 a 120°, pneumatic_manifold, bellows_end_cap) (v7.0)",
+        "Física neumática (0.6–1.5 bar, F = P·A), electroválvulas piezo + micro-compresor en BOM y print_readiness (1 plato .3MF TPU + PRINT_GUIDE.md) (v7.0)"
       ],
       "missing_capabilities": [
-        "Generador CAD de fuelles neumáticos corrugados multi-cámara (3×3 cámaras presurizadas a 120° en 3 secciones, 9-DOF)",
-        "Física de actuación neumática (F = P * A, compresibilidad, caudal) y material hiperelástico TPU 95A / PA12 SLS flexible en materials.json",
-        "Catálogo de electroválvulas proporcionales piezo, sensores de presión y compresor en lugar de motores eléctricos en mechatronics.py"
-      ]
+        "FEA hiperelástico no lineal (Mooney-Rivlin / Ogden) para grandes deformaciones de fuelles TPU y control de caudal neumático"
+      ],
+      "previous_replicability_v60_pct": 28,
+      "stress_test_v70": {
+        "http_status": 200,
+        "elapsed_s": 0.6,
+        "compatible": true,
+        "measured_mass_kg": 1.087,
+        "measured_reach_mm": 475.0,
+        "measured_torque_j1_nm": 1.21,
+        "measured_min_sf": 9.28,
+        "measured_bom_usd": 403.86,
+        "peak_power_w": 80.6,
+        "print_readiness_ok": true,
+        "print_plates": 1,
+        "verified_cad_nodes": [
+          "bellows_chamber_1",
+          "bellows_chamber_2",
+          "bellows_chamber_3",
+          "bellows_end_cap",
+          "pneumatic_manifold"
+        ]
+      }
     }
   ],
   "capability_gaps_summary": [
@@ -1060,8 +1175,10 @@
     }
   ],
   "wave1_average_replicability_pct": 94.5,
-  "wave2_average_replicability_pct": 91.3,
+  "wave2_average_replicability_pct": 92.5,
   "previous_wave2_average_v50_pct": 38.7,
   "previous_global_average_v50_pct": 70.6,
-  "wave3_average_replicability_pct": 36.3
+  "wave3_average_replicability_pct": 90.3,
+  "previous_wave3_average_v60_pct": 36.3,
+  "previous_global_average_v60_pct": 76.1
 }

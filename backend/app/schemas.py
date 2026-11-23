@@ -38,7 +38,7 @@ class EndInterfaceParams(BaseModel):
 
 class LinkDesignRequest(BaseModel):
     architecture: ArmArchitecture = "articulated_6dof"
-    length_mm: float = Field(180.0, ge=40.0, le=450.0)
+    length_mm: float = Field(180.0, ge=40.0, le=1500.0)
     root_width_mm: float = Field(38.0, ge=16.0, le=110.0)
     tip_width_mm: float = Field(24.0, ge=12.0, le=90.0)
     thickness_mm: float = Field(20.0, ge=8.0, le=60.0)
@@ -335,7 +335,7 @@ class CustomMaterialCreate(BaseModel):
     notes: str = ""
 
 
-# Hito 5 + v5.0 + v6.0: Cadena Cinemática Universal (Articulado 4–7 DOF, SCARA, Cartesiano, Delta, Continuo PCC)
+# Hito 5 + v5.0 + v6.0 + v7.0: Cadena Cinemática Universal (20 Sistemas + Entorno 0-G/ROV + Bimanual 14-DOF + Stewart + Fuelles)
 ArmPresetType = Literal[
     "parol6_desktop",
     "ar4_industrial",
@@ -352,17 +352,23 @@ ArmPresetType = Literal[
     "delta_flexpicker",
     "barrett_wam",
     "surgical_continuum",
+    "rov_subsea",
+    "bimanual_aloha",
+    "stewart_hexapod",
+    "canadarm_space",
+    "festo_bellows",
+    "kuka_kr210",
 ]
 
 
 class ArmAssemblyRequest(BaseModel):
     preset: ArmPresetType = "parol6_desktop"
-    dof: int = Field(6, ge=4, le=7)
-    payload_kg: float = Field(1.0, ge=0.1, le=8.0)
-    base_height_mm: float = Field(95.0, ge=40.0, le=220.0)
-    upper_arm_mm: float = Field(200.0, ge=40.0, le=450.0)
-    forearm_mm: float = Field(170.0, ge=40.0, le=400.0)
-    wrist_mm: float = Field(75.0, ge=20.0, le=180.0)
+    dof: int = Field(6, ge=4, le=14)
+    payload_kg: float = Field(1.0, ge=0.05, le=250.0)
+    base_height_mm: float = Field(95.0, ge=40.0, le=800.0)
+    upper_arm_mm: float = Field(200.0, ge=40.0, le=1500.0)
+    forearm_mm: float = Field(170.0, ge=40.0, le=1500.0)
+    wrist_mm: float = Field(75.0, ge=20.0, le=400.0)
     link_style: Literal["organic_ibeam", "hollow_cobot", "rounded_truss", "tapered_solid"] = "hollow_cobot"
 
     # Ángulos de cinemática directa (grados)
@@ -501,14 +507,20 @@ class ModularArmSlots(BaseModel):
 
 
 class ModularArmRequest(BaseModel):
-    dof: int = Field(6, ge=4, le=7)
+    dof: int = Field(6, ge=4, le=14)
     kinematics_type: Literal[
         "articulated",
         "scara",
         "cartesian_gantry",
         "delta_parallel",
         "continuum_pcc",
+        "bimanual_dual_arm",
+        "stewart_hexapod",
+        "soft_pneumatic_bellows",
     ] = "articulated"
+    environment_mode: Literal["earth", "space_zero_g", "underwater_rov"] = "earth"
+    gravity_m_s2: float = Field(default=9.81, ge=0.0, le=25.0)
+    counterbalance_j2: bool = False
     z_stroke_mm: float = Field(default=120.0, ge=40.0, le=300.0)
     wrist_3dof: bool = True
     cnc_plate_mode: bool = False
@@ -516,11 +528,11 @@ class ModularArmRequest(BaseModel):
     four_bar_parallelogram: bool = False
     bevel_differential_wrist: bool = False
     vacuum_eoat: bool = False
-    payload_kg: float = Field(1.0, ge=0.05, le=8.0)
+    payload_kg: float = Field(1.0, ge=0.05, le=250.0)
     material_id: str = "petg_cf"
     printer_id: Optional[str] = "bambu_x1c"
-    base_height_mm: float = Field(95.0, ge=40.0, le=220.0)
-    wrist_mm: float = Field(75.0, ge=20.0, le=180.0)
+    base_height_mm: float = Field(95.0, ge=40.0, le=800.0)
+    wrist_mm: float = Field(75.0, ge=20.0, le=400.0)
     max_accel_rad_s2: float = Field(12.0, ge=1.0, le=100.0)
     joint_angles_deg: list[float] = Field(
         default_factory=lambda: [35.0, -55.0, 20.0],
@@ -570,6 +582,34 @@ class ModularArmResponse(BaseModel):
     joints: list[JointTorqueSummary] = Field(default_factory=list)
     bom: list[BOMItem] = Field(default_factory=list)
     mechatronics: Optional["MechatronicsResponse"] = None
+    print_readiness: Optional["PrintReadinessSummary"] = None
+
+
+# v7.0: Preparación Real para Impresión 3D (Platos .3MF, Cupón Tolerancias y Guía Slicer)
+class PrintPlateInfo(BaseModel):
+    plate_index: int
+    filename: str
+    url: str
+    parts: list[str] = Field(default_factory=list)
+    estimated_mass_g: float
+    estimated_hours: float
+
+
+class PrintReadinessSummary(BaseModel):
+    fits_bed: bool
+    printer_name: str
+    bed_mm: list[float]
+    total_plates: int
+    total_filament_g: float
+    estimated_print_hours: float
+    layer_height_mm: float
+    wall_loops: int
+    infill_pct: int
+    infill_pattern: str
+    nozzle_temp_c: int
+    bed_temp_c: int
+    plates: list[PrintPlateInfo] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 # v4.0 + v4.1 + v5.0: Mecatrónica Universal — Motores, Servos Bus UART, Teensy DM542T, Curvas Torque–RPM y BOM Maestro

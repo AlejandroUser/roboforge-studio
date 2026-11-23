@@ -216,3 +216,137 @@ def export_continuum_urdf(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(urdf_xml, encoding="utf-8")
     return output_path
+
+
+def build_soft_pneumatic_bellows_assembly(
+    req: ModularArmRequest,
+    material: dict[str, Any],
+    output_dir: Path,
+    design_hash: str,
+) -> dict[str, Any]:
+    """Build a Festo BHA-inspired Soft Pneumatic TPU Bellows arm with 3 corrugated TPU chambers at 120°,
+    pneumatic manifold base, and distal sealing end-cap.
+    """
+    from ..physics.arm_compatibility import resolve_default_slots
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    slots = resolve_default_slots(req)
+
+    base_h = 38.0
+    arc_len = max(95.0, min(220.0, float(slots.upper_arm.length_mm) if slots.upper_arm else 140.0))
+    bend_deg = max(-80.0, min(80.0, float(req.joint_angles_deg[0]) if abs(req.joint_angles_deg[0]) > 5 else 38.0))
+    bend_rad = math.radians(bend_deg)
+
+    # 1. Pneumatic Manifold Base with 3 quick-connect air ports
+    man_body = Location((0.0, 0.0, base_h / 2.0)) * Cylinder(radius=34.0, height=base_h)
+    ports = []
+    for k in range(3):
+        ang = math.radians(k * 120.0)
+        px = 36.0 * math.cos(ang)
+        py = 36.0 * math.sin(ang)
+        ports.append(
+            Location((px, py, 16.0))
+            * (Location((0.0, 0.0, 0.0), (0.0, 0.0, math.degrees(ang))) * (Location((0.0, 0.0, 0.0), (0.0, 90.0, 0.0)) * Cylinder(radius=4.5, height=12.0)))
+        )
+    pneumatic_manifold = Compound(children=[man_body, *ports])
+
+    # 2. Three Corrugated TPU Bellows Chambers at 120° along the curved PCC arc
+    n_ribs = 11
+    chamber_pcd = 15.5
+    chambers: list[Compound] = []
+    explode_vectors: dict[str, list[float]] = {
+        "pneumatic_manifold": [0.0, 0.0, -34.0],
+    }
+
+    for c_idx in range(3):
+        c_ang = math.radians(c_idx * 120.0)
+        ca, sa = math.cos(c_ang), math.sin(c_ang)
+        rib_solids: list[Part] = []
+        for r_idx in range(n_ribs):
+            s_norm = (r_idx + 0.5) / n_ribs
+            pt, theta = _pcc_frame(s_norm, arc_len, bend_rad, base_h)
+            nx_x, nx_z = math.cos(theta), -math.sin(theta)
+            wx = pt[0] + (chamber_pcd * ca) * nx_x
+            wy = pt[1] + (chamber_pcd * sa)
+            wz = pt[2] + (chamber_pcd * ca) * nx_z
+            # Alternating outer crest & inner valley rings for corrugated bellows silhouette
+            rad = 11.5 if (r_idx % 2 == 0) else 8.6
+            rib_h = (arc_len / n_ribs) * 1.15
+            ring = Location((wx, wy, wz)) * (
+                Location((0.0, 0.0, 0.0), (0.0, math.degrees(theta), 0.0))
+                * Cylinder(radius=rad, height=rib_h)
+            )
+            rib_solids.append(ring)
+        chambers.append(Compound(children=rib_solids))
+        explode_vectors[f"bellows_chamber_{c_idx + 1}"] = [round(38.0 * ca, 2), round(38.0 * sa, 2), 18.0]
+
+    # 3. Distal Pneumatic End-Cap
+    tip_pt, tip_theta = _pcc_frame(1.0, arc_len, bend_rad, base_h)
+    bellows_end_cap = Location(tip_pt) * (
+        Location((0.0, 0.0, 0.0), (0.0, math.degrees(tip_theta), 0.0))
+        * (Location((0.0, 0.0, 6.0)) * Cylinder(radius=28.0, height=12.0))
+    )
+    explode_vectors["bellows_end_cap"] = [
+        round(48.0 * math.sin(tip_theta), 2),
+        0.0,
+        round(48.0 * math.cos(tip_theta), 2),
+    ]
+
+    real_volumes_mm3 = {
+        "base_pedestal": float(max(pneumatic_manifold.volume, 1.0)),
+        "shoulder_mount": float(max(bellows_end_cap.volume, 1.0)),
+        "shoulder_gear": float(max(chambers[0].volume, 1.0)),
+        "upper_arm_link": float(max(sum(c.volume for c in chambers), 1.0)),
+        "elbow_gear": float(max(chambers[1].volume, 1.0)),
+        "forearm_link": float(max(chambers[2].volume, 1.0)),
+        "wrist_tube": float(max(bellows_end_cap.volume, 1.0)),
+    }
+
+    printable_parts: dict[str, Part] = {
+        "pneumatic_manifold": pneumatic_manifold,  # type: ignore[dict-item]
+        "bellows_end_cap": bellows_end_cap,
+    }
+
+    individual_files: list[Path] = []
+    for solid, stem, vhint in (
+        (pneumatic_manifold, "pneumatic_manifold", "tapered_solid"),
+        (bellows_end_cap, "bellows_end_cap", "tapered_solid"),
+    ):
+        s_p, m_p = _export_part_step_and_3mf(solid, output_dir, stem, vhint)  # type: ignore[arg-type]
+        individual_files.extend([s_p, m_p])
+
+    full_compound = Compound(children=[pneumatic_manifold, bellows_end_cap, *chambers])
+    step_path = output_dir / "arm_assembly.step"
+    stl_path = output_dir / "arm_assembly.stl"
+    glb_path = output_dir / "arm_assembly.glb"
+
+    if not (step_path.exists() and step_path.stat().st_size > 0):
+        export_step(full_compound, str(step_path))
+    if not (stl_path.exists() and stl_path.stat().st_size > 0):
+        export_stl(full_compound, str(stl_path), tolerance=0.14, angular_tolerance=0.22)
+
+    if not (glb_path.exists() and glb_path.stat().st_size > 0):
+        scene = trimesh.Scene()
+        node_specs: list[tuple[str, Part | Compound, list[int], float, float]] = [
+            ("pneumatic_manifold", pneumatic_manifold, [64, 74, 92, 255], 0.72, 0.30),
+            ("bellows_chamber_1", chambers[0], [6, 182, 212, 255], 0.12, 0.55),
+            ("bellows_chamber_2", chambers[1], [14, 165, 233, 255], 0.12, 0.55),
+            ("bellows_chamber_3", chambers[2], [34, 211, 238, 255], 0.12, 0.55),
+            ("bellows_end_cap", bellows_end_cap, [238, 178, 56, 255], 0.65, 0.32),
+        ]
+        for node_name, solid, rgba, met, rough in node_specs:
+            mesh = _part_to_trimesh(solid, rgba, met, rough, node_name)
+            scene.add_geometry(mesh, node_name=node_name, geom_name=node_name)
+        scene.export(str(glb_path), file_type="glb")
+
+    return {
+        "real_volumes_mm3": real_volumes_mm3,
+        "explode_vectors": explode_vectors,
+        "individual_files": individual_files,
+        "printable_parts": printable_parts,
+        "step_path": step_path,
+        "stl_path": stl_path,
+        "glb_path": glb_path,
+        "slots_used": slots,
+        "design_hash": design_hash,
+    }

@@ -80,6 +80,20 @@ const SEMANTIC_PART_KEYS = [
   "capstan_drum_j1",
   "capstan_drum_j2",
   "tendon_cables",
+  "bimanual_torso",
+  "stewart_base",
+  "stewart_platform",
+  "stewart_leg_1",
+  "stewart_leg_2",
+  "stewart_leg_3",
+  "stewart_leg_4",
+  "stewart_leg_5",
+  "stewart_leg_6",
+  "bellows_chamber_1",
+  "bellows_chamber_2",
+  "bellows_chamber_3",
+  "bellows_end_cap",
+  "pneumatic_manifold",
 ] as const;
 
 const FALLBACK_EXPLODE_VECTORS: Record<string, [number, number, number]> = {
@@ -153,6 +167,20 @@ const FALLBACK_EXPLODE_VECTORS: Record<string, [number, number, number]> = {
   capstan_drum_j1: [0, -58, 12],
   capstan_drum_j2: [50, -52, 46],
   tendon_cables: [40, -65, 36],
+  bimanual_torso: [0, 0, -45],
+  stewart_base: [0, 0, -45],
+  stewart_platform: [0, 0, 75],
+  stewart_leg_1: [45, 25, 15],
+  stewart_leg_2: [45, -25, 15],
+  stewart_leg_3: [0, 50, 15],
+  stewart_leg_4: [-45, 25, 15],
+  stewart_leg_5: [-45, -25, 15],
+  stewart_leg_6: [0, -50, 15],
+  bellows_chamber_1: [35, 0, 20],
+  bellows_chamber_2: [-18, 30, 20],
+  bellows_chamber_3: [-18, -30, 20],
+  bellows_end_cap: [0, 0, 70],
+  pneumatic_manifold: [0, 0, -45],
 };
 
 const PART_LABELS_ES: Record<string, string> = {
@@ -226,6 +254,20 @@ const PART_LABELS_ES: Record<string, string> = {
   capstan_drum_j1: "Tambor Capstan J1",
   capstan_drum_j2: "Tambor Capstan J2",
   tendon_cables: "Cables Tensores Capstan",
+  bimanual_torso: "Torso Dual-Arm Bimanual",
+  stewart_base: "Base Hexápodo Stewart",
+  stewart_platform: "Plataforma Móvil 6-DOF Stewart",
+  stewart_leg_1: "Actuador Lineal Stewart 1",
+  stewart_leg_2: "Actuador Lineal Stewart 2",
+  stewart_leg_3: "Actuador Lineal Stewart 3",
+  stewart_leg_4: "Actuador Lineal Stewart 4",
+  stewart_leg_5: "Actuador Lineal Stewart 5",
+  stewart_leg_6: "Actuador Lineal Stewart 6",
+  bellows_chamber_1: "Fuelle Neumático TPU 1",
+  bellows_chamber_2: "Fuelle Neumático TPU 2",
+  bellows_chamber_3: "Fuelle Neumático TPU 3",
+  bellows_end_cap: "Tapa Efectora Fuelle",
+  pneumatic_manifold: "Colector Neumático / Electroválvulas",
 };
 
 function resolveSemanticKey(obj: THREE.Object3D | null): string | null {
@@ -413,7 +455,11 @@ function LoadedModel({
               lower.includes("controller_box") ||
               lower.includes("gantry_") ||
               lower.includes("delta_") ||
-              lower.includes("continuum_");
+              lower.includes("continuum_") ||
+              lower.includes("stewart_") ||
+              lower.includes("bimanual_") ||
+              lower.includes("bellows_") ||
+              lower.includes("pneumatic_");
             if (!isStaticBase) {
               turretPivot.add(child);
             }
@@ -585,6 +631,10 @@ function LoadedModel({
           lower.includes("vacuum_nozzle")
         ) {
           linZ = -(armAngles?.zAxisMm ?? 0);
+        }
+      } else if (kt === "stewart_hexapod") {
+        if (lower.includes("stewart_platform") || lower.includes("tcp_flange")) {
+          linZ = (armAngles?.zAxisMm ?? 0) * 0.65;
         }
       }
 

@@ -96,8 +96,8 @@ def resolve_default_slots(req: ModularArmRequest) -> ModularArmSlots:
         base_depth_mm=44.0,
         shaft_height_mm=34.0,
         gusset_thickness_mm=4.5,
-        radial_load_n=max(25.0, req.payload_kg * 35.0),
-        motor_torque_nm=max(0.6, req.payload_kg * 0.8),
+        radial_load_n=min(500.0, max(25.0, req.payload_kg * 35.0)),
+        motor_torque_nm=min(20.0, max(0.6, req.payload_kg * 0.8)),
         material_id=mat_id,
         printer_id=printer_id,
     )
@@ -114,7 +114,7 @@ def resolve_default_slots(req: ModularArmRequest) -> ModularArmSlots:
         bore_diameter_mm=act_spec["shaft_diameter_mm"],
         hub_diameter_mm=max(16.0, act_spec["shaft_diameter_mm"] + 10.0),
         hub_height_mm=5.0,
-        torque_nm=max(1.2, req.payload_kg * 1.5),
+        torque_nm=min(50.0, max(1.2, req.payload_kg * 1.5)),
         material_id=mat_id,
         printer_id=printer_id,
     )
@@ -143,7 +143,7 @@ def resolve_default_slots(req: ModularArmRequest) -> ModularArmSlots:
             bolt_size="M3",
             use_heat_inserts=False,
         ),
-        tip_load_n=max(20.0, req.payload_kg * 22.0),
+        tip_load_n=min(500.0, max(20.0, req.payload_kg * 22.0)),
         material_id=mat_id,
         printer_id=printer_id,
     )
@@ -158,7 +158,7 @@ def resolve_default_slots(req: ModularArmRequest) -> ModularArmSlots:
         bore_diameter_mm=elbow_shaft,
         hub_diameter_mm=max(16.0, elbow_shaft + 8.0),
         hub_height_mm=5.0,
-        torque_nm=max(0.8, req.payload_kg * 0.9),
+        torque_nm=min(50.0, max(0.8, req.payload_kg * 0.9)),
         material_id=mat_id,
         printer_id=printer_id,
     )
@@ -187,7 +187,7 @@ def resolve_default_slots(req: ModularArmRequest) -> ModularArmSlots:
             bolt_size="M3",
             use_heat_inserts=False,
         ),
-        tip_load_n=max(12.0, req.payload_kg * 12.0),
+        tip_load_n=min(500.0, max(12.0, req.payload_kg * 12.0)),
         material_id=mat_id,
         printer_id=printer_id,
     )
@@ -259,19 +259,36 @@ def _lookup_vol(real_volumes_mm3: dict[str, float], keys: tuple[str, ...], fallb
     return fallback
 
 
+def _effective_gravity_and_drag(
+    req: ModularArmRequest, density_g_cm3: float, reach_m: float
+) -> tuple[float, float]:
+    """
+    Compute (g_eff_m_s2, morison_drag_torque_nm) for earth, space_zero_g, or underwater_rov.
+    """
+    if req.environment_mode == "space_zero_g":
+        return 0.0, 0.0
+    if req.environment_mode == "underwater_rov":
+        rho_water = 1025.0
+        rho_mat = max(rho_water + 100.0, density_g_cm3 * 1000.0)
+        buoyancy_factor = max(0.08, 1.0 - (rho_water / rho_mat))
+        g_eff = float(req.gravity_m_s2) * buoyancy_factor
+        # Morison hydrodynamic drag torque at ~0.5 m/s tip sweep speed (Cd=1.1, proj area ~0.04*L)
+        v_sweep = 0.5
+        drag_force_n = 0.5 * rho_water * 1.1 * (0.04 * max(reach_m, 0.2)) * (v_sweep**2)
+        drag_torque_nm = drag_force_n * (reach_m * 0.6)
+        return g_eff, drag_torque_nm
+    return float(req.gravity_m_s2), 0.0
+
+
 def _compute_cascaded_torques(
     req: ModularArmRequest,
     slots: ModularArmSlots,
     masses_g: dict[str, float],
+    density_g_cm3: float = 1.29,
 ) -> dict[str, float]:
     """
-    Compute worst-case joint torques & effective structural loads for all 5
-    kinematic topologies:
-    - articulated / scara: serial cascade wrist -> elbow -> shoulder (supporting
-      remote_base_motors=True Capstan decoupling that moves J2/J3 motors to base!).
-    - delta_parallel: 3-arm parallel load sharing F_arm = m_eff*(g+a)/3.
-    - cartesian_gantry: prismatic X-Y-Z linear forces F = m*a + mu*m*g, F_z = m*(g+a).
-    - continuum_pcc: Constant-Curvature Nitinol backbone M_flex = E*I*kappa + 3 tendons.
+    Compute worst-case joint torques & effective structural loads for all 8
+    kinematic topologies and 3 physical environments (earth, space_zero_g, underwater_rov).
     """
     ua = slots.upper_arm
     fa = slots.forearm
@@ -283,6 +300,7 @@ def _compute_cascaded_torques(
     l3_m = float(req.wrist_mm) / 1000.0
     payload_kg = float(req.payload_kg)
     alpha = float(req.max_accel_rad_s2)
+    g_eff, drag_nm = _effective_gravity_and_drag(req, density_g_cm3, l1_m + l2_m + l3_m)
 
     m_upper_kg = masses_g["upper_arm_link"] / 1000.0
     m_fore_kg = masses_g["forearm_link"] / 1000.0
@@ -290,24 +308,67 @@ def _compute_cascaded_torques(
     m_elbow_gear_kg = masses_g["elbow_gear"] / 1000.0
 
     act_spec = ACTUATOR_INTERFACE_SPECS.get(sm.actuator_type, ACTUATOR_INTERFACE_SPECS["nema17"])
-    m_mot_shoulder_kg = max(float(act_spec["motor_mass_g"]) / 1000.0, 0.32 + 0.18 * payload_kg)
+    m_mot_shoulder_kg = max(float(act_spec["motor_mass_g"]) / 1000.0, 0.32 + 0.18 * min(payload_kg, 25.0))
     m_mot_elbow_kg = max(0.28, m_mot_shoulder_kg * 0.68)
     m_mot_wrist_kg = max(0.16, m_mot_shoulder_kg * 0.38)
 
     ktype = req.kinematics_type
 
-    # 1. Delta Parallel 3-Arm Kinematics (ABB FlexPicker)
+    # 1. Stewart Hexapod 6-UPS (6 parallel linear actuators)
+    if ktype == "stewart_hexapod":
+        a_lin = min(15.0, max(1.0, alpha * 0.20))
+        m_moving_kg = payload_kg + 1.2  # moving top platform + legs share
+        f_leg_n = (m_moving_kg * (g_eff + a_lin)) / 6.0
+        f_leg_static_n = (m_moving_kg * g_eff) / 6.0
+        # Leadscrew pitch ~8mm -> torque = F * p / (2*pi*eta)
+        tau_s1 = max(0.05, f_leg_static_n * 0.0022)
+        tau_d1 = max(0.08, f_leg_n * 0.0022)
+        return {
+            "tau_s1": tau_s1,
+            "tau_d1": tau_d1,
+            "tau_s2": tau_s1,
+            "tau_d2": tau_d1,
+            "tau_s3": tau_s1,
+            "tau_d3": tau_d1,
+            "f_upper_tip_n": max(1.0, min(80.0, f_leg_n * 0.4)),
+            "f_forearm_tip_n": max(1.0, min(60.0, f_leg_n * 0.3)),
+            "m_mot_shoulder_g": 280.0,
+            "m_mot_elbow_g": 280.0,
+            "m_mot_wrist_g": 280.0,
+        }
+
+    # 2. Soft Pneumatic Bellows (Festo BHA: 3 TPU chambers @ 120 deg, 0.6-1.5 bar)
+    if ktype == "soft_pneumatic_bellows":
+        pressure_mpa = 0.12  # 1.2 bar nominal pneumatic pressure
+        area_mm2 = math.pi * (18.0**2) / 4.0  # Ø18 mm effective bellows chamber
+        f_bellows_n = pressure_mpa * area_mm2  # ~30.5 N
+        tau_bend_nm = max(0.15, (f_bellows_n * 0.022) + payload_kg * g_eff * (l1_m * 0.5))
+        return {
+            "tau_s1": round(tau_bend_nm * 0.8, 3),
+            "tau_d1": round(tau_bend_nm, 3),
+            "tau_s2": round(tau_bend_nm * 0.55, 3),
+            "tau_d2": round(tau_bend_nm * 0.7, 3),
+            "tau_s3": 0.12,
+            "tau_d3": 0.18,
+            "f_upper_tip_n": max(1.0, min(25.0, f_bellows_n * 0.25)),
+            "f_forearm_tip_n": max(1.0, min(18.0, f_bellows_n * 0.18)),
+            "m_mot_shoulder_g": 85.0,
+            "m_mot_elbow_g": 85.0,
+            "m_mot_wrist_g": 65.0,
+        }
+
+    # 3. Delta Parallel 3-Arm Kinematics (ABB FlexPicker)
     if ktype == "delta_parallel":
         l_bicep_m = max(0.08, min(l1_m, 0.26))
         a_lin = min(25.0, max(2.0, alpha * 0.22))
-        m_moving_kg = payload_kg + 0.24  # platform + 6 lightweight carbon rods
-        f_arm_n = (m_moving_kg * (GRAVITY_M_S2 + a_lin)) / 3.0
-        f_arm_static_n = (m_moving_kg * GRAVITY_M_S2) / 3.0
+        m_moving_kg = payload_kg + 0.24
+        f_arm_n = (m_moving_kg * (g_eff + a_lin)) / 3.0
+        f_arm_static_n = (m_moving_kg * g_eff) / 3.0
         tau_s1 = f_arm_static_n * l_bicep_m
         tau_d1 = f_arm_n * l_bicep_m
         tau_s2 = tau_s1 * 0.35
         tau_d2 = tau_d1 * 0.35
-        tau_s3 = max(0.08, payload_kg * GRAVITY_M_S2 * 0.025)
+        tau_s3 = max(0.08, payload_kg * g_eff * 0.025)
         tau_d3 = tau_s3 * 1.4
         return {
             "tau_s1": tau_s1,
@@ -323,21 +384,21 @@ def _compute_cascaded_torques(
             "m_mot_wrist_g": m_mot_shoulder_kg * 1000.0,
         }
 
-    # 2. Cartesian Gantry P-P-P-R (LumenPnP / OpenPnP)
+    # 4. Cartesian Gantry P-P-P-R (LumenPnP / OpenPnP)
     if ktype == "cartesian_gantry":
         mu_rail = 0.04
         a_lin = min(15.0, max(1.5, alpha * 0.25))
         m_head_kg = payload_kg + 0.35
         m_bridge_kg = m_head_kg + 0.65
-        f_x_n = m_head_kg * a_lin + mu_rail * m_head_kg * GRAVITY_M_S2
-        f_y_n = m_bridge_kg * a_lin + mu_rail * m_bridge_kg * GRAVITY_M_S2
-        f_z_n = m_head_kg * (GRAVITY_M_S2 + a_lin * 0.5)
-        r_pulley_m = 0.00637  # GT2 20T pitch radius = 6.37 mm
-        tau_s1 = max(0.05, mu_rail * m_bridge_kg * GRAVITY_M_S2 * r_pulley_m)
+        f_x_n = m_head_kg * a_lin + mu_rail * m_head_kg * g_eff
+        f_y_n = m_bridge_kg * a_lin + mu_rail * m_bridge_kg * g_eff
+        f_z_n = m_head_kg * (g_eff + a_lin * 0.5)
+        r_pulley_m = 0.00637
+        tau_s1 = max(0.05, mu_rail * m_bridge_kg * g_eff * r_pulley_m)
         tau_d1 = max(0.12, f_y_n * r_pulley_m)
-        tau_s2 = max(0.04, mu_rail * m_head_kg * GRAVITY_M_S2 * r_pulley_m)
+        tau_s2 = max(0.04, mu_rail * m_head_kg * g_eff * r_pulley_m)
         tau_d2 = max(0.08, f_x_n * r_pulley_m)
-        tau_s3 = max(0.04, m_head_kg * GRAVITY_M_S2 * 0.004)
+        tau_s3 = max(0.04, m_head_kg * g_eff * 0.004)
         tau_d3 = max(0.06, f_z_n * 0.004)
         return {
             "tau_s1": tau_s1,
@@ -353,9 +414,8 @@ def _compute_cascaded_torques(
             "m_mot_wrist_g": m_mot_wrist_kg * 1000.0,
         }
 
-    # 3. Continuum PCC (Nitinol flexible backbone + 3 tendons @ 120 deg)
+    # 5. Continuum PCC (Nitinol flexible backbone + 3 tendons @ 120 deg)
     if ktype == "continuum_pcc":
-        # Nitinol superelastic tube OD=2.0 mm, E=75 GPa = 75000 MPa
         e_nitinol_mpa = 75_000.0
         d_mm = 2.0
         i_backbone_mm4 = (math.pi * (d_mm**4)) / 64.0
@@ -366,7 +426,7 @@ def _compute_cascaded_torques(
         m_flex_nm = m_flex_n_mm / 1000.0
         r_tendon_mm = 4.5
         f_tendon_n = m_flex_n_mm / r_tendon_mm
-        tau_d1 = max(0.08, m_flex_nm + payload_kg * GRAVITY_M_S2 * (l_backbone_mm / 1000.0))
+        tau_d1 = max(0.08, m_flex_nm + payload_kg * g_eff * (l_backbone_mm / 1000.0))
         return {
             "tau_s1": max(0.05, m_flex_nm),
             "tau_d1": tau_d1,
@@ -381,9 +441,9 @@ def _compute_cascaded_torques(
             "m_mot_wrist_g": 80.0,
         }
 
-    # 4. Serial Articulated / SCARA (with optional remote_base_motors Capstan decoupling!)
+    # 6. Serial Articulated / SCARA / Bimanual Dual-Arm
+    arm_payload_kg = payload_kg * 0.5 if ktype == "bimanual_dual_arm" else payload_kg
     if req.remote_base_motors:
-        # J2/J3 motors & heavy gearboxes live in the stationary base; zero distal motor mass
         m_mot_elbow_moving = 0.0
         m_mot_wrist_moving = 0.0
         m_elbow_gear_moving = 0.0
@@ -393,54 +453,60 @@ def _compute_cascaded_torques(
         m_elbow_gear_moving = m_elbow_gear_kg
 
     # J3 Wrist
-    tau_s3 = GRAVITY_M_S2 * (m_wrist_kg * (l3_m * 0.5) + payload_kg * l3_m)
-    i_rot3 = m_wrist_kg * (l3_m**2) / 3.0 + payload_kg * (l3_m**2)
-    tau_d3 = tau_s3 + i_rot3 * alpha
+    tau_s3 = g_eff * (m_wrist_kg * (l3_m * 0.5) + arm_payload_kg * l3_m)
+    i_rot3 = m_wrist_kg * (l3_m**2) / 3.0 + arm_payload_kg * (l3_m**2)
+    tau_d3 = tau_s3 + i_rot3 * alpha + drag_nm * 0.15
 
     # J2 Elbow
-    tau_s2 = GRAVITY_M_S2 * (
+    tau_s2 = g_eff * (
         m_fore_kg * (l2_m * 0.5)
         + m_mot_wrist_moving * l2_m
         + m_wrist_kg * (l2_m + l3_m * 0.5)
-        + payload_kg * (l2_m + l3_m)
+        + arm_payload_kg * (l2_m + l3_m)
     )
     i_rot2 = (
         m_fore_kg * (l2_m**2) / 3.0
         + m_mot_wrist_moving * (l2_m**2)
         + m_wrist_kg * ((l2_m + l3_m * 0.5) ** 2)
-        + payload_kg * ((l2_m + l3_m) ** 2)
+        + arm_payload_kg * ((l2_m + l3_m) ** 2)
     )
-    tau_d2 = tau_s2 + i_rot2 * alpha
+    tau_d2 = tau_s2 + i_rot2 * alpha + drag_nm * 0.40
 
     # J1 Shoulder
-    tau_s1 = GRAVITY_M_S2 * (
+    tau_s1 = g_eff * (
         m_upper_kg * (l1_m * 0.5)
         + (m_mot_elbow_moving + m_elbow_gear_moving) * l1_m
         + m_fore_kg * (l1_m + l2_m * 0.5)
         + m_mot_wrist_moving * (l1_m + l2_m)
         + m_wrist_kg * (l1_m + l2_m + l3_m * 0.5)
-        + payload_kg * (l1_m + l2_m + l3_m)
+        + arm_payload_kg * (l1_m + l2_m + l3_m)
     )
+    # Hydropneumatic J2 counterbalance (KUKA KR 210) offsets 65% of static gravity torque
+    if req.counterbalance_j2:
+        tau_s1 *= 0.35
+        tau_s2 *= 0.35
+
     i_rot1 = (
         m_upper_kg * (l1_m**2) / 3.0
         + (m_mot_elbow_moving + m_elbow_gear_moving) * (l1_m**2)
         + m_fore_kg * ((l1_m + l2_m * 0.5) ** 2)
         + m_mot_wrist_moving * ((l1_m + l2_m) ** 2)
         + m_wrist_kg * ((l1_m + l2_m + l3_m * 0.5) ** 2)
-        + payload_kg * ((l1_m + l2_m + l3_m) ** 2)
+        + arm_payload_kg * ((l1_m + l2_m + l3_m) ** 2)
     )
-    tau_d1 = tau_s1 + i_rot1 * alpha
+    tau_d1 = tau_s1 + i_rot1 * alpha + drag_nm
 
     # Equivalent tip forces (N) acting on upper arm and forearm roots
-    f_forearm_tip_n = GRAVITY_M_S2 * (payload_kg + m_wrist_kg + m_mot_wrist_moving) + (
+    f_forearm_tip_n = g_eff * (arm_payload_kg + m_wrist_kg + m_mot_wrist_moving) + (
         (i_rot2 * alpha) / max(l2_m, 0.05)
     ) * 0.35
-    f_upper_tip_n = GRAVITY_M_S2 * (
-        payload_kg + m_wrist_kg + m_mot_wrist_moving + m_fore_kg + m_mot_elbow_moving + m_elbow_gear_moving
+    f_upper_tip_n = g_eff * (
+        arm_payload_kg + m_wrist_kg + m_mot_wrist_moving + m_fore_kg + m_mot_elbow_moving + m_elbow_gear_moving
     ) + ((i_rot1 * alpha) / max(l1_m, 0.05)) * 0.35
 
+    if req.counterbalance_j2:
+        f_upper_tip_n *= 0.35
     if req.remote_base_motors:
-        # Capstan tensioned hollow arm + base-mounted drive halves effective cantilevered bending load
         f_upper_tip_n *= 0.55
         f_forearm_tip_n *= 0.65
 
@@ -489,14 +555,19 @@ def validate_arm_compatibility(
         for k in est_vols
     }
     masses_g = {k: (v / 1000.0) * density for k, v in vols.items()}
-    torques = _compute_cascaded_torques(req, slots, masses_g)
+    torques = _compute_cascaded_torques(req, slots, masses_g, density_g_cm3=density)
 
     issues: list[CompatibilityIssue] = []
     act_spec = ACTUATOR_INTERFACE_SPECS.get(sm.actuator_type, ACTUATOR_INTERFACE_SPECS["nema17"])
 
-    # Non-serial topologies (continuum_pcc, cartesian_gantry, delta_parallel) do not
-    # share rigid serial shoulder-flange / elbow-bore interfaces; validate their own envelope.
-    if req.kinematics_type in ("continuum_pcc", "cartesian_gantry", "delta_parallel"):
+    # Non-serial topologies validate their own specialized mechanics cleanly
+    if req.kinematics_type in (
+        "continuum_pcc",
+        "cartesian_gantry",
+        "delta_parallel",
+        "stewart_hexapod",
+        "soft_pneumatic_bellows",
+    ):
         return issues
 
     # 1. Shoulder motor shaft vs shoulder gear bore (±0.2 mm)
@@ -656,8 +727,8 @@ def validate_arm_compatibility(
             )
         )
 
-    # 5. Printer bed & enclosure checks
-    if req.printer_id:
+    # 5. Printer bed & enclosure checks (FDM only — CNC aerospace/steel parts are not 3D printed)
+    if req.printer_id and material.get("category") == "fdm":
         longest_x = max(
             ua.length_mm + 0.5 * (ua.root_end.outer_diameter_mm + ua.tip_end.outer_diameter_mm),
             fa.length_mm + 0.5 * (fa.root_end.outer_diameter_mm + fa.tip_end.outer_diameter_mm),
@@ -868,7 +939,7 @@ def evaluate_modular_arm(
     }
     masses_g = {k: (v / 1000.0) * density for k, v in vols.items()}
 
-    torques = _compute_cascaded_torques(req, slots, masses_g)
+    torques = _compute_cascaded_torques(req, slots, masses_g, density_g_cm3=density)
     issues = validate_arm_compatibility(req, real_volumes_mm3=vols)
 
     # Evaluate individual real parts under actual cascaded loads

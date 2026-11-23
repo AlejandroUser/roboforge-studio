@@ -609,7 +609,8 @@ def evaluate_mechatronics(
             )
         )
 
-    # Power Budget
+    # Power Budget (double current/power for bimanual_dual_arm 2-arm systems!)
+    arm_mult = 2.0 if req.kinematics_type == "bimanual_dual_arm" else 1.0
     is_pca_servo = bus_arch == "arduino_pca9685_i2c"
     is_uart_bus = bus_arch == "uart_serial_bus"
     is_teensy_dm = bus_arch == "teensy_dm542"
@@ -620,28 +621,28 @@ def evaluate_mechatronics(
             if 5.5 <= float(cfg.system_voltage_v) <= 7.4
             else 6.5
         )
-        cont_i_total = round(sum_cont_i * 0.65 + 0.9, 2)
-        peak_i_total = round(min(10.0, sum_peak_i * 0.65 + 1.5), 2)
+        cont_i_total = round((sum_cont_i * 0.65 + 0.9) * arm_mult, 2)
+        peak_i_total = round(min(20.0, (sum_peak_i * 0.65 + 1.5) * arm_mult), 2)
         cont_w = round(system_v * cont_i_total, 1)
         peak_w = round(system_v * peak_i_total, 1)
         psu_name = "Fuente Ajustable 3–12V 10A (6.5V · Jack DC 5.5×2.1mm)"
-        psu_cost = 16.5
+        psu_cost = 16.5 * arm_mult
         power_awg = "16 AWG (Jack DC → PCA9685 V+)"
         signal_awg = "22 AWG Extensiones Servo (10/30/50 cm)"
     elif is_uart_bus:
         system_v = 12.0 if float(cfg.system_voltage_v) >= 10.0 else 7.4
-        cont_i_total = round(sum_cont_i * 0.65 + 0.4, 2)
-        peak_i_total = round(sum_peak_i * 0.72 + 0.6, 2)
+        cont_i_total = round((sum_cont_i * 0.65 + 0.4) * arm_mult, 2)
+        peak_i_total = round((sum_peak_i * 0.72 + 0.6) * arm_mult, 2)
         cont_w = round(system_v * cont_i_total, 1)
         peak_w = round(system_v * peak_i_total, 1)
-        psu_name = f"Fuente Conmutada {system_v:.1f}V 5A (Jack DC / XT30)"
-        psu_cost = 15.0
+        psu_name = f"Fuente Conmutada {system_v:.1f}V {int(5 * arm_mult)}A (Jack DC / XT30)"
+        psu_cost = 15.0 * arm_mult
         power_awg = "18 AWG (Silicona)"
         signal_awg = "22 AWG Bus Serie TTL 3-Pin Half-Duplex (1 Mbps)"
     else:
         system_v = 48.0 if max_motor_voltage >= 40.0 else 24.0
-        cont_i_total = round(sum_cont_i * 0.72 + 0.8, 2)
-        peak_i_total = round(sum_peak_i * 0.85 + 1.0, 2)
+        cont_i_total = round((sum_cont_i * 0.72 + 0.8) * arm_mult, 2)
+        peak_i_total = round((sum_peak_i * 0.85 + 1.0) * arm_mult, 2)
         cont_w = round(system_v * cont_i_total, 1)
         peak_w = round(system_v * peak_i_total, 1)
         psu_name, psu_cost = _select_psu(system_v, peak_w)
@@ -1167,6 +1168,68 @@ def evaluate_mechatronics(
             "EOAT Pick & Place neumático con electroválvula",
             1,
             19.0,
+        )
+    # v7.0 Wave 3 Topologies & Environments BOM Items
+    if req.kinematics_type == "stewart_hexapod":
+        _add_bom(
+            "actuators_reducers",
+            "STW-LIN-ACT-6X",
+            "Actuadores Lineales Telescópicos 6-UPS (Husillo + Encoder)",
+            "6× patas paralelas de alta rigidez axial",
+            6,
+            48.0,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "STW-UJOINT-12X",
+            "Juntas Universales / Rótulas Esféricas M8 (12×)",
+            "Acoplamiento base y plataforma móvil sin juego",
+            12,
+            6.5,
+        )
+    if req.kinematics_type == "bimanual_dual_arm":
+        _add_bom(
+            "printed_cnc",
+            "BIM-TORSO-FRAME",
+            "Torso Central Estructural Bimanual (Izq + Der)",
+            "Base compartida para 2 brazos espejados 14-DOF",
+            1,
+            45.0,
+        )
+    if req.kinematics_type == "soft_pneumatic_bellows":
+        _add_bom(
+            "electronics_wiring",
+            "PNU-PIEZO-VALVE",
+            "Electroválvulas Proporcionales Piezo (3 Cámaras 120°)",
+            "Control de presión 0.6–1.5 bar por cámara de fuelle TPU",
+            3,
+            24.0,
+        )
+        _add_bom(
+            "electronics_wiring",
+            "PNU-COMPRESSOR",
+            "Micro-Compresor Neumático 12V + Manifold + Tubing PU 4 mm",
+            "Suministro de aire comprimido silencioso",
+            1,
+            38.0,
+        )
+    if req.counterbalance_j2:
+        _add_bom(
+            "fasteners_hardware",
+            "KUK-CB-CYL-J2",
+            "Cilindro Contrapeso Hidroneumático J2",
+            "Compensa -65% del torque estático gravitacional del hombro",
+            1,
+            145.0,
+        )
+    if req.environment_mode == "underwater_rov":
+        _add_bom(
+            "fasteners_hardware",
+            "ROV-SEAL-VITON",
+            "Kit Retenes Rotativos Viton + Compensador de Presión Aceite",
+            "Sellado submarino IP68 para manipulador ROV",
+            1,
+            65.0,
         )
 
     total_bom_cost_usd = round(sum(item.total_cost_usd for item in master_bom), 2)

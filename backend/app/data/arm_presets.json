@@ -359,6 +359,150 @@
         "print_orientation": "xy_flat",
         "printer_id": "bambu_x1c"
       }
+    },
+    "rov_subsea": {
+      "id": "rov_subsea",
+      "name": "Manipulador ROV Submarino 7-DOF",
+      "subtitle": "Titanio Ti-6Al-4V con flotabilidad + arrastre hidrodinámico Morison",
+      "defaults": {
+        "preset": "rov_subsea",
+        "dof": 7,
+        "payload_kg": 15.0,
+        "base_height_mm": 160.0,
+        "upper_arm_mm": 380.0,
+        "forearm_mm": 320.0,
+        "wrist_mm": 110.0,
+        "link_style": "hollow_cobot",
+        "shoulder_joint_deg": 25.0,
+        "elbow_joint_deg": -45.0,
+        "wrist_joint_deg": 20.0,
+        "gear_ratio_shoulder": 40.0,
+        "gear_ratio_elbow": 30.0,
+        "max_accel_rad_s2": 6.0,
+        "material_id": "ti6al4v_titanium",
+        "print_orientation": "xy_flat",
+        "printer_id": "voron_24"
+      }
+    },
+    "bimanual_aloha": {
+      "id": "bimanual_aloha",
+      "name": "Bimanual ALOHA / YuMi 14-DOF",
+      "subtitle": "Torso central + 2 brazos 7-DOF espejados para manipulación bimanual IA",
+      "defaults": {
+        "preset": "bimanual_aloha",
+        "dof": 14,
+        "payload_kg": 1.0,
+        "base_height_mm": 140.0,
+        "upper_arm_mm": 190.0,
+        "forearm_mm": 165.0,
+        "wrist_mm": 65.0,
+        "link_style": "hollow_cobot",
+        "shoulder_joint_deg": 32.0,
+        "elbow_joint_deg": -55.0,
+        "wrist_joint_deg": 23.0,
+        "gear_ratio_shoulder": 10.0,
+        "gear_ratio_elbow": 10.0,
+        "max_accel_rad_s2": 14.0,
+        "material_id": "petg_cf",
+        "print_orientation": "xy_flat",
+        "printer_id": "bambu_x1c"
+      }
+    },
+    "stewart_hexapod": {
+      "id": "stewart_hexapod",
+      "name": "Hexápodo Stewart 6-UPS",
+      "subtitle": "Plataforma paralela 6-DOF con 6 actuadores lineales telescópicos",
+      "defaults": {
+        "preset": "stewart_hexapod",
+        "dof": 6,
+        "payload_kg": 25.0,
+        "base_height_mm": 120.0,
+        "upper_arm_mm": 160.0,
+        "forearm_mm": 140.0,
+        "wrist_mm": 40.0,
+        "link_style": "tapered_solid",
+        "shoulder_joint_deg": 0.0,
+        "elbow_joint_deg": 0.0,
+        "wrist_joint_deg": 0.0,
+        "gear_ratio_shoulder": 10.0,
+        "gear_ratio_elbow": 10.0,
+        "max_accel_rad_s2": 12.0,
+        "material_id": "al_7075_t6",
+        "print_orientation": "xy_flat",
+        "printer_id": "bambu_x1c"
+      }
+    },
+    "canadarm_space": {
+      "id": "canadarm_space",
+      "name": "Canadarm Espacial 7-DOF (0-G)",
+      "subtitle": "Manipulador orbital 0-G (g=0 m/s²) en Al 7075-T6 / Fibra de Carbono",
+      "defaults": {
+        "preset": "canadarm_space",
+        "dof": 7,
+        "payload_kg": 50.0,
+        "base_height_mm": 180.0,
+        "upper_arm_mm": 650.0,
+        "forearm_mm": 600.0,
+        "wrist_mm": 160.0,
+        "link_style": "hollow_cobot",
+        "shoulder_joint_deg": 20.0,
+        "elbow_joint_deg": -35.0,
+        "wrist_joint_deg": 15.0,
+        "gear_ratio_shoulder": 50.0,
+        "gear_ratio_elbow": 40.0,
+        "max_accel_rad_s2": 1.0,
+        "material_id": "al_7075_t6",
+        "print_orientation": "xy_flat",
+        "printer_id": "voron_24"
+      }
+    },
+    "festo_bellows": {
+      "id": "festo_bellows",
+      "name": "Brazo Blando Neumático (Festo BHA)",
+      "subtitle": "3 cámaras de fuelles corrugados TPU 95A a 120° + electroválvulas piezo",
+      "defaults": {
+        "preset": "festo_bellows",
+        "dof": 6,
+        "payload_kg": 0.4,
+        "base_height_mm": 75.0,
+        "upper_arm_mm": 130.0,
+        "forearm_mm": 110.0,
+        "wrist_mm": 45.0,
+        "link_style": "hollow_cobot",
+        "shoulder_joint_deg": 25.0,
+        "elbow_joint_deg": 15.0,
+        "wrist_joint_deg": 10.0,
+        "gear_ratio_shoulder": 4.0,
+        "gear_ratio_elbow": 4.0,
+        "max_accel_rad_s2": 6.0,
+        "material_id": "tpu_95a",
+        "print_orientation": "xy_flat",
+        "printer_id": "bambu_x1c"
+      }
+    },
+    "kuka_kr210": {
+      "id": "kuka_kr210",
+      "name": "KUKA KR 210 Industrial (210 kg)",
+      "subtitle": "Acero 4140 + contrapeso hidroneumático J2 (-65% par estático)",
+      "defaults": {
+        "preset": "kuka_kr210",
+        "dof": 6,
+        "payload_kg": 210.0,
+        "base_height_mm": 520.0,
+        "upper_arm_mm": 1150.0,
+        "forearm_mm": 1050.0,
+        "wrist_mm": 240.0,
+        "link_style": "hollow_cobot",
+        "shoulder_joint_deg": 25.0,
+        "elbow_joint_deg": -45.0,
+        "wrist_joint_deg": 20.0,
+        "gear_ratio_shoulder": 100.0,
+        "gear_ratio_elbow": 80.0,
+        "max_accel_rad_s2": 4.0,
+        "material_id": "steel_4140",
+        "print_orientation": "xy_flat",
+        "printer_id": "voron_24"
+      }
     }
   }
 }

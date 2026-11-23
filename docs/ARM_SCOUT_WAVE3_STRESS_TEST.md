@@ -1,69 +1,56 @@
-# RoboForge Studio Pro v6.0 — Pruebas de Estrés Oleada 3 (Frontera Extrema)
+# RoboForge Studio Pro v7.0 — Pruebas de Estrés Oleada 3: Comparativo Empírico v6.0 vs. v7.0
 
-Este reporte documenta los resultados empíricos de atacar el motor **RoboForge Studio Pro v6.0** (`POST /api/arm/assemble` vía `TestClient(app)`) con **6 sistemas manipuladores de frontera extrema** (escala industrial pesada 210 kg, Hexápodo Stewart 6-DOF, bimanual 14-DOF, ROV submarino, brazo espacial en gravedad cero y brazo blando neumático).
+Este reporte documenta la verificación empírica real en **RoboForge Studio Pro v7.0** (`POST /api/arm/assemble` vía `TestClient(app)`) de los **6 sistemas de frontera extrema (Oleada 3)** + el rescate estructural de **Barrett WAM** con `al_7075_t6`, además de la validación del nuevo **Motor Real de Preparación para Impresión 3D (`print_prep.py`)**.
 
-Los 6 sistemas fueron incorporados a [`backend/app/data/arm_database.json`](../backend/app/data/arm_database.json), ampliando el catálogo validado a **20 sistemas reales** (`GET /api/arm/database` → `HTTP 200`).
+Todos los **20 sistemas reales** (8 Oleada 1 + 6 Oleada 2 + 6 Oleada 3) están catalogados y validados en [`backend/app/data/arm_database.json`](../backend/app/data/arm_database.json) (versión `4.0.0` / RoboForge `7.0.0`, servido en `GET /api/arm/database`).
 
 ---
 
-## 1. Tabla Maestra Empírica: Parámetros Reales vs. Mejor Aproximación v6.0
+## 1. Resumen Ejecutivo: Salto Cuantitativo v6.0 → v7.0
 
-> **Nota de robustez:** Cero errores `HTTP 500` en las 12 ejecuciones (6 intentos con parámetros reales + 6 aproximaciones v6.0). Todos los límites de esquema fueron rechazados limpiamente con `HTTP 422` o `HTTP 400`.
+| Métrica del Benchmark (20 Sistemas Reales) | RoboForge v6.0 | **RoboForge Pro v7.0** | Mejora |
+| :--- | :---: | :---: | :---: |
+| **Replicabilidad Promedio — Oleada 3 (6 sistemas frontera)** | **36.3%** | **90.3%** | **+54.0 pp** |
+| **Replicabilidad Promedio — Oleada 2 (Barrett WAM con Al 7075)** | **91.3%** | **92.5%** | **+1.2 pp** |
+| **Replicabilidad Promedio — Global (20 sistemas reales)** | **76.1%** | **92.7%** | **+16.6 pp** |
+| **Rechazos `HTTP 422 / 400` con Parámetros Reales** | 6 de 6 | **0 de 6 (6/6 `HTTP 200`!)** | 100% desbloqueado |
+| **Presets Dedicados en `arm_presets.json`** | 14 de 20 | **20 de 20 (100%)** *(21 presets totales)* | +6 presets v7.0 |
+| **Topologías Cinemáticas Nativas** | 5 | **8** *(+`bimanual_dual_arm`, `stewart_hexapod`, `soft_pneumatic_bellows`)* | +3 kernels nuevos |
+| **Entornos Físicos Soportados** | 1 (`Tierra 9.81 m/s²`) | **3 (`Tierra`, `Espacio 0-G`, `Submarino ROV`)** | Gravedad + Flotabilidad |
+| **Preparación de Impresión 3D (`print_readiness` + `.3MF` + `calibration_fit_test.stl` + `PRINT_GUIDE.md`)** | No | **7/7 pruebas verificadas (`100%`)** | Listo para slicer |
 
-| # | Sistema (Oleada 3) | Intento Parámetros Reales (`HTTP` / Causa Exacta) | Mejor Aproximación v6.0 (`HTTP` / Tiempo) | Masa (kg) | Alcance (mm) | Torque J1 (N·m) | FS Mín | BOM (USD) | Potencia Pico (W) | Replicabilidad Honesta v6.0 |
+---
+
+## 2. Tabla Maestra Empírica: v6.0 vs. v7.0 (Parámetros Reales Ejecutados)
+
+| # | Sistema | Preset v7.0 | Estado Real (v6.0 → **v7.0**) | Tiempo v7.0 | Alcance / Masa v7.0 | Torque J1 (v6.0 → **v7.0**) | FS Mín (v6.0 → **v7.0**) | BOM v7.0 (USD) | Platos 3D / `print_readiness` | Replicabilidad (v6.0 → **v7.0**) |
 | :---: | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| 1 | **ROV Submarino (Reach Alpha / Titan 4)** | `HTTP 400` (`Material 'ti6al4v_titanium' no encontrado`; entorno submarino ignorado) | `200` (`8.31s`, `compatible: true`) | `2.292` | `520` | `17.12` | `2.61` | `$1,649.11` | `588.5` | **54%** |
-| 2 | **Bimanual Dual-Arm (ABB YuMi / ALOHA 14-DOF)** | `HTTP 422` (`dof <= 7`; sin `bimanual_dual_arm`) | `200` (`8.41s`, 1 brazo 7-DOF, `compatible: false`) | `1.719` | `555` | `8.37` | `3.96` | `$1,033.34` | `528.0` | **52%** |
-| 3 | **Plataforma Stewart / Hexápodo 6-DOF** | `HTTP 422` (sin `stewart_hexapod`; `payload_kg <= 8`) | `200` (`0.89s`, vía `delta_parallel`, `compatible: true`) | `6.476` | `580` | `8.64` | `5.16` | `$990.06` | `539.5` | **36%** |
-| 4 | **Canadarm / Brazo Espacial 7-DOF (0-G)** | `HTTP 422` (`payload <= 8`, `length <= 450`, `width <= 110`; `gravity_m_s2=0` ignorado) | `200` (`4.21s`, 8 kg @ 1 rad/s², `compatible: false`) | `5.585` | `1040` | **`107.30`** | **`0.42` (Falla 1G)** | `$2,579.84` | `1594.1` | **30%** |
-| 5 | **Brazo Blando Neumático (Festo BHA)** | `HTTP 422` (`dof <= 7`; sin `soft_pneumatic_bellows`) | `200` (`0.48s`, vía `continuum_pcc`, `compatible: true`) | `0.527` | `475` | `1.34` | `17.81` | `$317.06` | `81.0` | **28%** |
-| 6 | **KUKA KR 210 R2700 (Paletizador 210 kg)** | `HTTP 422` (`payload <= 8`, `base <= 220`, `wrist <= 180`, `length <= 450`) | `200` (`8.64s`, tope 8 kg / 1030 mm, `compatible: false`) | `5.860` | `1030` | **`173.18`** | **`0.32` (Colapso)** | `$1,455.13` | `1668.5` | **18%** |
-
-**Resumen Cuantitativo de la Base de Datos (20 Sistemas Reales):**
-- **Oleada 1 (8 brazos seriales + SCARA):** **94.5%**
-- **Oleada 2 (6 brazos extremos ya resueltos en v6.0):** **91.3%**
-- **Oleada 3 (6 sistemas de frontera extrema):** **36.3%**
-- **Promedio Global (20 sistemas reales):** **76.1%**
+| 1 | **KUKA KR 210 R2700** *(210 kg, `steel_4140`, contrapeso J2)* | `kuka_kr210` | `422` → **`200` (OK)** | `8.59 s` | `2530 mm` · `35.31 kg` | `173.2` *(8kg)* → **`6085.05 N·m`** *(210kg)* | `0.32` → **`1.98`** | `$2,248.47` | `1 plato` · Cal STL + Guide OK | `18%` → **88%** *(+70)* |
+| 2 | **Plataforma Stewart / Hexápodo 6-DOF** *(15 kg, `al_7075_t6`)* | `stewart_hexapod` | `422` → **`200` (OK)** | **`0.67 s`** | `580 mm` · `4.80 kg` | `8.64` → **`0.08 N·m`** *(6-UPS)* | `5.16` → **`357.91`** | `$1,492.37` | `2 platos` · Cal STL + Guide OK | `36%` → **92%** *(+56)* |
+| 3 | **Bimanual Dual-Arm 14-DOF** *(ABB YuMi / ALOHA)* | `bimanual_aloha` | `422` → **`200`** *(1 aviso torso)* | `2.46 s` | `555 mm` · `5.26 kg` | `8.37` → **`9.78 N·m`** *(14-DOF)* | `3.96` → **`3.39`** | `$1,198.95` | `3 platos` · Cal STL + Guide OK | `52%` → **93%** *(+41)* |
+| 4 | **ROV Submarino** *(`ti6al4v_titanium`, `underwater_rov`)* | `rov_subsea` | `400` → **`200` (OK)** | `7.70 s` | `520 mm` · `4.75 kg` | `17.12` → **`17.23 N·m`** *(Morison+flot.)* | `2.61` → **`29.21`** | `$2,092.35` | `1 plato` · Cal STL + Guide OK | `54%` → **90%** *(+36)* |
+| 5 | **Canadarm Espacial 7-DOF** *(100 kg, `space_zero_g`, `g=0`)* | `canadarm_space` | `422` → **`200` (OK)** | `7.68 s` | `2540 mm` · `22.25 kg` | `107.3` *(8kg 1G)* → **`676.86 N·m`** *(100kg 0G)* | `0.42` → **`2.66`** | `$4,802.43` | `2 platos` · Cal STL + Guide OK | `30%` → **90%** *(+60)* |
+| 6 | **Brazo Blando Neumático** *(Festo BHA, `9-DOF`, `tpu_95a`)* | `festo_bellows` | `422` → **`200` (OK)** | **`0.60 s`** | `475 mm` · `1.09 kg` | `1.34` → **`1.21 N·m`** *(F=P·A)* | `17.81` → **`9.28`** | `$403.86` | `1 plato` · Cal STL + Guide OK | `28%` → **89%** *(+61)* |
+| **★** | **Barrett WAM / AMBIDEX** *(Oleada 2 rescate con `al_7075_t6`)* | `barrett_wam` | `200` *(alerta)* → **`200` (OK!)** | `8.00 s` | `745 mm` · `4.55 kg` | `67.08` → **`71.96 N·m`** *(3kg @ 25 rad/s²)* | **`0.66 → 4.00`** *(6×)* | `$1,399.60` | `1 plato` · Cal STL + Guide OK | `88%` → **95%** *(+7)* |
 
 ---
 
-## 2. Mapa de los 6 Nuevos Límites de Frontera Descubiertos
+## 3. Verificación de Nuevos Nodos CAD 3D y Motor de Impresión 3D (`v7.0`)
 
-### 2.1 Gravedad Hardcodeada (`GRAVITY_M_S2 = 9.81`) — Impacto Crítico en Espacio y Submarino
-- En `arm_kinematics.py` y `arm_compatibility.py`, la gravedad está fijada a `9.81 m/s²`.
-- **Evidencia empírica (Canadarm):** A apenas `1.0 rad/s²` (aceleración orbital ultra-lenta), el motor calculó **`107.30 N·m`** y **`FS = 0.42` (fallo falso)** porque sumó gravedad terrestre completa a un brazo espacial de 0-G.
-- **Evidencia empírica (ROV Submarino):** Sin flotabilidad ($\rho_{\text{agua}} V g$) ni arrastre hidrodinámico de Morison ($F_d = \frac{1}{2}\rho C_d A v^2$), el motor sobrestima el par estático sumergido y subestima las fuerzas de arrastre lateral y la presión hidrostática (30–400 bar).
-
-### 2.2 Techo de Escala Desktop/Cobot (`payload <= 8 kg`, `length <= 450 mm`, Polímeros FDM)
-- **Evidencia empírica (KUKA KR 210):** `ModularArmRequest` bloquea cargas `> 8 kg` y eslabones `> 450 mm`. Incluso en el tope (`8 kg`, `1030 mm`), el polímero `PA12-CF` colapsa (`173.18 N·m`, `FS 0.32`).
-- Faltan **materiales metálicos estructurales** en `materials.json` (`Aluminio 6061-T6`, `Aluminio 7075-T6`, `Titanio Ti-6Al-4V`, `Acero / Fundición GGG50`, `Tubo CFRP`), **cilindro contrapeso hidroneumático en J2**, reductores industriales **RV cicloidales** y servodrives **AC 400V**.
-
-### 2.3 Topología Multi-Brazo Coordinado (`dof <= 7`, sin Bimanual `14-DOF`)
-- **Evidencia empírica (ABB YuMi / ALOHA):** Un sistema bimanual exige **2 cadenas cinemáticas acopladas a un torso común** (`left_arm` + `right_arm`), volumen de trabajo solapado, verificación de auto-colisión brazo-contra-brazo, presupuesto eléctrico unificado y exportación de un solo URDF/MuJoCo 14-DOF (clave para datasets de IA tipo ALOHA / Mobile ALOHA).
-
-### 2.4 Cinemática Paralela de 6 Actuadores Lineales (`stewart_hexapod`)
-- A diferencia del Delta (3 motores rotacionales + 6 varillas fijas, 3T1R), una **Plataforma Stewart / Hexápodo** emplea **6 actuadores lineales prismáticos** conectados mediante juntas universales/esféricas entre base y plataforma móvil para lograr **6-DOF completos** (`X, Y, Z, Roll, Pitch, Yaw`).
-
-### 2.5 Actuación No-Eléctrica (Neumática Blanda e Hidráulica Submarina)
-- **Brazo Blando Neumático (Festo BHA):** No usa motores eléctricos ni tendones, sino **3×3 fuelles elastómeros TPU** presurizados (0–2 bar), electroválvulas piezo proporcionales y compresor/regulador de aire; requiere física de cámaras presurizadas ($F = P \cdot A$) y material hiperelástico TPU en `materials.json`.
-- **ROV Submarino:** Requiere sellado IP68/presión compensada en aceite y opción de actuadores electro-hidráulicos (válvulas servo-hidráulicas + bomba HPU).
+- **Stewart Hexápodo (`stewart_assembly.py`):** nodos reales `stewart_base`, `stewart_leg_1..6`, `stewart_platform` y URDF con 6 `<joint type="prismatic">` generados en **`0.67 s`**.
+- **Bimanual 14-DOF (`bimanual_assembly.py`):** nodos reales `bimanual_torso`, `left_upper_arm/forearm/gripper` y `right_upper_arm/forearm/gripper` + presupuesto eléctrico dual (`1086.7 W`) y chequeo de colisión torso en **`2.46 s`**.
+- **Fuelle Blando Neumático (`continuum_assembly.py`):** nodos reales `bellows_chamber_1..3`, `bellows_end_cap` y `pneumatic_manifold` en `tpu_95a` generados en **`0.60 s`**.
+- **Rescate de Entornos y Metales:**
+  - `al_7075_t6` llevó a **Barrett WAM** de `FS 0.66` (`compatible: false`) a **`FS 4.00` (`compatible: true`)**.
+  - `space_zero_g` (`g = 0`) + `ti6al4v_titanium` llevó a **Canadarm 100 kg / 2.54 m** de `FS 0.42` a **`FS 2.66` (`compatible: true`)**.
+  - `steel_4140` + `counterbalance_j2` llevó a **KUKA KR 210 (210 kg / 2.53 m)** de rechazo `422` / colapso `0.32` a **`FS 1.98` (`compatible: true`)**.
+- **Motor de Impresión 3D (`print_prep.py`):** En **7 de 7 pruebas**, `POST /api/arm/assemble` devolvió `print_readiness` completo con platos empaquetados (`build_plate_1..N.3mf`), cupón real de tolerancias imprimible en 15 min (`calibration_fit_test.stl`) y guía de slicer (`PRINT_GUIDE.md`) dentro del `.ZIP`.
 
 ---
 
-## 3. Propuesta Priorizada de Alto Retorno para RoboForge Studio v7.0
+## 4. Micro-Detalles de Nicho Restantes (Post-v7.0)
 
-No todas las fronteras tienen el mismo retorno real para los usuarios de RoboForge. Recomendamos enfocar **v7.0** en las **3 capacidades de mayor ROI práctico** (que elevan la Oleada 3 de `36.3%` a `~82%` y el global de 20 sistemas por encima del `~89%`):
-
-```mermaid
-flowchart LR
-    V60["Pro v6.0 (76.1% en 20 sistemas)\n5 Topologías · 14/20 Presets"] --> V70A["v7.0-P1: Modo Bimanual Dual-Arm (14-DOF)\nTorso común + Espejo + URDF/LeRobot Bimanual\n(Desbloquea ALOHA / YuMi: 52% → 95%)"]
-    V70A --> V70B["v7.0-P2: Entorno Físico + Materiales Metálicos\ngravity_m_s2 (0..20) + Submarino + Ti6Al4V/Al7075/Acero/TPU\n(Desbloquea ROV 90%, Espacio 88%, Barrett WAM 95%)"]
-    V70B --> V70C["v7.0-P3: Hexápodo Stewart 6-DOF + Escala Industrial\n6 actuadores lineales + payload hasta 250 kg + contrapeso J2\n(Desbloquea Stewart 92% y KUKA KR210 85%)"]
-```
-
-1. **Prioridad 1 (Máximo ROI para IA y Robótica Moderna) — Modo Bimanual Dual-Arm (`bimanual_dual_arm`, 10–14 DOF):**
-   - Instancia dos brazos simétricos sobre un torso/mesa compartida con un solo clic, verifica colisión de espacios de trabajo y exporta un único `URDF/MuJoCo/LeRobot` bimanual (**ALOHA / ABB YuMi / OpenArm Bimanual**).
-2. **Prioridad 2 (Alto ROI transversal con bajo esfuerzo de código) — Entorno Físico Configurable (`gravity_m_s2`, `fluid_density_kg_m3`) + Materiales Metálicos & Elastómeros (`Al 6061/7075`, `Ti-6Al-4V`, `CFRP`, `TPU 95A`):**
-   - Elimina de inmediato el fallo falso en 0-G (**Canadarm**), habilita flotabilidad/arrastre (**ROV Submarino**), y resuelve definitivamente la alerta `FS 0.66` de **Barrett WAM** (Oleada 2) al permitir tubos de Aluminio 7075-T6!
-3. **Prioridad 3 (Cobertura Total de Cinemática Paralela e Industria Pesada) — Kernel Hexápodo Stewart 6-DOF (`stewart_hexapod`) + Modo Industrial Pesado (`payload <= 250 kg`, `length <= 1500 mm`, contrapeso J2):**
-   - Completa la familia de robótica paralela (Delta + Stewart) y abre RoboForge a simuladores de vuelo, óptica de precisión y celdas de paletizado industrial (**KUKA KR 210**).
+Con **92.7% de replicabilidad promedio across 20 sistemas reales**, solo quedan micro-detalles ultra-especializados de dominio industrial/aeroespacial:
+- **Industrial Pesado:** catálogo de servodrives AC 400V trifásicos (>10 kW) y reductores Nabtesco RV dedicados.
+- **Aeroespacial / Submarino:** análisis térmico por radiación en vacío (MLI), efector espacial LEE y bomba hidráulica HPU de 4000 m.
+- **Bimanual / Paralelo:** mapa interactivo 3D de colisión brazo-contra-brazo y restricciones `<equality><connect>` en MuJoCo XML para Stewart/Delta.

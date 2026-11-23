@@ -96,5 +96,61 @@
     "cost_per_kg_usd": 145.0,
     "color_hex": "#0F172A",
     "notes": "Ultra-high in-plane stiffness and strength-to-weight ratio. Ideal for 2.5D plate profiles; avoid out-of-plane peel."
+  },
+  {
+    "id": "al_7075_t6",
+    "name": "Aluminum 7075-T6 (Aero CNC)",
+    "category": "cnc",
+    "density_g_cm3": 2.81,
+    "youngs_xy_mpa": 71700.0,
+    "youngs_z_mpa": 71700.0,
+    "yield_xy_mpa": 503.0,
+    "yield_z_mpa": 503.0,
+    "max_temp_c": 150.0,
+    "cost_per_kg_usd": 95.0,
+    "color_hex": "#94A3B8",
+    "notes": "Aerospace-grade zinc-alloyed aluminum (503 MPa yield). Ideal for high-load WAM/Capstan and space-grade CNC structures."
+  },
+  {
+    "id": "ti6al4v_titanium",
+    "name": "Titanium Ti-6Al-4V (Subsea/Aero)",
+    "category": "cnc",
+    "density_g_cm3": 4.43,
+    "youngs_xy_mpa": 114000.0,
+    "youngs_z_mpa": 114000.0,
+    "yield_xy_mpa": 880.0,
+    "yield_z_mpa": 880.0,
+    "max_temp_c": 400.0,
+    "cost_per_kg_usd": 260.0,
+    "color_hex": "#64748B",
+    "notes": "Corrosion-proof subsea ROV & aerospace titanium alloy (880 MPa yield, 114 GPa modulus)."
+  },
+  {
+    "id": "steel_4140",
+    "name": "Alloy Steel 4140 (Industrial CNC)",
+    "category": "cnc",
+    "density_g_cm3": 7.85,
+    "youngs_xy_mpa": 205000.0,
+    "youngs_z_mpa": 205000.0,
+    "yield_xy_mpa": 655.0,
+    "yield_z_mpa": 655.0,
+    "max_temp_c": 450.0,
+    "cost_per_kg_usd": 32.0,
+    "color_hex": "#475569",
+    "notes": "Chromoly industrial alloy steel (655 MPa yield, 205 GPa modulus) for heavy 200 kg+ industrial robots like KUKA KR 210."
+  },
+  {
+    "id": "tpu_95a",
+    "name": "TPU 95A (Flexible / Pneumatic)",
+    "category": "fdm",
+    "density_g_cm3": 1.21,
+    "youngs_xy_mpa": 60.0,
+    "youngs_z_mpa": 52.0,
+    "yield_xy_mpa": 26.0,
+    "yield_z_mpa": 22.0,
+    "max_temp_c": 80.0,
+    "cost_per_kg_usd": 36.0,
+    "color_hex": "#06B6D4",
+    "notes": "Shore 95A flexible elastomer for soft pneumatic corrugated bellows (Festo BHA) and compliant grippers."
   }
 ]

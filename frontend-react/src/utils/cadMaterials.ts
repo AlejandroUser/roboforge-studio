@@ -33,6 +33,11 @@ export type CadMaterialRole =
   | "nitinol_bright"
   | "peek_gold"
   | "surgical_steel"
+  | "bimanual_torso_alu"
+  | "stewart_plate_alu"
+  | "stewart_leg_chrome"
+  | "tpu_bellows_cyan"
+  | "pneumatic_manifold_alu"
   | "matte_polymer"
   | "single_part_enhanced";
 
@@ -141,6 +146,21 @@ export function getSemanticNodeName(obj: THREE.Object3D): string {
 export function detectCadMaterialRole(obj: THREE.Object3D, family: FamilyId): CadMaterialRole {
   const name = getSemanticNodeName(obj);
 
+  if (name.includes("bellows_chamber") || name.includes("bellows_end")) {
+    return "tpu_bellows_cyan";
+  }
+  if (name.includes("pneumatic_manifold")) {
+    return "pneumatic_manifold_alu";
+  }
+  if (name.includes("stewart_leg")) {
+    return "stewart_leg_chrome";
+  }
+  if (name.includes("stewart_base") || name.includes("stewart_platform")) {
+    return "stewart_plate_alu";
+  }
+  if (name.includes("bimanual_torso")) {
+    return "bimanual_torso_alu";
+  }
   if (name.includes("micro_forceps")) {
     return "surgical_steel";
   }
@@ -580,6 +600,57 @@ export function createCadPhysicalMaterial(
         clearcoat: 0.35,
         clearcoatRoughness: 0.12,
         envMapIntensity: 1.75,
+      });
+
+    case "bimanual_torso_alu":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#2c3849"),
+        metalness: 0.72,
+        roughness: 0.3,
+        clearcoat: 0.25,
+        clearcoatRoughness: 0.28,
+        envMapIntensity: 1.35,
+      });
+
+    case "stewart_plate_alu":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#4b77a3"),
+        metalness: 0.86,
+        roughness: 0.24,
+        clearcoat: 0.32,
+        clearcoatRoughness: 0.2,
+        envMapIntensity: 1.5,
+      });
+
+    case "stewart_leg_chrome":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#e2e8f0"),
+        metalness: 0.95,
+        roughness: 0.14,
+        clearcoat: 0.4,
+        clearcoatRoughness: 0.12,
+        envMapIntensity: 1.75,
+      });
+
+    case "tpu_bellows_cyan":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#06b6d4"),
+        metalness: 0.05,
+        roughness: 0.55,
+        clearcoat: 0.2,
+        clearcoatRoughness: 0.45,
+        transparent: true,
+        opacity: 0.84,
+        envMapIntensity: 1.1,
+      });
+
+    case "pneumatic_manifold_alu":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#94a3b8"),
+        metalness: 0.88,
+        roughness: 0.24,
+        clearcoat: 0.2,
+        envMapIntensity: 1.45,
       });
 
     case "matte_polymer":

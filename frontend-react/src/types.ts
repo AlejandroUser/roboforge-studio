@@ -180,7 +180,40 @@ export type KinematicsType =
   | "scara"
   | "cartesian_gantry"
   | "delta_parallel"
-  | "continuum_pcc";
+  | "continuum_pcc"
+  | "bimanual_dual_arm"
+  | "stewart_hexapod"
+  | "soft_pneumatic_bellows";
+
+export type EnvironmentMode = "earth" | "space_zero_g" | "underwater_rov";
+
+export interface PrintPlateInfo {
+  plate_index?: number;
+  plate_number?: number;
+  filename?: string;
+  url?: string;
+  parts: string[];
+  part_count?: number;
+  estimated_filament_g?: number;
+  estimated_hours?: number;
+}
+
+export interface PrintReadinessSummary {
+  fits_bed: boolean;
+  printer_name: string;
+  bed_mm: number[];
+  total_plates: number;
+  total_filament_g: number;
+  estimated_print_hours: number;
+  layer_height_mm: number;
+  wall_loops: number;
+  infill_pct: number;
+  infill_pattern: string;
+  nozzle_temp_c: number;
+  bed_temp_c: number;
+  plates: PrintPlateInfo[];
+  warnings: string[];
+}
 
 export interface ModularArmRequest {
   dof: number;
@@ -203,6 +236,10 @@ export interface ModularArmRequest {
   four_bar_parallelogram?: boolean;
   bevel_differential_wrist?: boolean;
   vacuum_eoat?: boolean;
+  // v7.0 Environments & Counterbalance
+  environment_mode?: EnvironmentMode;
+  gravity_m_s2?: number;
+  counterbalance_j2?: boolean;
 }
 
 export interface CompatibilityIssue {
@@ -243,6 +280,7 @@ export interface ModularArmResponse {
   joints: JointTorqueSummary[];
   bom: BOMItem[];
   mechatronics?: MechatronicsResponse | null;
+  print_readiness?: PrintReadinessSummary | null;
 }
 
 // v4.0/v5.0: Mecatrónica Completa — Motores, Curvas Torque–RPM, Presupuesto Eléctrico y BOM Maestro

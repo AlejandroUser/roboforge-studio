@@ -23,6 +23,10 @@ EXPECTED_MATERIAL_IDS = {
     "pa12_cf",
     "al6061_t6",
     "carbon_plate",
+    "al_7075_t6",
+    "ti6al4v_titanium",
+    "steel_4140",
+    "tpu_95a",
 }
 
 REQUIRED_MATERIAL_FIELDS = {
