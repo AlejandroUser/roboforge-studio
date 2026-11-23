@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -20,9 +21,13 @@ from ..schemas import (
 )
 from .threemf_exporter import compute_modifier_box_for_mesh, export_smart_3mf
 
-# Project root: .../roboforge/
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-EXPORTS_ROOT = PROJECT_ROOT / "exports"
+# Project root: handles both source checkout and PyInstaller frozen bundle
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    PROJECT_ROOT = Path(sys._MEIPASS)
+    EXPORTS_ROOT = Path(sys.executable).resolve().parent / "exports"
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parents[3]
+    EXPORTS_ROOT = PROJECT_ROOT / "exports"
 
 # Distinct metallic/engineering PBR appearance per variant
 VARIANT_PBR_STYLES: dict[str, dict[str, Any]] = {

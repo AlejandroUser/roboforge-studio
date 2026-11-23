@@ -52,6 +52,8 @@ def build_exe() -> None:
         "--icon",
         str(ICO_PATH),
         "--add-data",
+        f"{PROJECT_ROOT / 'frontend-react' / 'dist'};frontend-react/dist",
+        "--add-data",
         f"{PROJECT_ROOT / 'frontend'};frontend",
         "--add-data",
         f"{PROJECT_ROOT / 'backend' / 'app' / 'data'};backend/app/data",
