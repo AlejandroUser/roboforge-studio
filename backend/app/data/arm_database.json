@@ -1,11 +1,11 @@
 {
-  "schema_version": "2.0.0",
+  "schema_version": "2.1.0",
   "roboforge_version": "5.0.0",
   "updated_at": "2026-11-23",
-  "description": "Base de datos estructurada de benchmarking de brazos robóticos reales (8 arquitecturas across 6 categorías funcionales) evaluados contra RoboForge Studio Pro v5.0 (con comparativa histórica v4.2 vs v5.0).",
-  "total_arms": 8,
+  "description": "Base de datos estructurada de benchmarking de 14 brazos robóticos reales (8 de Oleada 1 seriales/SCARA + 6 de Oleada 2 de pruebas de estrés extremas) evaluados contra RoboForge Studio Pro v5.0.",
+  "total_arms": 14,
   "previous_average_replicability_v42_pct": 63.5,
-  "average_replicability_pct": 94.5,
+  "average_replicability_pct": 70.6,
   "arms": [
     {
       "id": "fabri_creator_5_0",
@@ -18,7 +18,10 @@
       "payload_kg": 0.35,
       "repeatability_mm": 2.5,
       "mass_kg": 1.45,
-      "primary_materials": ["PLA+", "PETG"],
+      "primary_materials": [
+        "PLA+",
+        "PETG"
+      ],
       "actuators_summary": "8× Servos RC digitales TD-8120MG (20 kg·cm, 6.5V): J0 Base (1×), J1 Hombro paralelo invertido (2×), J2 Codo paralelo invertido (2×), J3 Muñeca Pitch (1×), J4 Muñeca Roll (1×), Pinza (1×).",
       "transmission_summary": "Accionamiento directo (1:1) con horns metálicos 25T y horquillas envolventes doble-servo (clevis); sin reductores externos.",
       "electronics_summary": "Arduino UNO + Servo Shield PCA9685 I2C (16 canales, 50 Hz) + fuente conmutada 6.5V / 10A + condensador de desacoplo.",
@@ -38,7 +41,8 @@
       "missing_capabilities": [
         "Clips/pasacables paramétricos específicos para conectores Dupont de 3 pines en los eslabones",
         "Simulación de zona muerta (deadband) y juego interno de engranajes metálicos de servo RC en el análisis de repetibilidad"
-      ]
+      ],
+      "wave": 1
     },
     {
       "id": "parol6_6dof",
@@ -51,7 +55,12 @@
       "payload_kg": 1.0,
       "repeatability_mm": 0.1,
       "mass_kg": 7.5,
-      "primary_materials": ["PETG", "PETG-CF", "ABS", "Aluminio (ejes/rodamientos)"],
+      "primary_materials": [
+        "PETG",
+        "PETG-CF",
+        "ABS",
+        "Aluminio (ejes/rodamientos)"
+      ],
       "actuators_summary": "6× Motores paso a paso NEMA 17 y NEMA 23 de lazo abierto/cerrado con reductores planetarios integrados (20:1 en J1/J2/J3, 10:1 en J4/J5/J6).",
       "transmission_summary": "Reductores planetarios metálicos de bajo backlash + correas cerradas GT2 con tensores excéntricos en J1, J2, J5 y muñeca compacta.",
       "electronics_summary": "Placa custom STM32F446RE (PAROL6 Control Board) + 6× drivers silenciosos TMC2209 Step/Dir + finales de carrera inductivos/mecánicos + fuente 24V 15A + E-Stop.",
@@ -70,7 +79,8 @@
       "missing_capabilities": [
         "Carcasas tipo concha bipartidas (clamshell) con tapas de servicio desmontables y jefes para insertos térmicos M3/M4",
         "Modelo 3D dedicado de la placa PCB custom PAROL6 Control Board dentro de la caja base"
-      ]
+      ],
+      "wave": 1
     },
     {
       "id": "annin_ar4_mk3",
@@ -83,7 +93,11 @@
       "payload_kg": 1.9,
       "repeatability_mm": 0.2,
       "mass_kg": 12.2,
-      "primary_materials": ["Aluminio 6061-T6 mecanizado/corte láser", "PA12-CF / PETG (cubiertas)", "Acero (ejes)"],
+      "primary_materials": [
+        "Aluminio 6061-T6 mecanizado/corte láser",
+        "PA12-CF / PETG (cubiertas)",
+        "Acero (ejes)"
+      ],
       "actuators_summary": "6× Steppers cerrados con encoder óptico (NEMA 23 en J1/J2, NEMA 17 en J3–J6) con reductores planetarios acoplados (hasta 50:1 en J2/J3, 19:1 en J6).",
       "transmission_summary": "Reductores planetarios metálicos de alta relación (10:1 a 50:1) + transmisión por correa HTD/GT2 en J1/J5/J6 + rodamientos de rodillos cónicos (30205) en base.",
       "electronics_summary": "Teensy 4.1 (ARM Cortex-M7) + 6× drivers externos DM542T / DM320T en lazo cerrado con encoders + Arduino Nano E/S + fuente 24V 20A + relés de seguridad.",
@@ -102,7 +116,8 @@
       "missing_capabilities": [
         "Relaciones planetarias ultra-altas (>20:1, ej. 50:1) como entrada dedicada en REDUCER_CATALOG (actualmente hasta 20:1 planetario o 50:1 armónico)",
         "Esquemático dedicado de lazo de encoder diferencial óptico externo conectado a Teensy 4.1 + chapa doblada 3D"
-      ]
+      ],
+      "wave": 1
     },
     {
       "id": "pybot_jjrobots_scara",
@@ -115,7 +130,12 @@
       "payload_kg": 0.5,
       "repeatability_mm": 0.25,
       "mass_kg": 3.4,
-      "primary_materials": ["PLA+", "PETG", "Barras lineales cromadas 8 mm / MGN12", "Aluminio extruido"],
+      "primary_materials": [
+        "PLA+",
+        "PETG",
+        "Barras lineales cromadas 8 mm / MGN12",
+        "Aluminio extruido"
+      ],
       "actuators_summary": "3× Motores paso a paso NEMA 17 (J1 Hombro horizontal, J2 Codo horizontal, J3 Eje Z prismático) + 1× Micro-servo/stepper J4 rotación de herramienta (Theta).",
       "transmission_summary": "Correas cerradas GT2 (reducción ~4:1–6:1) en plano XY horizontal + husillo trapezoidal T8 / correa vertical sobre guías lineales cromadas para eje prismático Z.",
       "electronics_summary": "Placa DEVIA / Arduino + Shield CNC (3× drivers A4988/TMC2209) + fuente 12V–24V 5A + finales de carrera ópticos/mecánicos + bomba de vacío o pinza.",
@@ -134,7 +154,8 @@
       "missing_capabilities": [
         "Efector final de vacío neumático (ventosa + bomba/electroválvula) como alternativa seleccionable a la pinza mecánica",
         "Generador de firmware/cinemática inversa SCARA específica con conmutación codo izquierdo/derecho"
-      ]
+      ],
+      "wave": 1
     },
     {
       "id": "so_arm100_lerobot",
@@ -147,7 +168,10 @@
       "payload_kg": 0.4,
       "repeatability_mm": 1.0,
       "mass_kg": 0.85,
-      "primary_materials": ["PLA+", "PETG"],
+      "primary_materials": [
+        "PLA+",
+        "PETG"
+      ],
       "actuators_summary": "6× Servos inteligentes de bus serie Feetech STS3215 (5 ejes articulados + 1 pinza; versión líder con engranajes desacoplados/baja reducción para backdrivability).",
       "transmission_summary": "Accionamiento directo (1:1) sobre carcasa de servo estructural con doble rodamiento de apoyo trasero (horn + idler horn) en cada articulación.",
       "electronics_summary": "Controlador USB-a-Bus Serie Waveshare (UART half-duplex 1 Mbps daisy-chain 3 hilos) + fuente 7.4V (líder) / 12V 5A (seguidor) + integración directa con PC/Jetson vía LeRobot.",
@@ -165,7 +189,8 @@
       "missing_capabilities": [
         "Emparejamiento automático de pack bimanual Líder-Seguidor (dos brazos sincronizados en un mismo proyecto/BOM)",
         "Brackets ultra-minimalistas tipo 'servo-como-eslabón' con encaje a presión (snap-fit) sin soportes"
-      ]
+      ],
+      "wave": 1
     },
     {
       "id": "openarm_7dof",
@@ -178,7 +203,11 @@
       "payload_kg": 3.0,
       "repeatability_mm": 0.3,
       "mass_kg": 5.5,
-      "primary_materials": ["Aluminio CNC 6061", "PA12-CF / ABS (cubiertas)", "Fibra de carbono (tubos)"],
+      "primary_materials": [
+        "Aluminio CNC 6061",
+        "PA12-CF / ABS (cubiertas)",
+        "Fibra de carbono (tubos)"
+      ],
       "actuators_summary": "7× Actuadores Quasi-Direct Drive (QDD) Damiao serie DM-J4340 / DM-J4310 (motores BLDC pancake + reductores planetarios integrados 9:1–10:1, altamente retro-conducibles).",
       "transmission_summary": "Transmisión QDD planetaria integrada de baja relación (9:1–10:1) con alta transparencia mecánica (backdrivability) y control de impedancia por corriente.",
       "electronics_summary": "Bus CAN-FD de alta frecuencia (1 kHz, protocolo MIT-mode) a 24V–48V + adaptador USB-CANFD + PC host ROS 2 / teleoperación bilateral líder-seguidor.",
@@ -196,7 +225,8 @@
       "missing_capabilities": [
         "Solver de cinemática inversa redundante con parámetro de ángulo de giro del codo (null-space swivel angle)",
         "Simulación de control de impedancia / colisión segura (par de retro-conducibilidad en protocolo MIT-mode a 1 kHz)"
-      ]
+      ],
+      "wave": 1
     },
     {
       "id": "arctos_6dof",
@@ -209,7 +239,12 @@
       "payload_kg": 1.5,
       "repeatability_mm": 0.3,
       "mass_kg": 9.8,
-      "primary_materials": ["PLA+", "PETG-CF", "ABS / ASA", "Nylon PA12"],
+      "primary_materials": [
+        "PLA+",
+        "PETG-CF",
+        "ABS / ASA",
+        "Nylon PA12"
+      ],
       "actuators_summary": "6× Motores paso a paso NEMA 17 y NEMA 23 en lazo cerrado MKS SERVO42D / SERVO57D con control integrado sobre bus CAN.",
       "transmission_summary": "Reductores cicloidales impresos en 3D (doble disco) en base/hombro/codo + reductor planetario split-ring + muñeca diferencial de engranajes cónicos (bevel) + correas GT2.",
       "electronics_summary": "Bus CAN daisy-chain (ESP32-CAN / MKS CANable) + 6× drivers integrados MKS SERVO42D/57D + fuente 24V 15A + firmware ROS 2 / Arctos Studio.",
@@ -227,7 +262,8 @@
       "missing_capabilities": [
         "Engranajes cónicos (bevel gears) acoplados para muñeca diferencial 2-DOF pura y planetario split-ring/Wolfrom con dientes helicoidales internos",
         "Corona de giro impresa en 3D con pistas para bolas de acero sueltas (slewing ring DIY) en la base J1"
-      ]
+      ],
+      "wave": 1
     },
     {
       "id": "bcn3d_moveo",
@@ -240,7 +276,11 @@
       "payload_kg": 0.7,
       "repeatability_mm": 0.5,
       "mass_kg": 6.8,
-      "primary_materials": ["PLA", "PETG", "ABS"],
+      "primary_materials": [
+        "PLA",
+        "PETG",
+        "ABS"
+      ],
       "actuators_summary": "5× Motores paso a paso de lazo abierto (2× NEMA 23 en paralelo para J2 Hombro, 1× NEMA 23 en J1 Base, 1× NEMA 17 en J3 Codo, 1× NEMA 14/17 en muñeca) + servo pinza.",
       "transmission_summary": "Correas dentadas cerradas GT2/HTD con grandes poleas impresas en 3D (relaciones 5:1 a 8:1) y ejes de acero sobre rodamientos de bolas 608/6204.",
       "electronics_summary": "Arduino Mega 2560 + Shield RAMPS 1.4 + drivers A4988 / DRV8825 (Step/Dir en estrella) + fuente 12V–24V 15A + firmware Marlin / ROS MoveIt.",
@@ -258,6 +298,271 @@
       "missing_capabilities": [
         "Montura CAD 3D gemela sincronizada para doble motor NEMA 23 en paralelo en el hombro J2 (actualmente solo doble servo en clevis)",
         "Exportador de firmware legacy Marlin/G-Code para Arduino Mega 2560 + Shield RAMPS 1.4"
+      ],
+      "wave": 1
+    },
+    {
+      "id": "dobot_magician_4bar",
+      "name": "Dobot Magician / uArm Swift Pro",
+      "manufacturer_or_project": "Dobot / UFACTORY (Paralelogramo 4-Barras)",
+      "category": "Escritorio Multifunción (Paralelogramo 4-Barras)",
+      "kinematics_type": "4dof_parallelogram",
+      "dof": 4,
+      "reach_mm": 320.0,
+      "payload_kg": 0.5,
+      "repeatability_mm": 0.2,
+      "mass_kg": 3.4,
+      "primary_materials": [
+        "Aluminio 6061",
+        "ABS / PETG-CF"
+      ],
+      "actuators_summary": "3× Steppers NEMA 17 con reductores planetarios de bajo backlash montados en la base/hombro + 1× motor de rotación de herramienta J4 (efector nivelado pasivamente).",
+      "transmission_summary": "Mecanismo de paralelogramo cerrado de 4 barras (varillas paralelas acopladoras) que mantiene el efector final siempre paralelo al plano horizontal.",
+      "electronics_summary": "Controlador embebido STM32/ATmega + drivers Step/Dir + bomba de vacío integrada / láser / extrusor intercambiable + fuente 12V 7A.",
+      "estimated_cost_usd": 1200,
+      "roboforge_preset_id": null,
+      "wave": 2,
+      "difficulty": "Media",
+      "roboforge_replicability_pct": 52,
+      "stress_test_v50": {
+        "http_status": 200,
+        "elapsed_s": 9.24,
+        "compatible": true,
+        "measured_mass_kg": 1.216,
+        "measured_torque_j1_nm": 3.56,
+        "measured_min_sf": 9.31,
+        "measured_bom_usd": 369.92,
+        "peak_power_w": 163.0
+      },
+      "supported_today": [
+        "Motores NEMA 17 + reductores planetarios 10:1 3D reales y NEMA 14 para eje J4",
+        "Placas CNC de aluminio 6061-T6 con exportación automática .DXF R12",
+        "Arquitectura stm32_step_dir, presupuesto eléctrico, BOM maestro y exportación GLB/STEP/URDF/ZIP"
+      ],
+      "missing_capabilities": [
+        "Cinemática y CAD de lazo cerrado de 4 barras (varilla paralela acopladora y pivotes secundarios)",
+        "Restricción pasiva de nivelación horizontal del TCP (pitch_tcp = 0° independiente de J2/J3)",
+        "Motores J2 y J3 co-localizados en la base con acoplamiento por biela (en lugar de motor en el codo)"
+      ]
+    },
+    {
+      "id": "thor_niryo_ned2",
+      "name": "Thor 6-DOF / Niryo Ned2",
+      "manufacturer_or_project": "AngelLM (Thor) / Niryo Robotics (Ned2)",
+      "category": "Educativo / Laboratorio Precisión (Muñeca Diferencial)",
+      "kinematics_type": "6dof_articulated",
+      "dof": 6,
+      "reach_mm": 440.0,
+      "payload_kg": 0.75,
+      "repeatability_mm": 0.5,
+      "mass_kg": 6.5,
+      "primary_materials": [
+        "PLA+",
+        "PETG-CF",
+        "Aluminio (ejes/carcasas)"
+      ],
+      "actuators_summary": "3× Steppers NEMA 17 en lazo cerrado (J1–J3) con planetarios/cicloidales + 3× motores compactos (NEMA 14 / Dynamixel) para muñeca diferencial J4–J6.",
+      "transmission_summary": "Reductores planetarios y cicloidales en J1–J3 + muñeca diferencial de engranajes cónicos (bevel gears) acoplando J5 Pitch y J6 Roll.",
+      "electronics_summary": "Raspberry Pi / Arduino Mega + bus CAN / drivers Step/Dir + encoders magnéticos + fuente 24V 6A + ROS 2.",
+      "estimated_cost_usd": 650,
+      "roboforge_preset_id": null,
+      "wave": 2,
+      "difficulty": "Media-Alta",
+      "roboforge_replicability_pct": 84,
+      "stress_test_v50": {
+        "http_status": 200,
+        "elapsed_s": 4.81,
+        "compatible": true,
+        "measured_mass_kg": 1.436,
+        "measured_torque_j1_nm": 7.77,
+        "measured_min_sf": 4.27,
+        "measured_bom_usd": 513.56,
+        "peak_power_w": 230.4
+      },
+      "supported_today": [
+        "Cadena articulada 6-DOF completa con reductores planetarios 3D y cicloidal 3D reales (v5.0)",
+        "Muñeca articulada 3-DOF (wrist_j4_roll, wrist_j5_pitch, wrist_j6_flange) y actuadores MKS SERVO42D + NEMA 14",
+        "Bus CAN-FD 24V, carcasas hollow_cobot en PETG-CF, BOM maestro y exportación GLB/STEP/URDF/MuJoCo/ZIP"
+      ],
+      "missing_capabilities": [
+        "Generador CAD paramétrico de engranajes cónicos (bevel gears) acoplados en diferencial 2-DOF para J5+J6",
+        "Matriz de acoplamiento cinemático diferencial (J5 = (mA+mB)/2, J6 = (mA-mB)/2) en simulador FK/URDF"
+      ]
+    },
+    {
+      "id": "lumenpnp_cartesian",
+      "name": "LumenPnP / OpenPnP 4-DOF",
+      "manufacturer_or_project": "Opulo (LumenPnP) / OpenPnP",
+      "category": "Pick & Place Electrónico SMT (Pórtico Cartesiano)",
+      "kinematics_type": "4dof_cartesian",
+      "dof": 4,
+      "reach_mm": 450.0,
+      "payload_kg": 0.15,
+      "repeatability_mm": 0.05,
+      "mass_kg": 9.0,
+      "primary_materials": [
+        "Perfiles aluminio 2020/2040",
+        "PETG-CF",
+        "Guías lineales MGN12"
+      ],
+      "actuators_summary": "3× Steppers NEMA 17 (ejes lineales X, Y doble y Z) + 1× NEMA 14 eje hueco (rotación de boquilla C/Theta) + 2× bombas de vacío.",
+      "transmission_summary": "Pórtico cartesiano P-P-P-R sobre guías lineales MGN12 con correas GT2 en X/Y y husillo/correa lineal en Z + eje hueco neumático.",
+      "electronics_summary": "Controlador STM32 (Marlin/Smoothieware) + TMC2209 + electroválvulas y sensores de presión de vacío + 2× cámaras USB OpenPnP + 24V 10A.",
+      "estimated_cost_usd": 1995,
+      "roboforge_preset_id": null,
+      "wave": 2,
+      "difficulty": "Media",
+      "roboforge_replicability_pct": 36,
+      "stress_test_v50": {
+        "http_status": 200,
+        "elapsed_s": 2.11,
+        "compatible": false,
+        "measured_mass_kg": 2.093,
+        "measured_torque_j1_nm": 4.1,
+        "measured_min_sf": 8.08,
+        "measured_bom_usd": 344.04,
+        "peak_power_w": 172.6
+      },
+      "supported_today": [
+        "Guías lineales MGN12, husillo T8, correas cerradas GT2 3D, motores NEMA 17/14 y placas CNC .DXF (v5.0)",
+        "Arquitectura stm32_step_dir (STM32 + TMC2209) y presupuesto de potencia 24V"
+      ],
+      "missing_capabilities": [
+        "Motor cinemático y CAD cartesiano de pórtico P-P-P-R (3 ejes prismáticos ortogonales X-Y-Z en lugar de R-R-P-R SCARA)",
+        "Biblioteca estructural de extrusiones de aluminio 2020/2040 con escuadras y carros lineales en puente",
+        "Efector neumático de vacío (boquilla CP40, bomba de vacío, electroválvula y sensor barométrico) + soporte de cámaras de visión"
+      ]
+    },
+    {
+      "id": "abb_irb360_flexpicker_delta",
+      "name": "ABB IRB 360 FlexPicker (Delta 4-DOF)",
+      "manufacturer_or_project": "ABB Robotics (Cinemática Paralela Delta)",
+      "category": "Pick & Place Ultra-Alta Velocidad (Delta Paralelo)",
+      "kinematics_type": "4dof_delta_parallel",
+      "dof": 4,
+      "reach_mm": 1130.0,
+      "payload_kg": 3.0,
+      "repeatability_mm": 0.1,
+      "mass_kg": 120.0,
+      "primary_materials": [
+        "Acero inoxidable / Aluminio CNC",
+        "Tubos de fibra de carbono",
+        "Rótulas esféricas"
+      ],
+      "actuators_summary": "3× Servomotores BLDC de alto par estacionarios en la base superior (separados 120°) + 1× servomotor central para eje telescópico de rotación (Theta).",
+      "transmission_summary": "Cinemática paralela Delta de lazo cerrado: 3 brazos superiores acoplados a 3 pares de varillas paralelas de carbono con 12 rótulas esféricas + eje cardán telescópico.",
+      "electronics_summary": "Controlador industrial de movimiento de alta frecuencia (IRC5 / CAN-FD / EtherCAT 48V–400V) + sistema de visión conveyor tracking.",
+      "estimated_cost_usd": 35000,
+      "roboforge_preset_id": null,
+      "wave": 2,
+      "difficulty": "Alta",
+      "roboforge_replicability_pct": 20,
+      "stress_test_v50": {
+        "http_status": 200,
+        "elapsed_s": 2.0,
+        "compatible": false,
+        "measured_mass_kg": 2.857,
+        "measured_torque_j1_nm": 178.41,
+        "measured_min_sf": 0.36,
+        "measured_bom_usd": 1095.16,
+        "peak_power_w": 1814.4
+      },
+      "supported_today": [
+        "Actuadores BLDC de alto torque (bldc_qdd_8308), reductores planetarios 10:1 y bus 48V CAN-FD",
+        "Detección física honesta del colapso en voladizo serial (FS 0.36, 178.4 N·m, 1814 W) al forzar 95 rad/s²"
+      ],
+      "missing_capabilities": [
+        "Kernel de cinemática paralela de lazo cerrado (intersección de 3 esferas, 3 cadenas simétricas a 120° en paralelo)",
+        "CAD paramétrico de 6 varillas paralelas de carbono, 12 rótulas esféricas (ball joints) y eje telescópico cardán central",
+        "Exportación MuJoCo con restricciones de lazo cerrado (<equality><connect>) y fuentes industriales >1000 W"
+      ]
+    },
+    {
+      "id": "barrett_wam_ambidex",
+      "name": "Barrett WAM / LIMS2-AMBIDEX",
+      "manufacturer_or_project": "Barrett Technology / NAVER LABS (Cable-Driven)",
+      "category": "Cobot Ultraligero / Teleoperación Háptica (Tendones Capstan)",
+      "kinematics_type": "7dof_cable_driven",
+      "dof": 7,
+      "reach_mm": 1000.0,
+      "payload_kg": 3.0,
+      "repeatability_mm": 0.1,
+      "mass_kg": 25.0,
+      "primary_materials": [
+        "Aluminio CNC 7075/6061",
+        "Cables de acero trenzado (tungsteno/inox)",
+        "Tambores Capstan"
+      ],
+      "actuators_summary": "7× Servomotores BLDC sin escobillas alojados en la base fija (o bloque de hombro estacionario) para minimizar drásticamente la inercia móvil del brazo.",
+      "transmission_summary": "Transmisión remota de juego cero (zero-backlash) por cables de acero pretensados sobre cabrestantes (capstan drums) y poleas de desvío diferenciales.",
+      "electronics_summary": "Bus CAN de alta velocidad (1 kHz) a 48V con control de par puro (transparencia háptica y backdrivability total sin sensores de fuerza externos).",
+      "estimated_cost_usd": 45000,
+      "roboforge_preset_id": null,
+      "wave": 2,
+      "difficulty": "Muy Alta",
+      "roboforge_replicability_pct": 32,
+      "stress_test_v50": {
+        "http_status": 200,
+        "elapsed_s": 7.51,
+        "compatible": false,
+        "measured_mass_kg": 1.76,
+        "measured_torque_j1_nm": 69.9,
+        "measured_min_sf": 0.64,
+        "measured_bom_usd": 1262.16,
+        "peak_power_w": 2137.4
+      },
+      "supported_today": [
+        "Soporte cinemático 7-DOF (dof=7, upper_arm_roll_j3, muñeca 3-DOF) y exportación CNC .DXF R12 (v5.0)",
+        "Bus CAN-FD 48V y actuadores BLDC QDD de alta potencia (Damiao DM-J4340 / BLDC 8308)"
+      ],
+      "missing_capabilities": [
+        "Desacoplo físico de ubicación de motores (motores estacionarios en base en lugar de masa distal en J2–J7, que disparó el torque a 69.9 N·m y FS 0.64)",
+        "Generador CAD y física de cabrestantes (capstan drums), poleas de desvío, ruteo interno de cables de acero y pretensión (ecuación de Euler-Eytelwein)",
+        "Matriz de acoplamiento de tendones multi-articulación y análisis de fatiga por flexión de cable de acero"
+      ]
+    },
+    {
+      "id": "continuum_tendon_surgical",
+      "name": "Robot Quirúrgico Continuo (Tendon Continuum)",
+      "manufacturer_or_project": "Investigación Robótica Médica (Nitinol / Continuum)",
+      "category": "Robótica Quirúrgica Mínimamente Invasiva (Espina Continua)",
+      "kinematics_type": "continuum_flexible",
+      "dof": 7,
+      "reach_mm": 180.0,
+      "payload_kg": 0.05,
+      "repeatability_mm": 0.5,
+      "mass_kg": 0.35,
+      "primary_materials": [
+        "Nitinol superelástico (NiTi)",
+        "PEEK biocompatible",
+        "Micro-tendones de tungsteno/Dyneema"
+      ],
+      "actuators_summary": "6–9× Micro-actuadores lineales / motores brushless en caja de actuación externa tirando de pares de micro-tendones o rotando/trasladando tubos concéntricos precurvados.",
+      "transmission_summary": "Deformación elástica continua sin articulaciones rígidas: espina central de Nitinol + discos espaciadores perforados guiando micro-tendones en 2–3 secciones de curvatura.",
+      "electronics_summary": "Controlador de tiempo real con sensores de tensión de tendón + rastreador electromagnético (EM) / FBG óptico de forma + bus 12V–24V.",
+      "estimated_cost_usd": 12000,
+      "roboforge_preset_id": null,
+      "wave": 2,
+      "difficulty": "Extrema",
+      "roboforge_replicability_pct": 8,
+      "stress_test_v50": {
+        "http_status": 500,
+        "http_status_clamped_100mm": 200,
+        "elapsed_s_clamped_100mm": 8.4,
+        "bug_discovered": "main.py:970 ArmAssemblyRequest.upper_arm_mm >= 100 lanza HTTP 500 no manejado para eslabones < 100 mm (ej. 90 mm)",
+        "measured_mass_kg_clamped": 1.012,
+        "measured_torque_j1_nm_clamped": 0.83,
+        "measured_min_sf_clamped": 39.73,
+        "measured_bom_usd_clamped": 243.91,
+        "peak_power_w_clamped": 80.6
+      },
+      "supported_today": [
+        "Exportación base de caja de control y bus de baja tensión 12V (solo tras forzar eslabones rígidos >= 100 mm y payload >= 0.1 kg)"
+      ],
+      "missing_capabilities": [
+        "Bug de micro-escala en backend (main.py:970 rechaza upper_arm_mm < 100 mm con HTTP 500 y payload_kg < 0.1 kg)",
+        "Solver de mecánica continua no lineal (teoría de barras de Cosserat / Piecewise Constant Curvature - PCC) sin juntas rígidas",
+        "Materiales superelásticos (Nitinol NiTi) y generador CAD de discos espaciadores con canales de micro-tendones y tubos concéntricos"
       ]
     }
   ],
@@ -266,7 +571,12 @@
       "gap_id": "cad_cycloidal_planetary",
       "title": "Generador CAD 3D de Reductores Cicloidales y Planetarios",
       "status": "completed_v5_0",
-      "impact_arms": ["arctos_6dof", "parol6_6dof", "annin_ar4_mk3", "openarm_7dof"],
+      "impact_arms": [
+        "arctos_6dof",
+        "parol6_6dof",
+        "annin_ar4_mk3",
+        "openarm_7dof"
+      ],
       "priority": "P0",
       "remaining_micro_work": "Variante split-ring/Wolfrom con dientes helicoidales internos"
     },
@@ -274,7 +584,13 @@
       "gap_id": "cad_3dof_wrist_and_belts",
       "title": "Muñeca Articulada 3-DOF Real (J4/J5/J6) y Correas Cerradas GT2/HTD",
       "status": "completed_v5_0",
-      "impact_arms": ["parol6_6dof", "annin_ar4_mk3", "arctos_6dof", "bcn3d_moveo", "fabri_creator_5_0"],
+      "impact_arms": [
+        "parol6_6dof",
+        "annin_ar4_mk3",
+        "arctos_6dof",
+        "bcn3d_moveo",
+        "fabri_creator_5_0"
+      ],
       "priority": "P0",
       "remaining_micro_work": "Engranajes cónicos (bevel) para muñeca diferencial 2-DOF"
     },
@@ -282,7 +598,9 @@
       "gap_id": "kinematics_4dof_scara",
       "title": "Motor Cinemático y CAD SCARA 4-DOF (Plano XY + Eje Prismático Z MGN12/T8)",
       "status": "completed_v5_0",
-      "impact_arms": ["pybot_jjrobots_scara"],
+      "impact_arms": [
+        "pybot_jjrobots_scara"
+      ],
       "priority": "P1",
       "remaining_micro_work": "Efector de vacío neumático y firmware IK codo izquierdo/derecho"
     },
@@ -290,7 +608,9 @@
       "gap_id": "serial_bus_servos_lerobot",
       "title": "Servos Inteligentes Bus Serie UART (Feetech STS3215) + Exportación LeRobot JSON",
       "status": "completed_v5_0",
-      "impact_arms": ["so_arm100_lerobot"],
+      "impact_arms": [
+        "so_arm100_lerobot"
+      ],
       "priority": "P1",
       "remaining_micro_work": "Pack bimanual Líder-Seguidor y brackets snap-fit"
     },
@@ -298,7 +618,9 @@
       "gap_id": "kinematics_7dof_redundant_qdd",
       "title": "Cinemática 7-DOF Redundante + Actuadores QDD Comerciales (Damiao DM-J4310/4340)",
       "status": "completed_v5_0",
-      "impact_arms": ["openarm_7dof"],
+      "impact_arms": [
+        "openarm_7dof"
+      ],
       "priority": "P1",
       "remaining_micro_work": "Solver IK null-space (swivel angle) y simulación MIT-mode 1 kHz"
     },
@@ -306,9 +628,15 @@
       "gap_id": "hybrid_cnc_plates_and_crb",
       "title": "Módulo Híbrido Placas CNC Aluminio 6061 (.DXF R12) + Rodamientos CRB/30205 + Homing",
       "status": "completed_v5_0",
-      "impact_arms": ["annin_ar4_mk3", "openarm_7dof", "parol6_6dof"],
+      "impact_arms": [
+        "annin_ar4_mk3",
+        "openarm_7dof",
+        "parol6_6dof"
+      ],
       "priority": "P2",
       "remaining_micro_work": "Chapa doblada 3D y relación planetaria 50:1 dedicada"
     }
-  ]
+  ],
+  "wave1_average_replicability_pct": 94.5,
+  "wave2_average_replicability_pct": 38.7
 }
