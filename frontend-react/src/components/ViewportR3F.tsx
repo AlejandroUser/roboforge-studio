@@ -293,6 +293,7 @@ export interface ViewportR3FProps {
   showLoads: boolean;
   meshOpacity: number;
   family: FamilyId;
+  materialId?: string;
   loadDirection: "y_inplane" | "z_outofplane";
   armAngles?: {
     baseYaw?: number;
@@ -388,6 +389,7 @@ function disposeCadEdges(root: THREE.Object3D) {
 function LoadedModel({
   url,
   family,
+  materialId,
   isFeaMesh,
   wireframe,
   showEdges,
@@ -404,6 +406,7 @@ function LoadedModel({
 }: {
   url: string;
   family: FamilyId;
+  materialId?: string;
   isFeaMesh?: boolean;
   wireframe: boolean;
   showEdges: boolean;
@@ -499,7 +502,7 @@ function LoadedModel({
             });
           } else {
             // Apply calibrated industrial CAD physical material by semantic node role
-            obj.material = createCadPhysicalMaterial(obj as THREE.Mesh, family);
+            obj.material = createCadPhysicalMaterial(obj as THREE.Mesh, family, materialId);
           }
         });
 
@@ -523,7 +526,7 @@ function LoadedModel({
         disposeCadEdges(loadedWrapper);
       }
     };
-  }, [url, isFeaMesh, family]);
+  }, [url, isFeaMesh, family, materialId]);
 
   // Apply wireframe, opacity, selection & hover highlight live
   useEffect(() => {
@@ -1009,6 +1012,7 @@ export const ViewportR3F: React.FC<ViewportR3FProps> = (props) => {
           <LoadedModel
             url={props.glbUrl}
             family={props.family}
+            materialId={props.materialId}
             isFeaMesh={props.isFeaMesh}
             wireframe={props.wireframe}
             showEdges={showEdges}

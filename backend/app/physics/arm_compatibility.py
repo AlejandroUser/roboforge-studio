@@ -119,27 +119,34 @@ def resolve_default_slots(req: ModularArmRequest) -> ModularArmSlots:
         printer_id=printer_id,
     )
 
+    mech_bus = getattr(getattr(req, "mechatronics", None), "bus_architecture", "") or ""
+    is_compact_msla = (
+        printer_id == "elegoo_mars_5_ultra"
+        or mech_bus == "esp32_pca9685_5v"
+        or float(getattr(req, "base_height_mm", 95.0)) <= 66.0
+    )
+
     upper_arm = s.upper_arm or LinkDesignRequest(
         architecture="articulated_6dof",
-        length_mm=200.0,
-        root_width_mm=42.0,
-        tip_width_mm=28.0,
-        thickness_mm=22.0,
+        length_mm=100.0 if is_compact_msla else 200.0,
+        root_width_mm=26.0 if is_compact_msla else 42.0,
+        tip_width_mm=20.0 if is_compact_msla else 28.0,
+        thickness_mm=14.0 if is_compact_msla else 22.0,
         root_end=EndInterfaceParams(
-            preset=act_spec["end_preset"],
-            outer_diameter_mm=act_spec["outer_diameter_mm"],
-            bore_diameter_mm=act_spec["pilot_diameter_mm"],
+            preset="custom" if is_compact_msla else act_spec["end_preset"],
+            outer_diameter_mm=26.0 if is_compact_msla else act_spec["outer_diameter_mm"],
+            bore_diameter_mm=12.0 if is_compact_msla else act_spec["pilot_diameter_mm"],
             bolt_count=act_spec["bolt_count"],
-            bolt_pcd_mm=act_spec["bolt_pcd_mm"],
-            bolt_size=act_spec["bolt_size"],
-            use_heat_inserts=True,
+            bolt_pcd_mm=18.0 if is_compact_msla else act_spec["bolt_pcd_mm"],
+            bolt_size="M3" if is_compact_msla else act_spec["bolt_size"],
+            use_heat_inserts=not is_compact_msla,
         ),
         tip_end=EndInterfaceParams(
-            preset="bearing_608",
-            outer_diameter_mm=32.0,
-            bore_diameter_mm=22.0,
+            preset="custom" if is_compact_msla else "bearing_608",
+            outer_diameter_mm=22.0 if is_compact_msla else 32.0,
+            bore_diameter_mm=10.0 if is_compact_msla else 22.0,
             bolt_count=0,
-            bolt_pcd_mm=26.0,
+            bolt_pcd_mm=16.0 if is_compact_msla else 26.0,
             bolt_size="M3",
             use_heat_inserts=False,
         ),
@@ -165,10 +172,10 @@ def resolve_default_slots(req: ModularArmRequest) -> ModularArmSlots:
 
     forearm = s.forearm or LinkDesignRequest(
         architecture="articulated_6dof",
-        length_mm=170.0,
-        root_width_mm=34.0,
-        tip_width_mm=22.0,
-        thickness_mm=18.0,
+        length_mm=95.0 if is_compact_msla else 170.0,
+        root_width_mm=22.0 if is_compact_msla else 34.0,
+        tip_width_mm=16.0 if is_compact_msla else 22.0,
+        thickness_mm=12.0 if is_compact_msla else 18.0,
         root_end=EndInterfaceParams(
             preset=upper_arm.tip_end.preset,
             outer_diameter_mm=upper_arm.tip_end.outer_diameter_mm,

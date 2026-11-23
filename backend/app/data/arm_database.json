@@ -1,11 +1,11 @@
 {
-  "schema_version": "4.0.0",
-  "roboforge_version": "7.0.0",
+  "schema_version": "4.1.0",
+  "roboforge_version": "7.1.0",
   "updated_at": "2026-11-23",
-  "description": "Base de datos estructurada de benchmarking de 20 sistemas manipuladores reales (8 Oleada 1 + 6 Oleada 2 + 6 Oleada 3) verificados empíricamente en RoboForge Studio Pro v7.0 con Motor de Preparación para Impresión 3D.",
-  "total_arms": 20,
+  "description": "Base de datos estructurada de benchmarking de 21 sistemas manipuladores reales (8 Oleada 1 + 6 Oleada 2 + 6 Oleada 3 + Demostrador Nativo MSLA RoboForge Mars-Mini) en RoboForge Studio Pro v7.1.",
+  "total_arms": 21,
   "previous_average_replicability_v42_pct": 63.5,
-  "average_replicability_pct": 92.7,
+  "average_replicability_pct": 93.0,
   "arms": [
     {
       "id": "fabri_creator_5_0",
@@ -1101,6 +1101,38 @@
           "pneumatic_manifold"
         ]
       }
+    },
+    {
+      "id": "roboforge_mars_mini",
+      "name": "RoboForge Mars-Mini (Elegoo Mars 5 Ultra)",
+      "manufacturer_or_project": "RoboForge Studio (inspirado en EEZYbotARM MK2 / OmArm-Zero / EEZYbotARM-ESP32)",
+      "category": "Demostrador MSLA Ultra-Económico",
+      "kinematics_type": "4dof_parallelogram",
+      "dof": 4,
+      "reach_mm": 250.0,
+      "payload_kg": 0.15,
+      "repeatability_mm": 1.2,
+      "mass_kg": 0.42,
+      "primary_materials": [
+        "Resina ABS-Like (MSLA 9K)"
+      ],
+      "actuators_summary": "3× Servos MG996R (J0 Base Yaw, J1 Hombro y J2 Biela en base) + 1× Micro-servo MG90S (Pinza paralela compacta).",
+      "transmission_summary": "Accionamiento directo sobre paralelogramo cerrado de 4 barras (motores J1/J2 en base para cero peso distal y pinza siempre horizontal) + tuercas cautivas M3.",
+      "electronics_summary": "ESP32 DevKit v1 (Wi-Fi AP + servidor web integrado) + módulo PCA9685 I2C 16-ch + fuente conmutada 5V 5A + cables Dupont.",
+      "estimated_cost_usd": 39.5,
+      "roboforge_preset_id": "mars_mini",
+      "wave": 4,
+      "difficulty": "Baja (Demostrador Casero < $40 USD)",
+      "roboforge_replicability_pct": 100,
+      "supported_today": [
+        "Preset nativo mars_mini en arm_presets.json (L1=105 mm, L2=100 mm, L3=45 mm, base Ø64 mm, 0 piezas fuera de cama en Elegoo Mars 5 Ultra 153.36×77.76×165 mm)",
+        "Perfil de impresora elegoo_mars_5_ultra (msla_resin) y material isotrópico resin_abs_like (45 MPa, 2.0 GPa)",
+        "Actuadores servo_mg996r ($3.50) y servo_mg90s ($2.00) con sólidos CAD 3D reales y micro-pinza compacta (<= 52 mm)",
+        "Arquitectura eléctrica esp32_pca9685_5v (5V 5A, BOM < $45 USD) + generador de firmware ESP32 Wi-Fi Web Server (mars_mini_esp32_wifi.ino)",
+        "Modo MSLA en print_prep.py: PRINT_GUIDE.md para Elegoo SatelLite/Chitubox (0.05 mm, 2.3 s, 35°, IPA + UV) y calibration_fit_test.stl con bolsillo hexagonal M3",
+        "Guía completa de fabricación y cableado en docs/MARS_MINI_BUILD_GUIDE.md"
+      ],
+      "missing_capabilities": []
     }
   ],
   "capability_gaps_summary": [

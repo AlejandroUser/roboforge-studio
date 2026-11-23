@@ -20,6 +20,8 @@ const FALLBACK_ACTUATORS = [
   { id: "bldc_qdd_8308", name: "BLDC QDD 8308 (High-Torque QDD)" },
   { id: "servo_td8120mg", name: "TD-8120MG 20kg·cm (Metal Gear Servo)" },
   { id: "servo_ds3218", name: "DS3218MG 20kg·cm (Digital Servo)" },
+  { id: "servo_mg996r", name: "MG996R 10kg·cm Metal Gear ($3.50)" },
+  { id: "servo_mg90s", name: "MG90S Micro 9g Metal Gear ($2.00)" },
   { id: "servo_sts3215", name: "Feetech STS3215 30kg·cm (UART Bus)" },
   { id: "damiao_dm_j4310", name: "Damiao DM-J4310 QDD (7 N·m)" },
   { id: "damiao_dm_j4340", name: "Damiao DM-J4340 QDD (27 N·m)" },
@@ -260,10 +262,12 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
   const harnessYmlUrl = files?.harness_yml;
   const masterBomCsvUrl = files?.master_bom_csv;
   const firmwareInoUrl = files?.firmware_ino;
+  const firmwareEsp32InoUrl = files?.firmware_esp32_ino;
   const cncDxfUrl = files?.cnc_dxf;
   const lerobotJsonUrl = files?.lerobot_json;
   const calibrationStlUrl = files?.calibration_stl;
   const printGuideMdUrl = files?.print_guide_md;
+  const isMslaResin = printReadiness?.process_type === "msla_resin";
 
   const formatVoltage = (v: number) =>
     Number.isInteger(v) ? `${v.toFixed(0)} V DC` : `${v.toFixed(1)} V DC`;
@@ -271,7 +275,7 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
   return (
     <div className="mech-card">
       <div className="pareto-head">
-        <strong>Mecatrónica &amp; Impresión 3D (v7.0)</strong>
+        <strong>Mecatrónica &amp; Impresión 3D (v7.1)</strong>
         {mechatronics && (
           <span className="badge good">${mechatronics.total_bom_cost_usd.toFixed(0)} USD</span>
         )}
@@ -320,13 +324,15 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
                 onChange={(e) => {
                   const nextBus = e.target.value as BusArchitecture;
                   const nextVolt =
-                    nextBus === "arduino_pca9685_i2c"
-                      ? 6.5
-                      : nextBus === "uart_serial_bus"
-                        ? 7.4
-                        : config.system_voltage_v < 12
-                          ? 24
-                          : config.system_voltage_v;
+                    nextBus === "esp32_pca9685_5v"
+                      ? 5
+                      : nextBus === "arduino_pca9685_i2c"
+                        ? 6.5
+                        : nextBus === "uart_serial_bus"
+                          ? 7.4
+                          : config.system_voltage_v < 12
+                            ? 24
+                            : config.system_voltage_v;
                   onChangeConfig({
                     ...config,
                     bus_architecture: nextBus,
@@ -337,6 +343,7 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
                 <option value="can_fd_bus">Bus CAN-FD (4 Hilos)</option>
                 <option value="stm32_step_dir">Estrella STM32 Step/Dir</option>
                 <option value="arduino_pca9685_i2c">Arduino UNO + PCA9685 I2C · 6V/10A</option>
+                <option value="esp32_pca9685_5v">ESP32 Wi-Fi + PCA9685 · 5V/5A (Mars-Mini)</option>
                 <option value="uart_serial_bus">Bus Serie UART (STS3215 / LeRobot)</option>
                 <option value="teensy_dm542">Teensy 4.1 + DM542T (Industrial)</option>
               </select>
@@ -349,6 +356,7 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
                   onChangeConfig({ ...config, system_voltage_v: Number(e.target.value) })
                 }
               >
+                <option value={5}>5 V DC (ESP32/Servos 5A)</option>
                 <option value={6}>6 V DC (Servos)</option>
                 <option value={6.5}>6.5 V DC (Servos 10A)</option>
                 <option value={7.4}>7.4 V DC (STS3215)</option>
@@ -518,6 +526,16 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
                     Firmware .INO
                   </a>
                 )}
+                {firmwareEsp32InoUrl && (
+                  <a
+                    className="dl-link dl-zip"
+                    href={firmwareEsp32InoUrl}
+                    download
+                    title="Sketch ESP32 Wi-Fi Web + PCA9685 5V (Mars-Mini)"
+                  >
+                    ⬇ ESP32 Wi-Fi .INO
+                  </a>
+                )}
                 {cncDxfUrl && (
                   <a className="dl-link dl-zip" href={cncDxfUrl} download title="Placas laterales CNC Aluminio 6061-T6 (.DXF R12)">
                     CNC .DXF
@@ -623,33 +641,65 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
                   <strong>{printReadiness.total_plates}</strong>
                 </div>
                 <div className="metric-box">
-                  <span>Filamento</span>
+                  <span>{isMslaResin ? "Resina Est." : "Filamento"}</span>
                   <strong>{printReadiness.total_filament_g.toFixed(0)} g</strong>
                 </div>
                 <div className="metric-box">
                   <span>Tiempo Est.</span>
                   <strong>{printReadiness.estimated_print_hours.toFixed(1)} h</strong>
                 </div>
-                <div className="metric-box">
-                  <span>Capa / Paredes</span>
-                  <strong>{printReadiness.layer_height_mm.toFixed(2)}mm · {printReadiness.wall_loops}p</strong>
-                </div>
-                <div className="metric-box">
-                  <span>Relleno</span>
-                  <strong>{printReadiness.infill_pct}% {printReadiness.infill_pattern}</strong>
-                </div>
-                <div className="metric-box">
-                  <span>Temp. Boq/Cama</span>
-                  <strong>{printReadiness.nozzle_temp_c}° / {printReadiness.bed_temp_c}°C</strong>
-                </div>
+                {isMslaResin ? (
+                  <>
+                    <div className="metric-box">
+                      <span>Capa / Inclinación</span>
+                      <strong>
+                        {printReadiness.layer_height_mm.toFixed(2)}mm · {printReadiness.recommended_tilt_deg ?? 35}°
+                      </strong>
+                    </div>
+                    <div className="metric-box">
+                      <span>Exposición</span>
+                      <strong>
+                        {(printReadiness.exposure_s ?? 2.3).toFixed(1)}s · Base {Math.round(printReadiness.bottom_exposure_s ?? 28)}s
+                      </strong>
+                    </div>
+                    <div className="metric-box">
+                      <span>Proceso</span>
+                      <strong>MSLA 405nm</strong>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="metric-box">
+                      <span>Capa / Paredes</span>
+                      <strong>{printReadiness.layer_height_mm.toFixed(2)}mm · {printReadiness.wall_loops}p</strong>
+                    </div>
+                    <div className="metric-box">
+                      <span>Relleno</span>
+                      <strong>{printReadiness.infill_pct}% {printReadiness.infill_pattern}</strong>
+                    </div>
+                    <div className="metric-box">
+                      <span>Temp. Boq/Cama</span>
+                      <strong>{printReadiness.nozzle_temp_c}° / {printReadiness.bed_temp_c}°C</strong>
+                    </div>
+                  </>
+                )}
               </div>
 
-              <div className="slicer-recipe-box">
-                <strong>Receta Bambu Studio / OrcaSlicer / PrusaSlicer:</strong>{" "}
-                Capa {printReadiness.layer_height_mm.toFixed(2)} mm · {printReadiness.wall_loops} paredes ·{" "}
-                {printReadiness.infill_pct}% {printReadiness.infill_pattern} · Boquilla {printReadiness.nozzle_temp_c}°C / Cama{" "}
-                {printReadiness.bed_temp_c}°C.
-              </div>
+              {isMslaResin ? (
+                <div className="slicer-recipe-box">
+                  <strong>Receta Elegoo SatelLite / Chitubox (Resina MSLA):</strong>{" "}
+                  Capa {printReadiness.layer_height_mm.toFixed(2)} mm · Exposición {(printReadiness.exposure_s ?? 2.3).toFixed(1)} s ·{" "}
+                  Base {Math.round(printReadiness.bottom_exposure_s ?? 28)} s · Ángulo {printReadiness.recommended_tilt_deg ?? 35}° ·{" "}
+                  Lavado IPA + Curado UV 3–5 min.
+                </div>
+              ) : (
+                <div className="slicer-recipe-box">
+                  <strong>Receta Bambu Studio / OrcaSlicer / PrusaSlicer:</strong>{" "}
+                  Capa {printReadiness.layer_height_mm.toFixed(2)} mm · {printReadiness.wall_loops} paredes ·{" "}
+                  {printReadiness.infill_pct}% {printReadiness.infill_pattern} · Boquilla {printReadiness.nozzle_temp_c}°C / Cama{" "}
+                  {printReadiness.bed_temp_c}°C.
+                </div>
+              )}
 
               {printReadiness.warnings?.length > 0 && (
                 <div className="modular-issues-list">
@@ -787,15 +837,17 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
             <div className="pareto-head">
               <strong>
                 Esquemático Eléctrico &amp; Arnés (
-                {config.bus_architecture === "arduino_pca9685_i2c"
-                  ? "Arduino UNO + PCA9685 I2C"
-                  : config.bus_architecture === "uart_serial_bus"
-                    ? "Bus Serie UART (STS3215 / LeRobot)"
-                    : config.bus_architecture === "teensy_dm542"
-                      ? "Teensy 4.1 + DM542T"
-                      : config.bus_architecture === "can_fd_bus"
-                        ? "CAN-FD"
-                        : "STM32 Step/Dir"}
+                {config.bus_architecture === "esp32_pca9685_5v"
+                  ? "ESP32 Wi-Fi + PCA9685 5V"
+                  : config.bus_architecture === "arduino_pca9685_i2c"
+                    ? "Arduino UNO + PCA9685 I2C"
+                    : config.bus_architecture === "uart_serial_bus"
+                      ? "Bus Serie UART (STS3215 / LeRobot)"
+                      : config.bus_architecture === "teensy_dm542"
+                        ? "Teensy 4.1 + DM542T"
+                        : config.bus_architecture === "can_fd_bus"
+                          ? "CAN-FD"
+                          : "STM32 Step/Dir"}
                 )
               </strong>
               <button type="button" className="btn-tool" onClick={() => setShowSvgModal(false)}>

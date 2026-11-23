@@ -250,6 +250,16 @@ export const ModularArmPanel: React.FC<ModularArmPanelProps> = ({
                   .INO
                 </a>
               )}
+              {result.files?.firmware_esp32_ino && (
+                <a
+                  className="dl-link dl-zip"
+                  href={result.files.firmware_esp32_ino}
+                  download
+                  title="Sketch ESP32 Wi-Fi Web + PCA9685 5V (Mars-Mini)"
+                >
+                  ⬇ ESP32 Wi-Fi .INO
+                </a>
+              )}
             </div>
           </div>
 

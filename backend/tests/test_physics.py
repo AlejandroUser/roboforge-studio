@@ -27,6 +27,7 @@ EXPECTED_MATERIAL_IDS = {
     "ti6al4v_titanium",
     "steel_4140",
     "tpu_95a",
+    "resin_abs_like",
 }
 
 REQUIRED_MATERIAL_FIELDS = {
@@ -51,7 +52,7 @@ def test_load_materials_complete_and_valid():
     for mat_id, mat in materials.items():
         assert mat["id"] == mat_id
         assert REQUIRED_MATERIAL_FIELDS.issubset(mat.keys())
-        assert mat["category"] in ("fdm", "cnc")
+        assert mat["category"] in ("fdm", "cnc", "msla")
         assert mat["density_g_cm3"] > 0
         assert mat["youngs_xy_mpa"] >= mat["youngs_z_mpa"] > 0
         assert mat["yield_xy_mpa"] >= mat["yield_z_mpa"] > 0

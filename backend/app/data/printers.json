@@ -63,5 +63,21 @@
     "enclosed": false,
     "notes": "Impresora abierta económica; requiere holgura ligeramente mayor (0.22 mm) y filamentos sin warping.",
     "is_custom": false
+  },
+  {
+    "id": "elegoo_mars_5_ultra",
+    "name": "Elegoo Mars 5 Ultra (Resina 9K)",
+    "bed_x_mm": 153.36,
+    "bed_y_mm": 77.76,
+    "bed_z_mm": 165.0,
+    "default_nozzle_mm": 0.05,
+    "clearance_mm": 0.15,
+    "max_bed_temp_c": 0.0,
+    "max_nozzle_temp_c": 0.0,
+    "enclosed": true,
+    "process_type": "msla_resin",
+    "xy_resolution_um": 18.0,
+    "notes": "Impresora MSLA 9K (18 µm XY, tilt-release). Ideal para piezas precisas en Resina ABS-Like con tuercas cautivas M3.",
+    "is_custom": false
   }
 ]

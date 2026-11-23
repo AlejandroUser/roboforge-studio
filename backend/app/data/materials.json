@@ -152,5 +152,19 @@
     "cost_per_kg_usd": 36.0,
     "color_hex": "#06B6D4",
     "notes": "Shore 95A flexible elastomer for soft pneumatic corrugated bellows (Festo BHA) and compliant grippers."
+  },
+  {
+    "id": "resin_abs_like",
+    "name": "Resina ABS-Like 9K (MSLA)",
+    "category": "msla",
+    "density_g_cm3": 1.15,
+    "youngs_xy_mpa": 2000.0,
+    "youngs_z_mpa": 2000.0,
+    "yield_xy_mpa": 45.0,
+    "yield_z_mpa": 45.0,
+    "max_temp_c": 65.0,
+    "cost_per_kg_usd": 28.0,
+    "color_hex": "#64748B",
+    "notes": "Isotropic MSLA photopolymer resin (Elegoo ABS-Like 3.0). High surface accuracy (18 um XY); use M3 captive nuts instead of self-tapping screws."
   }
 ]

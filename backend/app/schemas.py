@@ -302,17 +302,20 @@ class GearFEARequest(BaseModel):
     deform_scale: float = Field(0.0, ge=0.0, le=100.0)
 
 
-# Hito 4: Perfiles de Impresora 3D y Materiales Personalizados
+# Hito 4 + v7.1: Perfiles de Impresora 3D (FDM + MSLA Resina) y Materiales Personalizados
 class PrinterProfileCreate(BaseModel):
     id: str = Field(..., pattern=r"^[a-z0-9_]{2,32}$")
     name: str = Field(..., min_length=2, max_length=64)
-    bed_x_mm: float = Field(256.0, ge=100.0, le=600.0)
-    bed_y_mm: float = Field(256.0, ge=100.0, le=600.0)
-    bed_z_mm: float = Field(256.0, ge=100.0, le=600.0)
-    default_nozzle_mm: float = Field(0.4, ge=0.2, le=1.0)
+    bed_x_mm: float = Field(256.0, ge=50.0, le=600.0)
+    bed_y_mm: float = Field(256.0, ge=50.0, le=600.0)
+    bed_z_mm: float = Field(256.0, ge=50.0, le=600.0)
+    default_nozzle_mm: float = Field(0.4, ge=0.01, le=1.0)
     clearance_mm: float = Field(0.15, ge=0.0, le=0.5)
-    max_bed_temp_c: float = Field(110.0, ge=40.0, le=150.0)
+    max_bed_temp_c: float = Field(110.0, ge=0.0, le=150.0)
+    max_nozzle_temp_c: float = Field(300.0, ge=0.0, le=450.0)
     enclosed: bool = True
+    process_type: Literal["fdm", "msla_resin"] = "fdm"
+    xy_resolution_um: Optional[float] = None
     notes: str = ""
 
 
@@ -323,7 +326,7 @@ class PrinterProfile(PrinterProfileCreate):
 class CustomMaterialCreate(BaseModel):
     id: str = Field(..., pattern=r"^[a-z0-9_]{2,32}$")
     name: str = Field(..., min_length=2, max_length=64)
-    category: Literal["fdm", "cnc"] = "fdm"
+    category: Literal["fdm", "cnc", "msla"] = "fdm"
     density_g_cm3: float = Field(..., gt=0.5, le=10.0)
     youngs_xy_mpa: float = Field(..., gt=200.0, le=250000.0)
     youngs_z_mpa: float = Field(..., gt=200.0, le=250000.0)
@@ -358,6 +361,7 @@ ArmPresetType = Literal[
     "canadarm_space",
     "festo_bellows",
     "kuka_kr210",
+    "mars_mini",
 ]
 
 
@@ -608,17 +612,22 @@ class PrintReadinessSummary(BaseModel):
     infill_pattern: str
     nozzle_temp_c: int
     bed_temp_c: int
+    process_type: Literal["fdm", "msla_resin"] = "fdm"
+    exposure_s: Optional[float] = None
+    bottom_exposure_s: Optional[float] = None
+    recommended_tilt_deg: Optional[int] = None
     plates: list[PrintPlateInfo] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
 
-# v4.0 + v4.1 + v5.0: Mecatrónica Universal — Motores, Servos Bus UART, Teensy DM542T, Curvas Torque–RPM y BOM Maestro
+# v4.0 + v4.1 + v5.0 + v7.1: Mecatrónica Universal
 BusArchitectureType = Literal[
     "can_fd_bus",
     "stm32_step_dir",
     "arduino_pca9685_i2c",
     "uart_serial_bus",
     "teensy_dm542",
+    "esp32_pca9685_5v",
 ]
 
 

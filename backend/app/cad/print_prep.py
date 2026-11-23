@@ -16,9 +16,11 @@ from build123d import (
     Compound,
     Cylinder,
     Location,
+    Locations,
     Part,
     Plane,
     RectangleRounded,
+    RegularPolygon,
     extrude,
     export_stl,
 )
@@ -48,7 +50,12 @@ def build_calibration_fit_test_coupon(req: Any) -> Part:
 
     mech = getattr(req, "mechatronics", None)
     bus = getattr(mech, "bus_architecture", "can_fd_bus") if mech else "can_fd_bus"
-    big_bore_d = 20.2 if bus == "arduino_pca9685_i2c" else 22.2  # 25T horn vs 608 bearing
+    is_msla = (
+        getattr(req, "printer_id", "") == "elegoo_mars_5_ultra"
+        or getattr(req, "material_id", "") == "resin_abs_like"
+        or bus == "esp32_pca9685_5v"
+    )
+    big_bore_d = 20.2 if bus in ("arduino_pca9685_i2c", "esp32_pca9685_5v") else 22.2  # 25T horn vs 608 bearing
 
     # Cutters: M3 step holes (3.1, 3.2, 3.3), M4 step holes (4.1, 4.2, 4.3), shafts (5.15, 6.50), main pocket
     holes = [
@@ -74,6 +81,22 @@ def build_calibration_fit_test_coupon(req: Any) -> Part:
                 coupon = cand
         except Exception:
             pass
+
+    # MSLA mode: add captive hexagonal M3 nut pocket (5.65 mm across-flats, 2.8 mm deep) on top face
+    if is_msla:
+        hex_r = 5.65 / math.sqrt(3.0)
+        try:
+            with BuildSketch(Plane.XY) as nut_sk:
+                with Locations((-15.0, 0.0)):
+                    RegularPolygon(radius=hex_r, side_count=6)
+            with BuildPart() as nut_bp:
+                extrude(nut_sk.sketch.faces()[0].moved(Location((0.0, 0.0, 4.2))), amount=3.2)
+            cand = coupon - nut_bp.part
+            if cand.is_valid and cand.volume > 0:
+                coupon = cand
+        except Exception:
+            pass
+
     return coupon
 
 
@@ -171,16 +194,39 @@ def generate_print_readiness_pack(
     mat_category = str(material.get("category", "fdm"))
     density_g_cm3 = float(material.get("density_g_cm3", 1.29))
 
+    is_msla = (
+        str(printer_profile.get("process_type", "fdm")) == "msla_resin"
+        or mat_category == "msla"
+        or mat_id == "resin_abs_like"
+    )
+    process_type = "msla_resin" if is_msla else "fdm"
+
     recipe = MATERIAL_SLICER_RECIPES.get(
         mat_id,
         {"nozzle_c": 245, "bed_c": 80, "infill_pct": 40, "walls": 4, "flow_cm3_h": 9.5},
     )
-    layer_h = 0.20
-    wall_loops = int(recipe["walls"])
-    infill_pct = int(recipe["infill_pct"])
-    nozzle_c = int(recipe["nozzle_c"])
-    bed_c = int(recipe["bed_c"])
-    flow_cm3_h = float(recipe["flow_cm3_h"])
+    if is_msla:
+        layer_h = 0.05
+        wall_loops = 0
+        infill_pct = 100
+        infill_pattern = "Sólido MSLA"
+        nozzle_c = 0
+        bed_c = 0
+        exposure_s: float | None = 2.3
+        bottom_exposure_s: float | None = 28.0
+        recommended_tilt_deg: int | None = 35
+        flow_cm3_h = 18.0
+    else:
+        layer_h = 0.20
+        wall_loops = int(recipe["walls"])
+        infill_pct = int(recipe["infill_pct"])
+        infill_pattern = "Gyroid"
+        nozzle_c = int(recipe["nozzle_c"])
+        bed_c = int(recipe["bed_c"])
+        exposure_s = None
+        bottom_exposure_s = None
+        recommended_tilt_deg = None
+        flow_cm3_h = float(recipe["flow_cm3_h"])
 
     warnings: list[str] = []
     if mat_category == "cnc":
@@ -191,6 +237,7 @@ def generate_print_readiness_pack(
     # 1. Orient all printable parts flat on Z=0 and measure extents
     oriented_items: list[tuple[str, trimesh.Trimesh, tuple[float, float, float], float]] = []
     fits_bed = True
+    xy_margin = 4.0 if is_msla else 8.0
     for part_name, solid in printable_parts.items():
         try:
             mesh, size = _orient_part_flat_on_z0(solid)
@@ -198,7 +245,7 @@ def generate_print_readiness_pack(
             sx, sy, sz = size
             # Check if part fits in bed (allowing 90° XY rotation)
             part_fits = (
-                ((sx <= bed_x - 8.0 and sy <= bed_y - 8.0) or (sy <= bed_x - 8.0 and sx <= bed_y - 8.0))
+                ((sx <= bed_x - xy_margin and sy <= bed_y - xy_margin) or (sy <= bed_x - xy_margin and sx <= bed_y - xy_margin))
                 and sz <= bed_z - 4.0
             )
             if not part_fits:
@@ -307,7 +354,7 @@ def generate_print_readiness_pack(
         export_stl(coupon_part, str(cal_path), tolerance=0.06, angular_tolerance=0.12)
     exported_files["calibration_stl"] = cal_path
 
-    # 4. Write comprehensive Spanish PRINT_GUIDE.md for Bambu Studio / OrcaSlicer / PrusaSlicer
+    # 4. Write comprehensive Spanish PRINT_GUIDE.md (MSLA SatelLite/Chitubox vs FDM Bambu/OrcaSlicer)
     plate_md_rows = "\n".join(
         f"| Plato {pi.plate_index} | `{pi.filename}` | {', '.join(pi.parts)} | {pi.estimated_mass_g:.1f} g | {pi.estimated_hours:.2f} h |"
         for pi in plate_infos
@@ -315,9 +362,48 @@ def generate_print_readiness_pack(
     warn_md = (
         "\n".join(f"- ⚠️ {w}" for w in warnings)
         if warnings
-        else "- ✅ Todas las piezas caben planas en la cama sin necesidad de corte."
+        else "- ✅ Todas las piezas caben limpiamente en la plataforma de construcción sin necesidad de corte."
     )
-    guide_md = f"""# Guía de Impresión 3D y Ensamblaje — RoboForge Studio Pro v7.0
+    if is_msla:
+        guide_md = f"""# Guía de Impresión Resina MSLA y Ensamblaje — RoboForge Studio Pro v7.1
+
+## 1. Perfil de Impresora MSLA y Resina
+- **Impresora objetivo:** {printer_name} ({bed_x:.2f} × {bed_y:.2f} × {bed_z:.1f} mm)
+- **Resina recomendada:** {mat_name} (`{mat_id}`, ABS-Like resistente a impactos)
+- **Estado de plataforma:** {"✅ 0 piezas fuera de placa — 100% imprimible" if fits_bed else "⚠️ Requiere dividir piezas largas"}
+- **Platos totales:** {len(plate_infos)} | **Resina estimada:** {total_filament_g:.1f} g | **Tiempo total:** {total_hours:.2f} h
+
+## 2. Receta Recomendada (Elegoo SatelLite / Chitubox / Lychee)
+| Parámetro MSLA | Valor Recomendado |
+| :--- | :--- |
+| Altura de capa | `{layer_h:.2f} mm` (50 µm) |
+| Exposición normal | `2.2 – 2.5 s` (base `{exposure_s:.1f} s` en Mars 5 Ultra) |
+| Capas base (Bottom Layers) | `4 capas × {bottom_exposure_s:.0f} s` |
+| Inclinación recomendada | `{recommended_tilt_deg}°` (30–45° para reducir fuerza de succión en film PFA/ACF) |
+| Soportes | Soportes medios automáticos + anclajes pesados en aristas inferiores |
+| Post-proceso | Lavado IPA 99% (`5 min`) + secado completo + curado UV (`3 – 5 min`) |
+
+## 3. Paso 0 (OBLIGATORIO): Calibración en 15 Minutos
+1. Imprime primero **`calibration_fit_test.stl`** plano o con soportes ligeros usando esta receta.
+2. Verifica el ajuste de tornillos **M3** (`+0.1 / +0.2 / +0.3 mm`), el **bolsillo hexagonal cautivo para tuerca M3 (`5.65 mm`)** y el encaje del horn **25T** / servo.
+3. Si la tuerca M3 entra muy justa, reduce la exposición normal `-0.2 s` en Elegoo SatelLite antes de lanzar el Plato 1.
+
+## 4. Distribución de Platos MSLA (`.3MF`)
+| Plato | Archivo | Piezas Incluidas | Resina Est. | Tiempo Est. |
+| :--- | :--- | :--- | ---: | ---: |
+{plate_md_rows}
+
+## 5. Alertas DFM y Notas de Resina
+{warn_md}
+
+## 6. Checklist Rápido de Ensamblaje (Resina ABS-Like)
+- [ ] Retirar soportes ANTES del curado UV final (sumergir 30 s en agua tibia facilita el desprendimiento).
+- [ ] **Usar tornillos M3 con tuercas cautivas ISO 4032** (nunca tornillos autorroscantes directos en resina curada).
+- [ ] Verificar el giro libre de los horns 25T antes de energizar la fuente `5V 5A`.
+- [ ] Cargar `mars_mini_esp32_wifi.ino` en el ESP32 y conectarse a la red Wi-Fi `RoboForge-MarsMini`.
+"""
+    else:
+        guide_md = f"""# Guía de Impresión 3D y Ensamblaje — RoboForge Studio Pro v7.1
 
 ## 1. Perfil de Impresora y Material
 - **Impresora objetivo:** {printer_name} ({bed_x:.0f} × {bed_y:.0f} × {bed_z:.0f} mm)
@@ -400,9 +486,13 @@ def generate_print_readiness_pack(
         layer_height_mm=layer_h,
         wall_loops=wall_loops,
         infill_pct=infill_pct,
-        infill_pattern="Gyroid",
+        infill_pattern=infill_pattern,
         nozzle_temp_c=nozzle_c,
         bed_temp_c=bed_c,
+        process_type=process_type,  # type: ignore[arg-type]
+        exposure_s=exposure_s,
+        bottom_exposure_s=bottom_exposure_s,
+        recommended_tilt_deg=recommended_tilt_deg,
         plates=plate_infos,
         warnings=warnings,
     )

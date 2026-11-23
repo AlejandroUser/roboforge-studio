@@ -236,6 +236,42 @@ ACTUATOR_CATALOG: dict[str, dict] = {
         "unit_cost_usd": 14.0,
         "bus_supported": ["stm32_step_dir", "teensy_dm542"],
     },
+    "servo_mg996r": {
+        "id": "servo_mg996r",
+        "name": "MG996R 10kg·cm (Metal Gear Económico)",
+        "motor_type": "rc_servo",
+        "voltage_v": 5.0,
+        "rated_torque_nm": 0.68,
+        "peak_torque_nm": 0.98,
+        "no_load_rpm": 58.0,
+        "corner_rpm": 35.0,
+        "rated_current_a": 0.75,
+        "peak_current_a": 1.4,
+        "mass_g": 55.0,
+        "shaft_d_mm": 6.0,
+        "bolt_pcd_mm": 16.0,
+        "bolt_size": "M3",
+        "unit_cost_usd": 3.5,
+        "bus_supported": ["esp32_pca9685_5v", "arduino_pca9685_i2c"],
+    },
+    "servo_mg90s": {
+        "id": "servo_mg90s",
+        "name": "MG90S Micro-Servo 2.2kg·cm (Pinza / Muñeca)",
+        "motor_type": "rc_servo",
+        "voltage_v": 5.0,
+        "rated_torque_nm": 0.15,
+        "peak_torque_nm": 0.22,
+        "no_load_rpm": 95.0,
+        "corner_rpm": 55.0,
+        "rated_current_a": 0.25,
+        "peak_current_a": 0.55,
+        "mass_g": 13.4,
+        "shaft_d_mm": 4.8,
+        "bolt_pcd_mm": 12.0,
+        "bolt_size": "M2",
+        "unit_cost_usd": 2.0,
+        "bus_supported": ["esp32_pca9685_5v", "arduino_pca9685_i2c"],
+    },
 }
 
 REDUCER_CATALOG: dict[str, dict] = {
@@ -330,6 +366,11 @@ ARCHITECTURES_CATALOG: list[dict] = [
         "name": "Teensy 4.1 + Drivers DM542T (Industrial AR4)",
         "description": "Controlador Teensy 4.1 + drivers externos DM542T 4.2A, encoders ópticos 1000 PPR y sensores inductivos de homing (arquitectura AR4-MK3).",
     },
+    {
+        "id": "esp32_pca9685_5v",
+        "name": "ESP32 Wi-Fi + PCA9685 (5V 5A · Mars-Mini)",
+        "description": "Controlador ESP32 con Web Server Wi-Fi embebido + PCA9685 I2C + Fuente 5V 5A (25W) para 3× MG996R + 1× MG90S (< $45 USD).",
+    },
 ]
 
 CATEGORY_LABELS: dict[str, str] = {
@@ -391,6 +432,20 @@ def _default_spec_for_joint(
     bus_arch: str,
 ) -> JointActuatorSpec:
     """Choose sensible default motor + reducer for joint J1..J6."""
+    if bus_arch == "esp32_pca9685_5v":
+        if joint_idx <= 3:
+            return JointActuatorSpec(
+                motor_id="servo_mg996r",
+                reducer_id="direct",
+                target_rpm=32.0,
+                parallel_count=1,
+            )
+        return JointActuatorSpec(
+            motor_id="servo_mg90s",
+            reducer_id="direct",
+            target_rpm=45.0,
+            parallel_count=1,
+        )
     if bus_arch == "uart_serial_bus":
         return JointActuatorSpec(
             motor_id="servo_sts3215",
@@ -612,10 +667,21 @@ def evaluate_mechatronics(
     # Power Budget (double current/power for bimanual_dual_arm 2-arm systems!)
     arm_mult = 2.0 if req.kinematics_type == "bimanual_dual_arm" else 1.0
     is_pca_servo = bus_arch == "arduino_pca9685_i2c"
+    is_esp32_5v = bus_arch == "esp32_pca9685_5v"
     is_uart_bus = bus_arch == "uart_serial_bus"
     is_teensy_dm = bus_arch == "teensy_dm542"
 
-    if is_pca_servo:
+    if is_esp32_5v:
+        system_v = 5.0
+        cont_i_total = round(min(4.2, (sum_cont_i * 0.65 + 0.45) * arm_mult), 2)
+        peak_i_total = round(min(5.0, (sum_peak_i * 0.70 + 0.65) * arm_mult), 2)
+        cont_w = round(system_v * cont_i_total, 1)
+        peak_w = round(system_v * peak_i_total, 1)
+        psu_name = "Fuente Conmutada 5V 5A (25W · Jack DC 5.5×2.1mm)"
+        psu_cost = 8.0 * arm_mult
+        power_awg = "18 AWG (Jack DC → PCA9685 V+)"
+        signal_awg = "22 AWG Cables Servo 3-Pin + Dupont I2C"
+    elif is_pca_servo:
         system_v = (
             float(cfg.system_voltage_v)
             if 5.5 <= float(cfg.system_voltage_v) <= 7.4
@@ -712,36 +778,122 @@ def evaluate_mechatronics(
         )
 
     # Category 1: printed_cnc
-    for pm in eval_result.get("per_part_metrics", []):
-        unit_c = max(0.85, (pm.mass_g / 1000.0) * mat_cost_kg * 1.2 + 0.6)
+    if is_esp32_5v:
+        printed_g = max(120.0, min(220.0, float(eval_result.get("printed_mass_g", 180.0))))
+        resin_cost = round((printed_g / 1000.0) * mat_cost_kg, 2)
         _add_bom(
             "printed_cnc",
-            f"RF-{pm.slot.upper()[:8]}",
-            pm.part_name,
-            f"{material['name']} · {pm.variant} · {pm.mass_g:.0f} g",
+            "RF-MARSMINI-RES",
+            "Estructura Completa Mars-Mini (Base + 4-Barras + Pinza)",
+            f"{material['name']} · ~{printed_g:.0f} g resina en 2 platos Elegoo Mars 5 Ultra",
             1,
-            unit_c,
+            max(3.5, resin_cost),
         )
-    _add_bom(
-        "printed_cnc",
-        "RF-BASE-WRST",
-        "Pedestal Base + Tubo Muñeca + Brida TCP",
-        f"{material['name']} · ~195 g estimados",
-        1,
-        max(2.5, 0.195 * mat_cost_kg * 1.2 + 1.5),
-    )
-    if req.cnc_plate_mode:
+    else:
+        for pm in eval_result.get("per_part_metrics", []):
+            unit_c = max(0.85, (pm.mass_g / 1000.0) * mat_cost_kg * 1.2 + 0.6)
+            _add_bom(
+                "printed_cnc",
+                f"RF-{pm.slot.upper()[:8]}",
+                pm.part_name,
+                f"{material['name']} · {pm.variant} · {pm.mass_g:.0f} g",
+                1,
+                unit_c,
+            )
         _add_bom(
             "printed_cnc",
-            "CNC-AL6061-PLT",
-            "Placas Laterales CNC Aluminio 6061-T6 (DXF)",
-            "Corte 2.5D espesor 6 mm · rigidez torsional industrial",
-            2,
-            24.0,
+            "RF-BASE-WRST",
+            "Pedestal Base + Tubo Muñeca + Brida TCP",
+            f"{material['name']} · ~195 g estimados",
+            1,
+            max(2.5, 0.195 * mat_cost_kg * 1.2 + 1.5),
         )
+        if req.cnc_plate_mode:
+            _add_bom(
+                "printed_cnc",
+                "CNC-AL6061-PLT",
+                "Placas Laterales CNC Aluminio 6061-T6 (DXF)",
+                "Corte 2.5D espesor 6 mm · rigidez torsional industrial",
+                2,
+                24.0,
+            )
 
     # Category 2, 3, 4: actuators_reducers, electronics_wiring, fasteners_hardware
-    if is_pca_servo:
+    if is_esp32_5v:
+        # Ultra-budget Mars-Mini MSLA BOM (< $45 USD total!)
+        _add_bom(
+            "actuators_reducers",
+            "SRV-MG996R",
+            "Servo MG996R 10kg·cm (Metal Gear)",
+            "5V · Base J0 + Hombro J1 + Codo J2 en base fija",
+            3,
+            3.5,
+        )
+        _add_bom(
+            "actuators_reducers",
+            "SRV-MG90S",
+            "Micro-Servo MG90S 2.2kg·cm (Metal Gear)",
+            "5V · Accionamiento Pinza 2-Dedos",
+            1,
+            2.0,
+        )
+        _add_bom(
+            "electronics_wiring",
+            "EL-ESP32-DEV",
+            "ESP32 DevKit V1 (Wi-Fi + Web Server)",
+            "Control inalámbrico desde celular/PC · I2C GPIO21/22",
+            1,
+            5.5,
+        )
+        _add_bom(
+            "electronics_wiring",
+            "EL-PCA9685-16CH",
+            "Módulo PCA9685 16ch I2C (PWM 12-bit)",
+            "Bornera 5V 5A · canales CH0–CH3 activos",
+            1,
+            3.0,
+        )
+        _add_bom(
+            "electronics_wiring",
+            "EL-PSU-5V5A",
+            psu_name,
+            "Salida 5.0V DC · 5A (25W) · Jack DC + bornera",
+            1,
+            8.0,
+        )
+        _add_bom(
+            "electronics_wiring",
+            "EL-DUPONT-KIT",
+            "Cables Dupont I2C + Adaptador Jack DC a Bornera",
+            f"Arnés compacto {total_harness_m:.2f} m",
+            1,
+            1.8,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "ISO4762-M3x12",
+            "Tornillo Allen ISO 4762 M3×12",
+            "Acero 12.9 · uniones con tuerca cautiva (cero autorroscantes en resina)",
+            24,
+            0.05,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "ISO4032-M3-NUT",
+            "Tuercas Cautivas Hexagonales ISO 4032 M3",
+            "Bolsillos hexagonales 5.65 mm en Resina ABS-Like",
+            24,
+            0.04,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "BRG-608-2RS",
+            "Rodamiento de Bolas 608-2RS",
+            "8×22×7 mm · soporte axial de base giratoria J0",
+            1,
+            1.1,
+        )
+    elif is_pca_servo:
         # Exact FABRI Brazo Robótico 5.0 8-servo kit Master BOM (no external metallic bearings)
         primary_servo_id = next(iter(motor_counts.keys()), "servo_td8120mg")
         primary_servo = ACTUATOR_CATALOG.get(primary_servo_id, ACTUATOR_CATALOG["servo_td8120mg"])
@@ -1142,7 +1294,7 @@ def evaluate_mechatronics(
             3,
             4.0,
         )
-    if req.four_bar_parallelogram:
+    if req.four_bar_parallelogram and not is_esp32_5v:
         _add_bom(
             "fasteners_hardware",
             "FBR-PARA-ROD",
@@ -1236,6 +1388,7 @@ def evaluate_mechatronics(
     if not notes:
         arch_labels = {
             "arduino_pca9685_i2c": "Arduino UNO + PCA9685 I2C (8 Servos)",
+            "esp32_pca9685_5v": "ESP32 Wi-Fi + PCA9685 I2C (5V 5A · Mars-Mini)",
             "uart_serial_bus": "Bus Serie UART 1 Mbps (STS3215 / LeRobot)",
             "teensy_dm542": "Teensy 4.1 + Drivers DM542T Industrial",
             "can_fd_bus": "Bus CAN-FD 4 hilos",
@@ -1353,17 +1506,22 @@ def generate_circuit_schematic_svg(mechatronics: MechatronicsResponse, dof: int)
     is_can = pb.bus_architecture == "can_fd_bus"
     is_uart = pb.bus_architecture == "uart_serial_bus"
     is_teensy = pb.bus_architecture == "teensy_dm542"
+    is_esp32 = pb.bus_architecture == "esp32_pca9685_5v"
     n_joints = max(1, min(dof, len(mechatronics.joint_reports)))
     svg_h = max(420, 120 + n_joints * 58)
     svg_w = 980
 
     header_arch = (
-        "BUS CAN-FD 4 HILOS"
-        if is_can
+        "ESP32 WI-FI + PCA9685 I2C (5V 5A · MARS-MINI)"
+        if is_esp32
         else (
-            "BUS SERIE UART 1 Mbps (STS3215 / LEROBOT)"
-            if is_uart
-            else ("TEENSY 4.1 + DM542T INDUSTRIAL" if is_teensy else "STM32 STEP/DIR")
+            "BUS CAN-FD 4 HILOS"
+            if is_can
+            else (
+                "BUS SERIE UART 1 Mbps (STS3215 / LEROBOT)"
+                if is_uart
+                else ("TEENSY 4.1 + DM542T INDUSTRIAL" if is_teensy else "STM32 STEP/DIR")
+            )
         )
     )
     lines: list[str] = [
@@ -1420,7 +1578,10 @@ def generate_circuit_schematic_svg(mechatronics: MechatronicsResponse, dof: int)
     )
 
     # Block 3: MCU / Distribution
-    if is_uart:
+    if is_esp32:
+        mcu_title = "ESP32 WI-FI + PCA9685"
+        mcu_sub = "AP Web Server · I2C 0x40 (50Hz)"
+    elif is_uart:
         mcu_title = "WAVESHARE USB-TTL BUS"
         mcu_sub = "Half-Duplex 1 Mbps · 3-Pin"
     elif is_teensy:

@@ -602,7 +602,10 @@ export default function App() {
         presetId === "rov_subsea" ||
         Boolean(presetDefaults.cnc_plate_mode);
       const isCapstan = presetId === "barrett_wam" || Boolean(presetDefaults.remote_base_motors);
-      const isFourBar = presetId === "dobot_4bar" || Boolean(presetDefaults.four_bar_parallelogram);
+      const isFourBar =
+        presetId === "dobot_4bar" ||
+        presetId === "mars_mini" ||
+        Boolean(presetDefaults.four_bar_parallelogram);
       const isBevel = presetId === "thor_6dof" || Boolean(presetDefaults.bevel_differential_wrist);
       const isVacuum =
         presetId === "lumen_pnp" ||
@@ -611,12 +614,25 @@ export default function App() {
         presetId === "festo_bellows" ||
         Boolean(presetDefaults.vacuum_eoat);
       const isCounterbalance = presetId === "kuka_kr210" || Boolean(presetDefaults.counterbalance_j2);
+      const isMarsMini = presetId === "mars_mini";
 
       pushState((s) => ({
         ...s,
         family: "arm",
         arm: {
           ...s.arm,
+          ...(isMarsMini
+            ? {
+                dof: 4,
+                payload_kg: 0.15,
+                base_height_mm: 62,
+                upper_arm_mm: 105,
+                forearm_mm: 100,
+                wrist_mm: 45,
+                material_id: "resin_abs_like",
+                printer_id: "elegoo_mars_5_ultra",
+              }
+            : {}),
           ...presetDefaults,
           preset: presetId,
           kinematics_type: kinType,
@@ -624,7 +640,7 @@ export default function App() {
           gravity_m_s2: envMode === "space_zero_g" ? 0.0 : 9.81,
           counterbalance_j2: isCounterbalance,
           cnc_plate_mode: isCnc,
-          wrist_3dof: kinType === "articulated" || kinType === "bimanual_dual_arm",
+          wrist_3dof: !isMarsMini && (kinType === "articulated" || kinType === "bimanual_dual_arm"),
           remote_base_motors: isCapstan,
           four_bar_parallelogram: isFourBar,
           bevel_differential_wrist: isBevel,
@@ -632,7 +648,18 @@ export default function App() {
         },
       }));
 
-      if (presetId === "fabri_arm_5") {
+      if (presetId === "mars_mini") {
+        setMechatronicsConfig({
+          bus_architecture: "esp32_pca9685_5v",
+          system_voltage_v: 5,
+          joint_actuators: {
+            J1: { motor_id: "servo_mg996r", reducer_id: "direct", target_rpm: 35, parallel_count: 1 },
+            J2: { motor_id: "servo_mg996r", reducer_id: "direct", target_rpm: 35, parallel_count: 1 },
+            J3: { motor_id: "servo_mg90s", reducer_id: "direct", target_rpm: 45, parallel_count: 1 },
+          },
+        });
+        showToast("Preset RoboForge Mars-Mini (Elegoo Mars 5 Ultra · Resina ABS-Like · ESP32 Wi-Fi · ~$39.50) cargado.");
+      } else if (presetId === "fabri_arm_5") {
         setMechatronicsConfig({
           bus_architecture: "arduino_pca9685_i2c",
           system_voltage_v: 6.5,
@@ -869,6 +896,7 @@ export default function App() {
         canadarm_space_7dof: "canadarm_space",
         festo_bionic_pneumatic: "festo_bellows",
         kuka_kr210_r2700: "kuka_kr210",
+        roboforge_mars_mini: "mars_mini",
       };
       const presetId = arm.roboforge_preset_id || idMap[arm.id] || "parol6_desktop";
       const presetObj = presets.arms?.[presetId];
@@ -1016,24 +1044,32 @@ export default function App() {
             },
           ];
 
+    const isEsp32 = mechatronicsConfig.bus_architecture === "esp32_pca9685_5v";
     try {
-      const inoText = await api.exportFirmwareIno({
-        arm_name: armRes?.preset_name || state.arm.preset || "Brazo Arduino 5.0",
+      const reqBody = {
+        arm_name: armRes?.preset_name || state.arm.preset || (isEsp32 ? "RoboForge Mars-Mini" : "Brazo Arduino 5.0"),
         poses: posesPayload,
         speed_ms: 18,
-      });
+      };
+      const inoText = isEsp32
+        ? await api.downloadEsp32FirmwareIno(reqBody)
+        : await api.exportFirmwareIno(reqBody);
       const blob = new Blob([inoText], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "brazo_5_0_secuencia.ino";
+      a.download = isEsp32 ? "mars_mini_esp32_wifi.ino" : "brazo_5_0_secuencia.ino";
       a.click();
       URL.revokeObjectURL(url);
-      showToast(`Firmware Arduino descargado (${posesPayload.length} poses).`);
+      showToast(
+        isEsp32
+          ? `Firmware ESP32 Wi-Fi descargado (${posesPayload.length} poses).`
+          : `Firmware Arduino descargado (${posesPayload.length} poses).`
+      );
     } catch (err: any) {
       showToast(`Error exportando .INO: ${err.message}`, true);
     }
-  }, [recordedPoses, state.arm, armRes, showToast]);
+  }, [recordedPoses, state.arm, armRes, mechatronicsConfig.bus_architecture, showToast]);
 
   // Live 60 FPS TCP readout for Brazo Completo
   const liveTcp = useMemo(() => {
@@ -1092,7 +1128,7 @@ export default function App() {
         <div className="header-left">
           <div className="brand">
             <span>RoboForge</span>
-            <span className="brand-badge">PRO v7.0 · R3F</span>
+            <span className="brand-badge">PRO v7.1 · R3F</span>
           </div>
           <nav className="family-tabs">
             {(
@@ -1488,9 +1524,33 @@ export default function App() {
                   type="button"
                   className="btn-tool btn-arm-db"
                   onClick={() => setShowArmDbModal(true)}
-                  title="Explorar los 20 brazos robóticos reales y cargar en 1 clic"
+                  title="Explorar los 21 brazos robóticos reales y cargar en 1 clic"
                 >
-                  📚 Base de Datos ({armDatabase?.arms?.length || 20} Brazos Reales)
+                  📚 Base de Datos ({armDatabase?.arms?.length || 21} Brazos Reales)
+                </button>
+                <button
+                  type="button"
+                  className={`btn-tool btn-arm-db ${state.arm.preset === "mars_mini" ? "active" : ""}`}
+                  style={{
+                    marginTop: 6,
+                    background:
+                      state.arm.preset === "mars_mini"
+                        ? "rgba(16, 185, 129, 0.24)"
+                        : "rgba(56, 189, 248, 0.14)",
+                    borderColor:
+                      state.arm.preset === "mars_mini"
+                        ? "rgba(16, 185, 129, 0.65)"
+                        : "rgba(56, 189, 248, 0.45)",
+                  }}
+                  onClick={() =>
+                    applyArmPresetWithMechatronics(
+                      "mars_mini",
+                      presets.arms?.mars_mini?.defaults || presets.arms?.mars_mini || {}
+                    )
+                  }
+                  title="Cargar RoboForge Mars-Mini en 1 clic: Elegoo Mars 5 Ultra (MSLA Resina ABS-Like), ESP32 Wi-Fi + PCA9685 5V y servos MG996R/MG90S (~$39.50)"
+                >
+                  ★ Mars-Mini (Elegoo Mars 5 Ultra · ~$39.50)
                 </button>
                 <div className="preset-grid">
                   {Object.entries(presets.arms).map(([id, p]: [string, any]) => (
@@ -1653,9 +1713,9 @@ export default function App() {
                 </label>
                 {(
                   [
-                    ["upper_arm_mm", "Brazo Superior (L1)", 120, 350, 10],
-                    ["forearm_mm", "Antebrazo (L2)", 100, 300, 10],
-                    ["wrist_mm", "Muñeca (L3)", 50, 140, 5],
+                    ["upper_arm_mm", "Brazo Superior (L1)", 90, 350, 5],
+                    ["forearm_mm", "Antebrazo (L2)", 80, 300, 5],
+                    ["wrist_mm", "Muñeca (L3)", 40, 140, 5],
                   ] as const
                 ).map(([k, lbl, min, max, step]) => (
                   <div key={k} className="field-row">
@@ -1783,9 +1843,15 @@ export default function App() {
                       type="button"
                       className="btn-tool btn-ino"
                       onClick={handleExportIno}
-                      title="Exportar sketch Arduino UNO + PCA9685 (.INO)"
+                      title={
+                        mechatronicsConfig.bus_architecture === "esp32_pca9685_5v"
+                          ? "Exportar sketch ESP32 Wi-Fi Web + PCA9685 5V (.INO)"
+                          : "Exportar sketch Arduino UNO + PCA9685 (.INO)"
+                      }
                     >
-                      ⬇ .INO
+                      {mechatronicsConfig.bus_architecture === "esp32_pca9685_5v"
+                        ? "⬇ ESP32 .INO"
+                        : "⬇ .INO"}
                     </button>
                     <button
                       type="button"
@@ -1864,7 +1930,8 @@ export default function App() {
               >
                 {Object.entries(printers).map(([id, p]: [string, any]) => (
                   <option key={id} value={id}>
-                    {p.name || id} ({p.enclosed ? "Cerrada" : "Abierta"})
+                    {p.name || id} (
+                    {p.process_type === "msla_resin" ? "MSLA Resina" : p.enclosed ? "Cerrada" : "Abierta"})
                   </option>
                 ))}
               </select>
@@ -2000,6 +2067,15 @@ export default function App() {
             showLoads={showLoads}
             meshOpacity={meshOpacity}
             family={state.family}
+            materialId={
+              state.family === "arm"
+                ? state.arm.material_id
+                : state.family === "mounts"
+                  ? state.mount.material_id
+                  : state.family === "gears"
+                    ? state.gear.material_id
+                    : state.link.material_id
+            }
             loadDirection={loadDir}
             armAngles={{
               baseYaw: state.arm.base_yaw_deg,

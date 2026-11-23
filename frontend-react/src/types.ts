@@ -213,6 +213,11 @@ export interface PrintReadinessSummary {
   bed_temp_c: number;
   plates: PrintPlateInfo[];
   warnings: string[];
+  // v7.1 MSLA Resin fields
+  process_type?: "fdm" | "msla_resin";
+  exposure_s?: number | null;
+  bottom_exposure_s?: number | null;
+  recommended_tilt_deg?: number | null;
 }
 
 export interface ModularArmRequest {
@@ -283,13 +288,14 @@ export interface ModularArmResponse {
   print_readiness?: PrintReadinessSummary | null;
 }
 
-// v4.0/v5.0: Mecatrónica Completa — Motores, Curvas Torque–RPM, Presupuesto Eléctrico y BOM Maestro
+// v4.0/v5.0/v7.1: Mecatrónica Completa — Motores, Curvas Torque–RPM, Presupuesto Eléctrico y BOM Maestro
 export type BusArchitecture =
   | "can_fd_bus"
   | "stm32_step_dir"
   | "arduino_pca9685_i2c"
   | "uart_serial_bus"
-  | "teensy_dm542";
+  | "teensy_dm542"
+  | "esp32_pca9685_5v";
 export type MotorType =
   | "stepper"
   | "closed_loop_stepper"

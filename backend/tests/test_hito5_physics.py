@@ -33,6 +33,7 @@ def test_load_arm_presets_validate_against_schema():
         "canadarm_space",
         "festo_bellows",
         "kuka_kr210",
+        "mars_mini",
     }
     assert set(data["presets"].keys()) == expected
     for preset_id, entry in data["presets"].items():

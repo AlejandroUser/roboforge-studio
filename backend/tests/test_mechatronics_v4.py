@@ -33,6 +33,8 @@ def test_mechatronics_catalog_complete():
         "damiao_dm_j4310",
         "damiao_dm_j4340",
         "nema14_34mm",
+        "servo_mg996r",
+        "servo_mg90s",
     }
     assert set(REDUCER_CATALOG.keys()) == {
         "direct",
@@ -43,9 +45,9 @@ def test_mechatronics_catalog_complete():
         "cycloidal_40",
         "harmonic_50",
     }
-    assert len(cat["actuators"]) == 12
+    assert len(cat["actuators"]) == 14
     assert len(cat["reducers"]) == 7
-    assert len(cat["architectures"]) == 5
+    assert len(cat["architectures"]) == 6
 
 
 def test_torque_speed_curve_bldc_flat_vs_stepper_dropoff():

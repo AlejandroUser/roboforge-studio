@@ -154,6 +154,9 @@ def build_motor_3d(motor_id: str = "nema17_48mm") -> Part:
 
     mid = (motor_id or "nema17_48mm").lower()
 
+    if "mg90" in mid:
+        return build_servo_mg90s_3d()
+
     if "sts3215" in mid:
         return build_servo_sts3215_3d()
 
@@ -305,6 +308,42 @@ def build_servo_3d(motor_id: str = "servo_td8120mg") -> Part:
     return servo
 
 
+def build_servo_mg90s_3d() -> Part:
+    """Build a realistic MG90S micro-servo (22.8 × 12.2 × 28.5 mm, mounting ears 32.5 mm).
+    Output spline shaft centered at (0, 0) along +Z, body extends along -Z.
+    """
+    cache_key = "servo:mg90s"
+    if cache_key in _HARDWARE_CACHE:
+        return _HARDWARE_CACHE[cache_key]
+
+    with BuildSketch(Plane.XY) as body_sk:
+        with Locations((5.4, 0.0)):
+            RectangleRounded(22.8, 12.2, radius=1.2)
+    with BuildPart() as body_bp:
+        extrude(body_sk.sketch.faces()[0].moved(Location((0.0, 0.0, -25.0))), amount=25.0)
+
+    # Mounting ears (32.5 × 12.2 × 2.0 mm) with 2×Ø2.2 mm holes
+    with BuildSketch(Plane.XY) as ear_sk:
+        with Locations((5.4, 0.0)):
+            RectangleRounded(32.5, 12.2, radius=1.0)
+    with BuildPart() as ear_bp:
+        extrude(ear_sk.sketch.faces()[0].moved(Location((0.0, 0.0, -8.5))), amount=2.0)
+
+    ears = ear_bp.part
+    for hx in (-8.3, 19.1):
+        try:
+            ears = ears - (Location((hx, 0.0, -7.5)) * Cylinder(radius=1.15, height=5.0))
+        except Exception:
+            pass
+
+    collar = Location((0.0, 0.0, 1.0)) * Cylinder(radius=4.5, height=2.0)
+    spline = Location((0.0, 0.0, 2.5)) * Cylinder(radius=2.4, height=4.0)
+
+    servo = body_bp.part + ears + collar + spline
+    _HARDWARE_CACHE[cache_key] = servo
+    return servo
+
+
 def build_servo_horn_25t() -> Part:
     """Build a realistic Ø20 × 4 mm circular aluminum 25T servo horn with central hub & 4×M3 PCD 14 mm."""
     cache_key = "horn_25t:v1"
@@ -394,12 +433,13 @@ def build_dual_servo_clevis(
     return clevis
 
 
-def build_gripper_parts() -> tuple[Part, Part, Part]:
-    """Build a 3-part articulated 2-finger robotic gripper (~65 mm long along +X):
+def build_gripper_parts(compact: bool = False) -> tuple[Part, Part, Part]:
+    """Build a 3-part articulated 2-finger robotic gripper (~65 mm standard or <= 50 mm compact MG90S):
     Returns (gripper_base, gripper_finger_left, gripper_finger_right) so the frontend
     can animate opening/closing the fingers smoothly at 60 FPS along ±Y.
     """
-    cache_keys = ("gripper_base:v2", "gripper_finger_left:v2", "gripper_finger_right:v2")
+    tag = "v2_compact" if compact else "v2"
+    cache_keys = (f"gripper_base:{tag}", f"gripper_finger_left:{tag}", f"gripper_finger_right:{tag}")
     if all(k in _HARDWARE_CACHE for k in cache_keys):
         return (
             _HARDWARE_CACHE[cache_keys[0]],
@@ -407,43 +447,45 @@ def build_gripper_parts() -> tuple[Part, Part, Part]:
             _HARDWARE_CACHE[cache_keys[2]],
         )
 
+    s = 0.74 if compact else 1.0
+
     # 1. Base + central micro-servo actuator housing + pivot pins
     with BuildSketch(Plane.YZ) as base_sk:
-        RectangleRounded(44.0, 24.0, radius=3.0)
+        RectangleRounded(44.0 * s, 24.0 * s, radius=2.5 * s)
     with BuildPart() as base_bp:
-        extrude(base_sk.sketch.faces()[0], amount=14.0)
+        extrude(base_sk.sketch.faces()[0], amount=14.0 * s)
 
-    act_box = Location((23.0, 0.0, 0.0)) * Box(22.0, 22.0, 18.0)
-    pin_top = Location((16.0, 12.0, 0.0)) * Cylinder(radius=2.5, height=16.0)
-    pin_bot = Location((16.0, -12.0, 0.0)) * Cylinder(radius=2.5, height=16.0)
+    act_box = Location((23.0 * s, 0.0, 0.0)) * Box(22.0 * s, 22.0 * s, 18.0 * s)
+    pin_top = Location((16.0 * s, 12.0 * s, 0.0)) * Cylinder(radius=2.2 * s, height=15.0 * s)
+    pin_bot = Location((16.0 * s, -12.0 * s, 0.0)) * Cylinder(radius=2.2 * s, height=15.0 * s)
     gripper_base = base_bp.part + act_box + pin_top + pin_bot
 
     # 2. Serrated gripping finger polygons (right on +Y, left on -Y)
     jaw_pts_right = [
-        (12.0, 10.0),
-        (26.0, 20.0),
-        (65.0, 16.0),
-        (65.0, 10.0),
-        (56.0, 11.5),
-        (52.0, 9.5),
-        (46.0, 11.5),
-        (42.0, 9.5),
-        (36.0, 11.5),
-        (26.0, 14.0),
-        (12.0, 5.0),
+        (12.0 * s, 10.0 * s),
+        (26.0 * s, 20.0 * s),
+        (65.0 * s, 16.0 * s),
+        (65.0 * s, 10.0 * s),
+        (56.0 * s, 11.5 * s),
+        (52.0 * s, 9.5 * s),
+        (46.0 * s, 11.5 * s),
+        (42.0 * s, 9.5 * s),
+        (36.0 * s, 11.5 * s),
+        (26.0 * s, 14.0 * s),
+        (12.0 * s, 5.0 * s),
     ]
     jaw_pts_left = [(x, -y) for (x, y) in jaw_pts_right]
 
     with BuildSketch(Plane.XY) as jr_sk:
         Polygon(*jaw_pts_right, align=None)
     with BuildPart() as jr_bp:
-        extrude(jr_sk.sketch.faces()[0], amount=6.0, both=True)
+        extrude(jr_sk.sketch.faces()[0], amount=5.5 * s, both=True)
     gripper_finger_right = jr_bp.part
 
     with BuildSketch(Plane.XY) as jl_sk:
         Polygon(*jaw_pts_left, align=None)
     with BuildPart() as jl_bp:
-        extrude(jl_sk.sketch.faces()[0], amount=6.0, both=True)
+        extrude(jl_sk.sketch.faces()[0], amount=5.5 * s, both=True)
     gripper_finger_left = jl_bp.part
 
     _HARDWARE_CACHE[cache_keys[0]] = gripper_base

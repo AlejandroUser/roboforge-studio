@@ -168,8 +168,40 @@ def _place_link_in_xz(link: Part, origin: tuple[float, float, float], pitch_deg:
     return Location(origin) * y_rot
 
 
-def _build_base_pedestal(base_height_mm: float, payload_scale: float) -> Part:
-    """Build a bolted cylindrical robot base pedestal standing on z = 0..base_height_mm."""
+def _build_base_pedestal(
+    base_height_mm: float,
+    payload_scale: float,
+    compact_msla: bool = False,
+) -> Part:
+    """Build a bolted cylindrical robot base pedestal standing on z = 0..base_height_mm.
+    When compact_msla=True (Mars-Mini / Elegoo Mars 5 Ultra), constrains flange to Ø64 mm
+    and adds an Ø3.5 mm anti-suction-cup resin drain hole.
+    """
+    if compact_msla:
+        flange_h = min(8.0, base_height_mm * 0.16)
+        col_r = 21.0
+        flange_r = 32.0  # Exact Ø64.0 mm flange fits 77.76 mm MSLA plate with >13 mm margin
+        flange = Location((0.0, 0.0, flange_h / 2.0)) * Cylinder(radius=flange_r, height=flange_h)
+        column = Location((0.0, 0.0, base_height_mm / 2.0)) * Cylinder(radius=col_r, height=base_height_mm)
+        base = flange + column
+        # 4×M3 anchor bolt holes (Ø3.25 mm)
+        pcd_r = 26.5
+        for i in range(4):
+            ang = math.pi / 4.0 + i * (math.pi / 2.0)
+            hole = Location((pcd_r * math.cos(ang), pcd_r * math.sin(ang), flange_h / 2.0)) * Cylinder(
+                radius=1.625, height=flange_h + 4.0
+            )
+            try:
+                base = base - hole
+            except Exception:
+                pass
+        # Anti-suction-cup Ø3.5 mm resin drain hole through center
+        try:
+            base = base - (Location((0.0, 0.0, base_height_mm / 2.0)) * Cylinder(radius=1.75, height=base_height_mm + 4.0))
+        except Exception:
+            pass
+        return base
+
     flange_h = min(12.0, base_height_mm * 0.16)
     col_r = 32.0 * payload_scale
     flange_r = col_r + 14.0
@@ -657,7 +689,7 @@ def export_bom_csv(bom: list[BOMItem], output_path: Path) -> Path:
 
 def compute_modular_arm_hash(req: ModularArmRequest) -> str:
     """Compute a deterministic 16-char SHA-256 hex digest for a ModularArmRequest."""
-    canonical = "modarm_v70:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
+    canonical = "modarm_v71:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
@@ -774,7 +806,12 @@ def build_modular_arm_assembly(
 
     # 1. Instantiate real CAD sub-parts (with sub-part hash caching)
     scale = max(0.82, min(1.35, 0.88 + 0.12 * math.sqrt(req.payload_kg)))
-    base_raw = _build_base_pedestal(req.base_height_mm, scale)
+    is_compact_msla = (
+        float(req.base_height_mm) <= 66.0
+        or (req.printer_id or "") == "elegoo_mars_5_ultra"
+        or req.material_id == "resin_abs_like"
+    )
+    base_raw = _build_base_pedestal(req.base_height_mm, scale, compact_msla=is_compact_msla)
 
     mount_raw = _get_or_build_subpart(
         "mount",
@@ -901,16 +938,16 @@ def build_modular_arm_assembly(
 
     def _is_rc_servo(mid: str) -> bool:
         ml = (mid or "").lower()
-        return ("servo_td" in ml) or ("servo_ds" in ml) or ("mg996" in ml) or ("sts3215" in ml)
+        return ("servo_td" in ml) or ("servo_ds" in ml) or ("mg996" in ml) or ("mg90" in ml) or ("sts3215" in ml)
 
     use_rc_servos = (
-        bus_arch in ("arduino_pca9685_i2c", "uart_serial_bus")
+        bus_arch in ("arduino_pca9685_i2c", "uart_serial_bus", "esp32_pca9685_5v")
         or _is_rc_servo(j1_motor_id)
         or _is_rc_servo(j2_motor_id)
         or _is_rc_servo(j3_motor_id)
     )
     is_direct_servo_mode = (
-        bus_arch in ("arduino_pca9685_i2c", "uart_serial_bus")
+        bus_arch in ("arduino_pca9685_i2c", "uart_serial_bus", "esp32_pca9685_5v")
         or (
             _is_rc_servo(j1_motor_id)
             and (getattr(j1_spec, "reducer_id", "direct") or "direct") == "direct"
@@ -995,10 +1032,10 @@ def build_modular_arm_assembly(
             )
         )
 
-    # Optional 3-part Articulated Robotic Gripper + Dual-Servo Wrapping Clevises for Direct-Drive Servo / Arduino 5.0 arms
+    # Optional 3-part Articulated Robotic Gripper + Dual-Servo Wrapping Clevises for Direct-Drive Servo / Mars-Mini arms
     gripper_parts_placed: tuple[Part, Part, Part] | None = None
     if use_rc_servos:
-        g_base_raw, g_left_raw, g_right_raw = build_gripper_parts()
+        g_base_raw, g_left_raw, g_right_raw = build_gripper_parts(compact=is_compact_msla)
         g_shift = Location((max(10.0, req.wrist_mm - 6.0), 0.0, 0.0))
         g_pose = Location(p2_fore) * Location((0.0, 0.0, 0.0), (0.0, -a3_deg, 0.0)) * g_shift
         gripper_parts_placed = (
@@ -1010,14 +1047,16 @@ def build_modular_arm_assembly(
     clevis_shoulder_placed: Part | None = None
     clevis_elbow_placed: Part | None = None
     if is_direct_servo_mode:
-        clevis_sh_w = max(46.0, upper_t + 26.0)
-        clevis_el_w = max(44.0, upper_t + forearm_t + 16.0)
+        clevis_sh_w = min(54.0, max(40.0, upper_t + 22.0)) if is_compact_msla else max(46.0, upper_t + 26.0)
+        clevis_el_w = min(52.0, max(38.0, upper_t + forearm_t + 12.0)) if is_compact_msla else max(44.0, upper_t + forearm_t + 16.0)
+        clevis_d = 38.0 if is_compact_msla else 44.0
+        clevis_h = 40.0 if is_compact_msla else 46.0
         clevis_shoulder_placed = Location((0.0, 0.0, float(req.base_height_mm))) * build_dual_servo_clevis(
-            width_mm=clevis_sh_w, depth_mm=44.0, height_mm=46.0
+            width_mm=clevis_sh_w, depth_mm=clevis_d, height_mm=clevis_h
         )
         clevis_elbow_placed = Location((p1[0], y_forearm * 0.45, p1[2])) * (
             Location((0.0, 0.0, 0.0), (0.0, -a1_deg, 0.0))
-            * build_dual_servo_clevis(width_mm=clevis_el_w, depth_mm=40.0, height_mm=42.0)
+            * build_dual_servo_clevis(width_mm=clevis_el_w, depth_mm=clevis_d - 2.0, height_mm=clevis_h - 2.0)
         )
 
     # Real Ball Bearings (or CRB RU42 / Tapered 30205 on heavy/industrial arms)

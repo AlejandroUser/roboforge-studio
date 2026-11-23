@@ -38,6 +38,7 @@ export type CadMaterialRole =
   | "stewart_leg_chrome"
   | "tpu_bellows_cyan"
   | "pneumatic_manifold_alu"
+  | "resin_abs_like"
   | "matte_polymer"
   | "single_part_enhanced";
 
@@ -140,123 +141,108 @@ export function getSemanticNodeName(obj: THREE.Object3D): string {
   return candidates.join(" ");
 }
 
+const PRINTED_STRUCTURAL_ROLES: ReadonlySet<CadMaterialRole> = new Set<CadMaterialRole>([
+  "carbon_fiber",
+  "anodized_base",
+  "anodized_mount",
+  "clevis_polymer",
+  "gripper_graphite",
+  "matte_polymer",
+  "single_part_enhanced",
+]);
+
 /**
  * Resolves the PBR role from the Shared Contract semantic node names.
  */
-export function detectCadMaterialRole(obj: THREE.Object3D, family: FamilyId): CadMaterialRole {
+export function detectCadMaterialRole(
+  obj: THREE.Object3D,
+  family: FamilyId,
+  materialId?: string
+): CadMaterialRole {
   const name = getSemanticNodeName(obj);
 
+  if (name.includes("resin_")) {
+    return "resin_abs_like";
+  }
+
+  let role: CadMaterialRole = family === "arm" ? "matte_polymer" : "single_part_enhanced";
+
   if (name.includes("bellows_chamber") || name.includes("bellows_end")) {
-    return "tpu_bellows_cyan";
-  }
-  if (name.includes("pneumatic_manifold")) {
-    return "pneumatic_manifold_alu";
-  }
-  if (name.includes("stewart_leg")) {
-    return "stewart_leg_chrome";
-  }
-  if (name.includes("stewart_base") || name.includes("stewart_platform")) {
-    return "stewart_plate_alu";
-  }
-  if (name.includes("bimanual_torso")) {
-    return "bimanual_torso_alu";
-  }
-  if (name.includes("micro_forceps")) {
-    return "surgical_steel";
-  }
-  if (name.includes("continuum_spacer")) {
-    return "peek_gold";
-  }
-  if (name.includes("continuum_backbone") || name.includes("continuum_tendon")) {
-    return "nitinol_bright";
-  }
-  if (name.includes("capstan_drum") || name.includes("tendon_cable")) {
-    return "capstan_steel";
-  }
-  if (name.includes("parallelogram_rod")) {
-    return "parallelogram_alu";
-  }
-  if (name.includes("bevel_wrist")) {
-    return "bevel_steel";
-  }
-  if (name.includes("vacuum_nozzle")) {
-    return "vacuum_brass_silicone";
-  }
-  if (name.includes("delta_forearms") || name.includes("delta_bicep")) {
-    return "delta_carbon_rod";
-  }
-  if (name.includes("delta_top_frame") || name.includes("delta_platform") || name.includes("delta_z_shaft")) {
-    return "delta_aluminum";
-  }
-  if (name.includes("gantry_frame") || name.includes("gantry_y_bridge")) {
-    return "gantry_extrusion";
-  }
-  if (name.includes("gantry_x_carriage") || name.includes("gantry_z_head")) {
-    return "gantry_carriage";
-  }
-  if (name.includes("homing_sensor")) {
-    return "homing_sensor_brass";
-  }
-  if (name.includes("cycloidal")) {
-    return "cycloidal_metal";
-  }
-  if (name.includes("planetary")) {
-    return "planetary_metal";
-  }
-  if (name.includes("belt_")) {
-    return "gt2_belt_rubber";
-  }
-  if (name.includes("linear_rail") || name.includes("z_carriage") || name.includes("z_quill")) {
-    return "chrome_linear_rail";
-  }
-  if (
+    role = "tpu_bellows_cyan";
+  } else if (name.includes("pneumatic_manifold")) {
+    role = "pneumatic_manifold_alu";
+  } else if (name.includes("stewart_leg")) {
+    role = "stewart_leg_chrome";
+  } else if (name.includes("stewart_base") || name.includes("stewart_platform")) {
+    role = "stewart_plate_alu";
+  } else if (name.includes("bimanual_torso")) {
+    role = "bimanual_torso_alu";
+  } else if (name.includes("micro_forceps")) {
+    role = "surgical_steel";
+  } else if (name.includes("continuum_spacer")) {
+    role = "peek_gold";
+  } else if (name.includes("continuum_backbone") || name.includes("continuum_tendon")) {
+    role = "nitinol_bright";
+  } else if (name.includes("capstan_drum") || name.includes("tendon_cable")) {
+    role = "capstan_steel";
+  } else if (name.includes("parallelogram_rod")) {
+    role = "parallelogram_alu";
+  } else if (name.includes("bevel_wrist")) {
+    role = "bevel_steel";
+  } else if (name.includes("vacuum_nozzle")) {
+    role = "vacuum_brass_silicone";
+  } else if (name.includes("delta_forearms") || name.includes("delta_bicep")) {
+    role = "delta_carbon_rod";
+  } else if (name.includes("delta_top_frame") || name.includes("delta_platform") || name.includes("delta_z_shaft")) {
+    role = "delta_aluminum";
+  } else if (name.includes("gantry_frame") || name.includes("gantry_y_bridge")) {
+    role = "gantry_extrusion";
+  } else if (name.includes("gantry_x_carriage") || name.includes("gantry_z_head")) {
+    role = "gantry_carriage";
+  } else if (name.includes("homing_sensor")) {
+    role = "homing_sensor_brass";
+  } else if (name.includes("cycloidal")) {
+    role = "cycloidal_metal";
+  } else if (name.includes("planetary")) {
+    role = "planetary_metal";
+  } else if (name.includes("belt_")) {
+    role = "gt2_belt_rubber";
+  } else if (name.includes("linear_rail") || name.includes("z_carriage") || name.includes("z_quill")) {
+    role = "chrome_linear_rail";
+  } else if (
     name.includes("upper_arm_roll") ||
     name.includes("wrist_j4") ||
     name.includes("wrist_j5") ||
     name.includes("wrist_j6")
   ) {
-    return "wrist_roll_node";
-  }
-  if (name.includes("horn_25t") || name.includes("servo_horn")) {
-    return "anodized_horn_red";
-  }
-  if (name.includes("clevis_")) {
-    return "clevis_polymer";
-  }
-  if (name.includes("gripper_finger")) {
-    return "gripper_finger_metal";
-  }
-  if (name.includes("gripper")) {
-    return "gripper_graphite";
-  }
-  if (name.includes("controller_box") || name.includes("controller")) {
-    return "controller_enclosure";
-  }
-  if (name.includes("fasteners") || name.includes("screw") || name.includes("bolt")) {
-    return "fastener_steel";
-  }
-  if (name.includes("bearing_")) {
-    return "chrome_bearing";
-  }
-  if (name.includes("motor_")) {
-    return "motor_body";
-  }
-  if (name.includes("base_pedestal") || name.includes("pedestal")) {
-    return "anodized_base";
-  }
-  if (name.includes("shoulder_mount") || name.includes("mount")) {
-    return "anodized_mount";
-  }
-  if (name.includes("tcp_flange") || name.includes("flange") || name.includes("tcp")) {
-    return "anodized_tcp";
-  }
-  if (name.includes("shoulder_gear") || name.includes("elbow_gear") || name.includes("gear")) {
-    return "machined_gear";
-  }
-  if (name.includes("joint_hw") || name.includes("joint_housing") || name.includes("joint_")) {
-    return "joint_hardware";
-  }
-  if (
+    role = "wrist_roll_node";
+  } else if (name.includes("horn_25t") || name.includes("servo_horn")) {
+    role = "anodized_horn_red";
+  } else if (name.includes("clevis_")) {
+    role = "clevis_polymer";
+  } else if (name.includes("gripper_finger")) {
+    role = "gripper_finger_metal";
+  } else if (name.includes("gripper")) {
+    role = "gripper_graphite";
+  } else if (name.includes("controller_box") || name.includes("controller")) {
+    role = "controller_enclosure";
+  } else if (name.includes("fasteners") || name.includes("screw") || name.includes("bolt")) {
+    role = "fastener_steel";
+  } else if (name.includes("bearing_")) {
+    role = "chrome_bearing";
+  } else if (name.includes("motor_")) {
+    role = "motor_body";
+  } else if (name.includes("base_pedestal") || name.includes("pedestal")) {
+    role = "anodized_base";
+  } else if (name.includes("shoulder_mount") || name.includes("mount")) {
+    role = "anodized_mount";
+  } else if (name.includes("tcp_flange") || name.includes("flange") || name.includes("tcp")) {
+    role = "anodized_tcp";
+  } else if (name.includes("shoulder_gear") || name.includes("elbow_gear") || name.includes("gear")) {
+    role = "machined_gear";
+  } else if (name.includes("joint_hw") || name.includes("joint_housing") || name.includes("joint_")) {
+    role = "joint_hardware";
+  } else if (
     name.includes("upper_arm_link") ||
     name.includes("forearm_link") ||
     name.includes("wrist_tube") ||
@@ -264,13 +250,13 @@ export function detectCadMaterialRole(obj: THREE.Object3D, family: FamilyId): Ca
     name.includes("forearm") ||
     name.includes("wrist")
   ) {
-    return "carbon_fiber";
+    role = "carbon_fiber";
   }
 
-  if (family === "arm") {
-    return "matte_polymer";
+  if (materialId === "resin_abs_like" && PRINTED_STRUCTURAL_ROLES.has(role)) {
+    return "resin_abs_like";
   }
-  return "single_part_enhanced";
+  return role;
 }
 
 function extractBaseColor(existingMat: THREE.Material | THREE.Material[] | undefined): THREE.Color {
@@ -286,9 +272,10 @@ function extractBaseColor(existingMat: THREE.Material | THREE.Material[] | undef
  */
 export function createCadPhysicalMaterial(
   mesh: THREE.Mesh,
-  family: FamilyId
+  family: FamilyId,
+  materialId?: string
 ): THREE.MeshPhysicalMaterial {
-  const role = detectCadMaterialRole(mesh, family);
+  const role = detectCadMaterialRole(mesh, family, materialId);
   const origColor = extractBaseColor(mesh.material);
 
   switch (role) {
@@ -651,6 +638,16 @@ export function createCadPhysicalMaterial(
         roughness: 0.24,
         clearcoat: 0.2,
         envMapIntensity: 1.45,
+      });
+
+    case "resin_abs_like":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#8b9cb3"),
+        metalness: 0.08,
+        roughness: 0.3,
+        clearcoat: 0.38,
+        clearcoatRoughness: 0.22,
+        envMapIntensity: 1.15,
       });
 
     case "matte_polymer":

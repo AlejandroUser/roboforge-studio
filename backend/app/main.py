@@ -906,6 +906,22 @@ def generate_arm_firmware_ino(req: FirmwareInoRequest) -> PlainTextResponse:
     )
 
 
+@app.post("/api/arm/firmware-esp32-ino")
+def generate_arm_firmware_esp32_ino(req: FirmwareInoRequest) -> PlainTextResponse:
+    from .physics.firmware_gen import generate_esp32_wifi_pca9685_ino
+
+    ino_code = generate_esp32_wifi_pca9685_ino(
+        arm_name=req.arm_name,
+        poses=[p.model_dump() for p in req.poses],
+        speed_ms=req.speed_ms,
+    )
+    return PlainTextResponse(
+        content=ino_code,
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="mars_mini_esp32_wifi.ino"'},
+    )
+
+
 @app.get("/api/arm/database")
 def get_arm_database() -> dict[str, Any]:
     db_path = Path(__file__).resolve().parent / "data" / "arm_database.json"
@@ -1066,6 +1082,32 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
         )
         zip_included_files.append(firmware_ino_path)
 
+    firmware_esp32_ino_path: Path | None = None
+    if mechatronics.bus_architecture == "esp32_pca9685_5v":
+        from .physics.firmware_gen import generate_esp32_wifi_pca9685_ino
+
+        firmware_esp32_ino_path = out_dir / "mars_mini_esp32_wifi.ino"
+        default_pose = {
+            "j0_base": 0.0,
+            "j1_shoulder": float(effective_req.joint_angles_deg[0]),
+            "j2_elbow": float(effective_req.joint_angles_deg[1]),
+            "j3_wrist": float(effective_req.joint_angles_deg[2]),
+            "gripper_pct": 60.0,
+        }
+        firmware_esp32_ino_path.write_text(
+            generate_esp32_wifi_pca9685_ino(
+                arm_name="RoboForge Mars-Mini (ESP32 Wi-Fi)",
+                poses=[
+                    default_pose,
+                    {"j0_base": -35.0, "j1_shoulder": 25.0, "j2_elbow": -35.0, "j3_wrist": 10.0, "gripper_pct": 15.0},
+                    {"j0_base": 35.0, "j1_shoulder": 40.0, "j2_elbow": -50.0, "j3_wrist": 15.0, "gripper_pct": 85.0},
+                ],
+                speed_ms=18,
+            ),
+            encoding="utf-8",
+        )
+        zip_included_files.append(firmware_esp32_ino_path)
+
     cnc_dxf_path: Path | None = None
     if getattr(effective_req, "cnc_plate_mode", False):
         cnc_dxf_path = out_dir / "arm_cnc_plates.dxf"
@@ -1123,6 +1165,8 @@ def assemble_modular_arm(req: ModularArmRequest) -> ModularArmResponse:
         files[k] = f"/api/files/{design_hash}/{fp.name}"
     if firmware_ino_path is not None:
         files["firmware_ino"] = f"/api/files/{design_hash}/{firmware_ino_path.name}"
+    if firmware_esp32_ino_path is not None:
+        files["firmware_esp32_ino"] = f"/api/files/{design_hash}/{firmware_esp32_ino_path.name}"
     if cnc_dxf_path is not None:
         files["cnc_dxf"] = f"/api/files/{design_hash}/{cnc_dxf_path.name}"
     if lerobot_json_path is not None:

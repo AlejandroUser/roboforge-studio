@@ -33,7 +33,9 @@ function getTopologyBadges(arm: ArmDatabaseEntry): string[] {
   if (arm.dof === 7) badges.push("7-DOF");
   if (tx.includes("cicloidal")) badges.push("Cicloidal");
   if (id.includes("lerobot") || id.includes("so_arm") || elec.includes("sts3215")) badges.push("LeRobot");
-  if (id.includes("fabri") || elec.includes("pca9685")) badges.push("Servo 5.0");
+  if (id.includes("mars_mini") || mats.includes("resin") || mats.includes("msla")) badges.push("MSLA Resina");
+  if (elec.includes("esp32")) badges.push("ESP32 Wi-Fi");
+  if (id.includes("fabri") || (elec.includes("pca9685") && !elec.includes("esp32"))) badges.push("Servo 5.0");
   if (mats.includes("6061") || mats.includes("cnc")) badges.push("CNC 6061");
   return badges;
 }

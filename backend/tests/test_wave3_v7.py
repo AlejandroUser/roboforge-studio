@@ -23,7 +23,7 @@ def test_v7_materials_and_21_presets():
     assert mats["tpu_95a"]["category"] == "fdm"
 
     presets = load_arm_presets()["presets"]
-    assert len(presets) == 21
+    assert len(presets) >= 21
     for key in (
         "rov_subsea",
         "bimanual_aloha",

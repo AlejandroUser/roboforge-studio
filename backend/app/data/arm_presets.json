@@ -503,6 +503,30 @@
         "print_orientation": "xy_flat",
         "printer_id": "voron_24"
       }
+    },
+    "mars_mini": {
+      "id": "mars_mini",
+      "name": "★ Mars-Mini (Elegoo Mars 5 Ultra · ~$39)",
+      "subtitle": "Demostrador 4-DOF 4-barras MSLA 100% imprimible en 153×77×165 mm (< $45 USD)",
+      "defaults": {
+        "preset": "mars_mini",
+        "dof": 4,
+        "payload_kg": 0.15,
+        "base_height_mm": 62.0,
+        "upper_arm_mm": 105.0,
+        "forearm_mm": 100.0,
+        "wrist_mm": 45.0,
+        "link_style": "organic_ibeam",
+        "shoulder_joint_deg": 35.0,
+        "elbow_joint_deg": -55.0,
+        "wrist_joint_deg": 20.0,
+        "gear_ratio_shoulder": 4.0,
+        "gear_ratio_elbow": 4.0,
+        "max_accel_rad_s2": 10.0,
+        "material_id": "resin_abs_like",
+        "print_orientation": "xy_flat",
+        "printer_id": "elegoo_mars_5_ultra"
+      }
     }
   }
 }
