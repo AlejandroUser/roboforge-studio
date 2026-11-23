@@ -198,9 +198,19 @@ export const ModularArmPanel: React.FC<ModularArmPanelProps> = ({
                 className="dl-link dl-zip"
                 href={zipUrl}
                 download
-                title="Descargar Kit completo de manufactura (STEPs + 3MFs + URDF + MuJoCo + BOM)"
+                title="Descargar Kit completo de manufactura (STEPs + 3MFs + STLs separados + URDF + MuJoCo + BOM)"
               >
                 ★ Kit Manufactura (.ZIP)
+              </a>
+            )}
+            {result.files?.stl_parts_zip && (
+              <a
+                className="dl-link dl-zip"
+                href={result.files.stl_parts_zip}
+                download
+                title="Piezas imprimibles separadas y planas en .STL (listo para SatelLite / Chitubox / Cura)"
+              >
+                Piezas .STL (.ZIP)
               </a>
             )}
             {result.files?.step && (
