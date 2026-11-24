@@ -93,6 +93,7 @@ from .physics.profiles import (
     save_custom_material,
     save_custom_printer,
 )
+from .routers.projects import router as projects_router
 from .schemas import (
     ArmAssemblyRequest,
     ArmAssemblyResponse,
@@ -147,7 +148,7 @@ GEAR_VARIANT_ORDER: tuple[GearVariantKind, ...] = (
     "gear_spoked",
 )
 
-HASH_PATTERN = re.compile(r"^(?:[a-f0-9]{8,64}|ref_[a-f0-9]{12}|gyr_[a-f0-9]{12})$")
+HASH_PATTERN = re.compile(r"^(?:(?:ref|gyr|prj)_)?[a-f0-9]{8,64}$")
 FILENAME_PATTERN = re.compile(r"^[A-Za-z0-9_]+\.(glb|step|stl|3mf|urdf|xml|csv|zip|svg|yml|ino|dxf|json|md)$")
 
 MEDIA_TYPES: dict[str, str] = {
@@ -180,6 +181,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(projects_router)
 
 
 @app.get("/api/health")

@@ -22,7 +22,7 @@
 | 1 | **ESP32 DevKit v1** (30 o 38 pines, USB-C/Micro) | Controlador Wi-Fi + servidor web + I2C | $5.50 |
 | 1 | **Módulo PCA9685** (16 canales PWM I2C) | Generación PWM limpia 50 Hz para los 4 servos | $3.00 |
 | 1 | **Fuente Conmutada 5V 5A** + jack barril DC + cables Dupont | Alimentación exclusiva de servos (evita reinicios del ESP32) | $9.50 |
-| 1 | **Kit tornillos M3** (M3×10, M3×16, M3×25) + **tuercas hexagonales M3** (`ISO 4032`) + **1× rodamiento 608** | Ensamble sin autorroscantes (cero grietas en resina) | $3.00 |
+| 1 | **Kit tornillos M2×8 (4×, para MG90S) + M3 (M3×10, M3×16, M3×25)** + **tuercas cautivas hexagonales M3** (`ISO 4032`) + **1× rodamiento 608** | Ensamble sin autorroscantes (cero grietas en resina) | $3.30 |
 | ~180 g | **Resina ABS-Like** (Elegoo ABS-Like 3.0 / Sunlu ABS-Like) | Todas las piezas estructurales + pinza + test de tolerancias | $6.00 |
 | | **TOTAL ESTIMADO** | | **$39.50 USD** |
 
@@ -59,13 +59,13 @@
 
 ## 3. Ensamble Mecánico Paso a Paso
 
-1. **Base (`base_pedestal` + Rodamiento `608`):** Inserta las tuercas M3 en los bolsillos inferiores, coloca el rodamiento `608` y fija el servo **`MG996R` (`CH0`)** centrado en `90°` antes de atornillar el horn 25T.
-2. **Hombro y Paralelogramo (`upper_arm`, `forearm`, `parallelogram_rod`):**
-   - Monta **`MG996R` (`CH1` Hombro)** y **`MG996R` (`CH2` Codo/Biela)** enfrentados en la horquilla base (ambos pre-centrados en `90°`).
-   - Une `upper_arm` (`105 mm`), `forearm` (`100 mm`) y la varilla paralela `parallelogram_rod` usando tornillos M3 con tuerca autoblocante (o doble tuerca) dejando giro suave sin holgura.
-3. **Pinza Compacta (`gripper_base` + `gripper_finger_left/right`):**
-   - Monta el micro-servo **`MG90S` (`CH3`)** pre-centrado en `45°` (abierta), acopla el engranaje/horn a los dos dedos y comprueba que abren y cierran sin trabarse.
-4. **Fijación a Mesa:** Atornilla la brida de `base_pedestal` (4× M3) a una tabla de madera o placa base para evitar vuelcos al extender el brazo.
+1. **Base (`part_base_pedestal.stl` + Rodamiento `608`):** Inserta las tuercas cautivas M3 en los bolsillos inferiores, coloca el rodamiento `608` en su asiento `Ø22.2 × 7.2 mm` y fija el servo **`MG996R` (`CH0`)** centrado en `90°` con tornillos `M3×10` antes de atornillar el horn 25T.
+2. **Hombro y Paralelogramo (`part_upper_arm_link.stl`, `part_forearm_link.stl`, `part_parallelogram_rod.stl`, `part_clevis_shoulder.stl`, `part_clevis_elbow.stl`, `part_wrist_tube.stl`):**
+   - Monta **`MG996R` (`CH1` Hombro)** y **`MG996R` (`CH2` Codo/Biela)** en las horquillas con tornillos `M3×10` y tuercas cautivas `M3` (pre-posicionados en `120°` y `60°` para coincidir con la pose inicial del firmware).
+   - Une `part_upper_arm_link.stl` (`105 mm`), `part_forearm_link.stl` (`100 mm`) y la varilla paralela `part_parallelogram_rod.stl` usando tornillos `M3×16` / `M3×25` con tuerca cautiva `M3` dejando giro suave sin holgura.
+3. **Pinza Compacta (`part_gripper_base.stl` + `part_gripper_finger_left.stl` / `part_gripper_finger_right.stl`):**
+   - Monta el micro-servo **`MG90S` (`CH3`)** dentro de la cavidad `23.2 × 12.6 mm` de `part_gripper_base.stl` usando tornillos **`M2×8`**, pre-centrado en **`80°`** (pose inicial alineada con los sliders Web Wi-Fi), acopla el horn a los dos dedos con tornillos `M3×16` y comprueba que abren y cierran sin trabarse.
+4. **Fijación a Mesa:** Atornilla la brida de `part_base_pedestal.stl` (4× `M3×10`) a una tabla de madera o placa base para evitar vuelcos al extender el brazo.
 
 ---
 
@@ -100,7 +100,7 @@ flowchart LR
 ---
 
 ## 6. Checklist Rápido de Primer Encendido Seguro
-- [ ] ¿Centraste los 4 servos en `90°` (y pinza abierta) antes de colocar los horns?
+- [ ] ¿Pre-posicionaste los 4 servos en `90° / 120° / 60°` y la pinza en `80°` antes de colocar los horns?
 - [ ] ¿Las tierras (`GND`) del ESP32 y la fuente `5V 5A` están unidas?
 - [ ] ¿La base está sujeta con tornillos o prensa a la mesa?
 - [ ] ¿Al mover suavemente los sliders en `http://192.168.4.1` ningún enlace choca consigo mismo?

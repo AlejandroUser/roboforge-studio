@@ -378,15 +378,17 @@ def build_dual_servo_clevis(
     width_mm: float = 56.0,
     depth_mm: float = 44.0,
     height_mm: float = 48.0,
+    bolt_d_mm: float = 4.3,
 ) -> Part:
     """Build a U-shaped wrapping dual-servo clevis bracket centered at (0, 0, 0) with joint axis along Y.
-    Features 2 lateral cheeks with recessed pockets for opposed TD-8120MG servos, bottom U-bridge,
-    wall stiffener ribs, and M4 mounting holes.
+    Features 2 lateral cheeks with recessed pockets for opposed servos, bottom U-bridge,
+    wall stiffener ribs, and parametric M3 (3.25 mm) / M4 (4.3 mm) mounting holes.
     """
     w = round(max(36.0, float(width_mm)), 1)
     d = round(max(30.0, float(depth_mm)), 1)
     h = round(max(34.0, float(height_mm)), 1)
-    cache_key = f"clevis:{w}:{d}:{h}"
+    bd = round(max(2.0, float(bolt_d_mm)), 2)
+    cache_key = f"clevis:{w}:{d}:{h}:{bd}"
     if cache_key in _HARDWARE_CACHE:
         return _HARDWARE_CACHE[cache_key]
 
@@ -418,12 +420,13 @@ def build_dual_servo_clevis(
     except Exception:
         pass
 
-    # 4×M4 mounting holes flanking the servo ear span on both cheeks
+    # 4× mounting holes flanking the servo ear span on both cheeks (M3 3.25 mm for MSLA, M4 4.3 mm standard)
+    bolt_r = bd / 2.0
     for sx in (-15.0, 15.0):
         for sz in (-6.0, 6.0):
-            m4_hole = Location((sx, 0.0, sz), (90.0, 0.0, 0.0)) * Cylinder(radius=2.15, height=cut_y)
+            m_hole = Location((sx, 0.0, sz), (90.0, 0.0, 0.0)) * Cylinder(radius=bolt_r, height=cut_y)
             try:
-                cand = clevis - m4_hole
+                cand = clevis - m_hole
                 if cand.is_valid and cand.volume > 0:
                     clevis = cand
             except Exception:
@@ -437,8 +440,9 @@ def build_gripper_parts(compact: bool = False) -> tuple[Part, Part, Part]:
     """Build a 3-part articulated 2-finger robotic gripper (~65 mm standard or <= 50 mm compact MG90S):
     Returns (gripper_base, gripper_finger_left, gripper_finger_right) so the frontend
     can animate opening/closing the fingers smoothly at 60 FPS along ±Y.
+    When compact=True, builds a real >= 28 x 18 x 20 mm actuator block with a 23.2 x 12.6 mm MG90S pocket + M3 pivots.
     """
-    tag = "v2_compact" if compact else "v2"
+    tag = "v3_compact" if compact else "v3"
     cache_keys = (f"gripper_base:{tag}", f"gripper_finger_left:{tag}", f"gripper_finger_right:{tag}")
     if all(k in _HARDWARE_CACHE for k in cache_keys):
         return (
@@ -451,14 +455,37 @@ def build_gripper_parts(compact: bool = False) -> tuple[Part, Part, Part]:
 
     # 1. Base + central micro-servo actuator housing + pivot pins
     with BuildSketch(Plane.YZ) as base_sk:
-        RectangleRounded(44.0 * s, 24.0 * s, radius=2.5 * s)
+        RectangleRounded(max(34.0, 44.0 * s), max(20.0, 24.0 * s), radius=2.5 * s)
     with BuildPart() as base_bp:
-        extrude(base_sk.sketch.faces()[0], amount=14.0 * s)
+        extrude(base_sk.sketch.faces()[0], amount=max(11.0, 14.0 * s))
 
-    act_box = Location((23.0 * s, 0.0, 0.0)) * Box(22.0 * s, 22.0 * s, 18.0 * s)
-    pin_top = Location((16.0 * s, 12.0 * s, 0.0)) * Cylinder(radius=2.2 * s, height=15.0 * s)
-    pin_bot = Location((16.0 * s, -12.0 * s, 0.0)) * Cylinder(radius=2.2 * s, height=15.0 * s)
-    gripper_base = base_bp.part + act_box + pin_top + pin_bot
+    if compact:
+        # Real MG90S actuator housing (>= 28 x 18 x 20 mm) with 23.2 x 12.6 mm pocket + M3 pivot bores
+        act_box = Location((22.5, 0.0, 0.0)) * Box(29.0, 20.0, 20.0)
+        pin_top = Location((13.0, 11.0, 0.0)) * Cylinder(radius=3.4, height=16.0)
+        pin_bot = Location((13.0, -11.0, 0.0)) * Cylinder(radius=3.4, height=16.0)
+        gripper_base = base_bp.part + act_box + pin_top + pin_bot
+        # Carve MG90S pocket (23.2 x 12.6 x 18.0 mm) through top (+Z)
+        try:
+            mg90s_pocket = Location((23.0, 0.0, 3.0)) * Box(23.2, 12.6, 18.0)
+            cand = gripper_base - mg90s_pocket
+            if cand.is_valid and cand.volume > 0:
+                gripper_base = cand
+        except Exception:
+            pass
+        # Carve M3 (Ø3.25 mm) pivot bores on both finger pivots
+        for py in (-11.0, 11.0):
+            try:
+                cand = gripper_base - (Location((13.0, py, 0.0)) * Cylinder(radius=1.625, height=22.0))
+                if cand.is_valid and cand.volume > 0:
+                    gripper_base = cand
+            except Exception:
+                pass
+    else:
+        act_box = Location((23.0 * s, 0.0, 0.0)) * Box(22.0 * s, 22.0 * s, 18.0 * s)
+        pin_top = Location((16.0 * s, 12.0 * s, 0.0)) * Cylinder(radius=2.2 * s, height=15.0 * s)
+        pin_bot = Location((16.0 * s, -12.0 * s, 0.0)) * Cylinder(radius=2.2 * s, height=15.0 * s)
+        gripper_base = base_bp.part + act_box + pin_top + pin_bot
 
     # 2. Serrated gripping finger polygons (right on +Y, left on -Y)
     jaw_pts_right = [

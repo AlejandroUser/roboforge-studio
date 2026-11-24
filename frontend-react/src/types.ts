@@ -1,4 +1,4 @@
-export type FamilyId = "links" | "mounts" | "gears" | "arm";
+export type FamilyId = "links" | "mounts" | "gears" | "arm" | "projects";
 
 export interface AlertItem {
   level: "info" | "warning" | "critical";
@@ -519,4 +519,59 @@ export interface HardwarePoseResponse {
   port: string;
   mode: string;
   error?: string;
+}
+
+// v9.0: Auditor DFM Goldfish + Familias Multi-Proyecto (FPV Drone, Rover 4WD, Camera Gimbal)
+export type DFMStatus = "pass" | "warn" | "fail";
+
+export interface DFMCheckItem {
+  id: string;
+  label: string;
+  status: DFMStatus;
+  detail: string;
+}
+
+export interface DFMAuditReport {
+  status: DFMStatus;
+  summary: string;
+  checks: DFMCheckItem[];
+}
+
+export type ProjectFamilyId = "fpv_drone" | "rover_4wd" | "camera_gimbal";
+
+export interface ProjectPresetInfo {
+  id: string;
+  name: string;
+  subtitle?: string;
+  defaults?: Record<string, any>;
+  material_id?: string;
+  printer_id?: string;
+}
+
+export interface ProjectFamilyInfo {
+  id: ProjectFamilyId;
+  name: string;
+  subtitle: string;
+  icon?: string;
+  presets: ProjectPresetInfo[];
+}
+
+export interface ProjectGenerateRequest {
+  preset_id: string;
+  material_id: string;
+  printer_id: string;
+  params: Record<string, any>;
+}
+
+export interface ProjectGenerateResponse {
+  family_id: string;
+  preset_id: string;
+  design_hash: string;
+  name: string;
+  metrics: Record<string, any>;
+  bom: MasterBomItem[];
+  total_bom_cost_usd: number;
+  dfm_audit: DFMAuditReport;
+  explode_vectors: Record<string, number[]>;
+  files: Record<string, string>;
 }

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -722,3 +722,41 @@ class MechatronicsResponse(BaseModel):
 
 ModularArmRequest.model_rebuild()
 ModularArmResponse.model_rebuild()
+
+
+# v9.0: Auditoría DFM Pre-Impresión (Goldfish) y Familias Multi-Proyecto
+DFMStatusType = Literal["pass", "warn", "fail"]
+
+
+class DFMCheckItem(BaseModel):
+    id: str
+    label: str
+    status: DFMStatusType
+    detail: str
+
+
+class DFMAuditReport(BaseModel):
+    status: DFMStatusType
+    summary: str
+    checks: list[DFMCheckItem] = Field(default_factory=list)
+
+
+class ProjectGenerateRequest(BaseModel):
+    preset_id: str
+    material_id: str = "petg_cf"
+    printer_id: str = "bambu_x1c"
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProjectGenerateResponse(BaseModel):
+    family_id: str
+    preset_id: str
+    design_hash: str
+    name: str
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    bom: list[MasterBomItem] = Field(default_factory=list)
+    total_bom_cost_usd: float
+    dfm_audit: DFMAuditReport
+    explode_vectors: dict[str, list[float]] = Field(default_factory=dict)
+    files: dict[str, str] = Field(default_factory=dict)
+    notes: list[str] = Field(default_factory=list)

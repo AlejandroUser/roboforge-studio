@@ -200,6 +200,14 @@ def _build_base_pedestal(
             base = base - (Location((0.0, 0.0, base_height_mm / 2.0)) * Cylinder(radius=1.75, height=base_height_mm + 4.0))
         except Exception:
             pass
+        # Real Ø22.2 mm × 7.2 mm 608 bearing counterbore seat on top of column
+        try:
+            bearing_seat = Location((0.0, 0.0, base_height_mm - 3.6)) * Cylinder(radius=11.1, height=7.4)
+            cand = base - bearing_seat
+            if cand.is_valid and cand.volume > 0:
+                base = cand
+        except Exception:
+            pass
         return base
 
     flange_h = min(12.0, base_height_mm * 0.16)
@@ -689,7 +697,7 @@ def export_bom_csv(bom: list[BOMItem], output_path: Path) -> Path:
 
 def compute_modular_arm_hash(req: ModularArmRequest) -> str:
     """Compute a deterministic 16-char SHA-256 hex digest for a ModularArmRequest."""
-    canonical = "modarm_v81b:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
+    canonical = "modarm_v90:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
@@ -1051,12 +1059,13 @@ def build_modular_arm_assembly(
         clevis_el_w = min(52.0, max(38.0, upper_t + forearm_t + 12.0)) if is_compact_msla else max(44.0, upper_t + forearm_t + 16.0)
         clevis_d = 38.0 if is_compact_msla else 44.0
         clevis_h = 40.0 if is_compact_msla else 46.0
+        clevis_bolt_d = 3.25 if is_compact_msla else 4.3
         clevis_shoulder_placed = Location((0.0, 0.0, float(req.base_height_mm))) * build_dual_servo_clevis(
-            width_mm=clevis_sh_w, depth_mm=clevis_d, height_mm=clevis_h
+            width_mm=clevis_sh_w, depth_mm=clevis_d, height_mm=clevis_h, bolt_d_mm=clevis_bolt_d
         )
         clevis_elbow_placed = Location((p1[0], y_forearm * 0.45, p1[2])) * (
             Location((0.0, 0.0, 0.0), (0.0, -a1_deg, 0.0))
-            * build_dual_servo_clevis(width_mm=clevis_el_w, depth_mm=clevis_d - 2.0, height_mm=clevis_h - 2.0)
+            * build_dual_servo_clevis(width_mm=clevis_el_w, depth_mm=clevis_d - 2.0, height_mm=clevis_h - 2.0, bolt_d_mm=clevis_bolt_d)
         )
 
     # Real Ball Bearings (or CRB RU42 / Tapered 30205 on heavy/industrial arms)
@@ -1176,7 +1185,8 @@ def build_modular_arm_assembly(
         replace_sh_gear = True
         replace_el_gear = True
 
-    # v6.0: Four-Bar Parallelogram Linkage Rod (Dobot Magician / uArm Swift Pro)
+    # v6.0: Four-Bar Parallelogram Linkage Rod (Dobot Magician / uArm Swift Pro / Mars-Mini)
+    parallelogram_rod_placed: Part | None = None
     if getattr(req, "four_bar_parallelogram", False):
         rod_raw = build_four_bar_parallelogram_rod(l1)
         # Parallel to upper_arm_link, offset +24 mm perpendicular to arm axis in XZ and +Y side
@@ -1186,6 +1196,7 @@ def build_modular_arm_assembly(
             p0[2] + 22.0 * math.cos(a1),
         )
         rod_placed = _place_link_in_xz(rod_raw, p_rod_origin, a1_deg)
+        parallelogram_rod_placed = rod_raw
         extra_v5_nodes.append(
             (
                 "parallelogram_rod",
@@ -1501,6 +1512,8 @@ def build_modular_arm_assembly(
     }
     if wrist_3dof_placed is None:
         printable_parts["wrist_tube"] = wrist_tube_placed
+    if parallelogram_rod_placed is not None:
+        printable_parts["parallelogram_rod"] = parallelogram_rod_placed
     if not is_direct_servo_mode:
         printable_parts["shoulder_mount"] = mount_raw
         if not replace_sh_gear:

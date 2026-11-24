@@ -257,7 +257,9 @@ const Pose SECUENCIA[] = {{
 {poses_block}
 }};
 const int NUM_POSES = sizeof(SECUENCIA) / sizeof(SECUENCIA[0]);
-Pose poseActual = SECUENCIA[0];
+// Pose inicial alineada 1:1 con los sliders HTML (90/120/60/80°) para evitar saltos al encender
+const Pose POSE_INICIAL = {{90, 120, 60, 80}};
+Pose poseActual = POSE_INICIAL;
 
 uint16_t degToPulse(int ang) {{
   int c = constrain(ang, 0, 180);
@@ -334,6 +336,7 @@ void setup() {{
   pwm.begin();
   pwm.setOscillatorFrequency(27000000);
   pwm.setPWMFreq(50);
+  poseActual = POSE_INICIAL;
   aplicarPose(poseActual);
 
   WiFi.softAP(AP_SSID, AP_PASS);

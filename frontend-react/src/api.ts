@@ -16,6 +16,9 @@ import type {
   MechatronicsCatalog,
   ModularArmRequest,
   ModularArmResponse,
+  ProjectFamilyInfo,
+  ProjectGenerateRequest,
+  ProjectGenerateResponse,
 } from "./types";
 
 async function reqJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -146,6 +149,16 @@ export const api = {
 
   sendHardwarePose: (body: HardwarePoseRequest) =>
     reqJson<HardwarePoseResponse>("/api/hardware/send-pose", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // v9.0: Multi-Proyecto (Drones FPV, Rovers 4WD, Gimbals 2-3 Ejes)
+  getProjectFamilies: () =>
+    reqJson<{ families: ProjectFamilyInfo[] }>("/api/projects/families"),
+
+  generateProject: (familyId: string, body: ProjectGenerateRequest) =>
+    reqJson<ProjectGenerateResponse>(`/api/projects/${familyId}/generate`, {
       method: "POST",
       body: JSON.stringify(body),
     }),

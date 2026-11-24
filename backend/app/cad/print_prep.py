@@ -55,7 +55,8 @@ def build_calibration_fit_test_coupon(req: Any) -> Part:
         or getattr(req, "material_id", "") == "resin_abs_like"
         or bus == "esp32_pca9685_5v"
     )
-    big_bore_d = 20.2 if bus in ("arduino_pca9685_i2c", "esp32_pca9685_5v") else 22.2  # 25T horn vs 608 bearing
+    # Always keep real Ø22.2 mm 608 bearing bore (alongside M3 hex nut pocket in MSLA mode)
+    big_bore_d = 22.2
 
     # Cutters: M3 step holes (3.1, 3.2, 3.3), M4 step holes (4.1, 4.2, 4.3), shafts (5.15, 6.50), main pocket
     holes = [
@@ -237,7 +238,8 @@ def generate_print_readiness_pack(
     # 1. Orient all printable parts flat on Z=0 and measure extents
     oriented_items: list[tuple[str, trimesh.Trimesh, tuple[float, float, float], float]] = []
     fits_bed = True
-    xy_margin = 4.0 if is_msla else 8.0
+    margin = 5.0
+    xy_margin = margin
     for part_name, solid in printable_parts.items():
         try:
             mesh, size = _orient_part_flat_on_z0(solid)
@@ -261,9 +263,8 @@ def generate_print_readiness_pack(
     # Sort largest footprint first for clean 2D shelf bin-packing
     oriented_items.sort(key=lambda item: item[2][0] * item[2][1], reverse=True)
 
-    # 2. 2D Shelf Bin-Packing into Build Plates (8 mm gap between parts, 6 mm bed margin)
+    # 2. 2D Shelf Bin-Packing into Build Plates (8 mm gap between parts, unified 5 mm bed margin)
     gap = 8.0
-    margin = 6.0
     usable_x = max(80.0, bed_x - 2.0 * margin)
     usable_y = max(80.0, bed_y - 2.0 * margin)
 

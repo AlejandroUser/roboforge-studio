@@ -871,17 +871,41 @@ def evaluate_mechatronics(
         )
         _add_bom(
             "fasteners_hardware",
-            "ISO4762-M3x12",
-            "Tornillo Allen ISO 4762 M3×12",
-            "Acero 12.9 · uniones con tuerca cautiva (cero autorroscantes en resina)",
-            24,
+            "ISO4762-M2x8",
+            "Tornillo Allen ISO 4762 M2×8",
+            "Acero 12.9 · fijación micro-servo MG90S en cavidad de pinza",
+            4,
+            0.04,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "ISO4762-M3x10",
+            "Tornillo Allen ISO 4762 M3×10",
+            "Acero 12.9 · fijación servos MG996R, brida base y horns 25T",
+            12,
+            0.04,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "ISO4762-M3x16",
+            "Tornillo Allen ISO 4762 M3×16",
+            "Acero 12.9 · pivotes de pinza y articulaciones de eslabones",
+            8,
             0.05,
+        )
+        _add_bom(
+            "fasteners_hardware",
+            "ISO4762-M3x25",
+            "Tornillo Allen ISO 4762 M3×25",
+            "Acero 12.9 · ejes pasantes de paralelogramo 4-barras",
+            4,
+            0.06,
         )
         _add_bom(
             "fasteners_hardware",
             "ISO4032-M3-NUT",
             "Tuercas Cautivas Hexagonales ISO 4032 M3",
-            "Bolsillos hexagonales 5.65 mm en Resina ABS-Like",
+            "Bolsillos hexagonales 5.65 mm en Resina ABS-Like (cero autorroscantes)",
             24,
             0.04,
         )
@@ -1495,12 +1519,95 @@ def _generate_pca9685_schematic_svg(mechatronics: MechatronicsResponse) -> str:
     return "\n".join(lines)
 
 
+def _generate_esp32_pca9685_schematic_svg(mechatronics: MechatronicsResponse) -> str:
+    """Dedicated dark-mode SVG schematic for ESP32 DevKit + PCA9685 (0x40) + 5V 5A (Mars-Mini)."""
+    pb = mechatronics.power_budget
+    channels = [
+        ("CH0", "J0 Base Yaw", "MG996R · 5V PWM 50Hz · JR 3-Pin"),
+        ("CH1", "J1 Hombro Pitch", "MG996R · 5V PWM 50Hz · JR 3-Pin"),
+        ("CH2", "J2 Codo 4-Barras", "MG996R · 5V PWM 50Hz · JR 3-Pin"),
+        ("CH3", "Pinza / Gripper 2-Dedos", "MG90S · 5V PWM 50Hz · JR 3-Pin"),
+    ]
+    svg_w, svg_h = 980, 440
+    lines: list[str] = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {svg_w} {svg_h}" width="{svg_w}" height="{svg_h}">',
+        "<defs>",
+        '  <pattern id="rf-grid-esp32" width="24" height="24" patternUnits="userSpaceOnUse">',
+        '    <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#1e293b" stroke-width="0.6"/>',
+        "  </pattern>",
+        "</defs>",
+        f'<rect width="{svg_w}" height="{svg_h}" fill="#0b1120"/>',
+        f'<rect width="{svg_w}" height="{svg_h}" fill="url(#rf-grid-esp32)"/>',
+        '<text x="24" y="32" fill="#f8fafc" font-family="ui-monospace,Consolas,monospace" font-size="16" font-weight="700">'
+        'ROBOFORGE v9.0 — ESQUEMÁTICO MARS-MINI (ESP32 WI-FI + PCA9685 0x40 · 5V 5A)</text>',
+        '<text x="24" y="52" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="11">'
+        f'{escape(pb.recommended_psu)} · {pb.system_voltage_v:.1f}V · Pico {pb.peak_current_a:.1f}A ({pb.peak_power_w:.0f}W) · Arnés {pb.total_harness_length_m:.2f} m</text>',
+        # PSU 5V 5A block
+        '<rect x="24" y="96" width="194" height="104" rx="8" fill="#111827" stroke="#f59e0b" stroke-width="1.8"/>',
+        '<text x="36" y="120" fill="#fbbf24" font-family="ui-monospace,Consolas,monospace" font-size="12" font-weight="700">FUENTE 5V 5A (25W)</text>',
+        '<text x="36" y="140" fill="#e2e8f0" font-family="ui-monospace,Consolas,monospace" font-size="10">Jack DC 5.5×2.1 mm</text>',
+        '<text x="36" y="158" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">Vout: 5.0 V DC (Servos)</text>',
+        '<text x="36" y="176" fill="#fca5a5" font-family="ui-monospace,Consolas,monospace" font-size="9.5">GND común con ESP32</text>',
+        # ESP32 DevKit block
+        '<rect x="24" y="236" width="194" height="122" rx="8" fill="#111827" stroke="#38bdf8" stroke-width="1.8"/>',
+        '<text x="36" y="260" fill="#38bdf8" font-family="ui-monospace,Consolas,monospace" font-size="12" font-weight="700">ESP32 DEVKIT V1</text>',
+        '<text x="36" y="280" fill="#e2e8f0" font-family="ui-monospace,Consolas,monospace" font-size="10">Wi-Fi AP 192.168.4.1</text>',
+        '<text x="36" y="298" fill="#22c55e" font-family="ui-monospace,Consolas,monospace" font-size="10">GPIO21 (SDA) / GPIO22 (SCL)</text>',
+        '<text x="36" y="316" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">3.3V -> VCC · GND -> GND</text>',
+        '<text x="36" y="334" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">Web Server Sliders 90/120/60/80°</text>',
+        # Wires PSU -> PCA9685 and ESP32 -> PCA9685
+        '<line x1="218" y1="138" x2="314" y2="138" stroke="#ef4444" stroke-width="2.8"/>',
+        '<line x1="218" y1="160" x2="314" y2="160" stroke="#64748b" stroke-width="2.4" stroke-dasharray="4 2"/>',
+        '<text x="226" y="130" fill="#fca5a5" font-family="ui-monospace,Consolas,monospace" font-size="9">5V 5A (18 AWG)</text>',
+        '<line x1="218" y1="286" x2="314" y2="236" stroke="#22c55e" stroke-width="2.0"/>',
+        '<line x1="218" y1="304" x2="314" y2="254" stroke="#38bdf8" stroke-width="2.0"/>',
+        '<line x1="218" y1="322" x2="314" y2="272" stroke="#64748b" stroke-width="1.8" stroke-dasharray="4 2"/>',
+        '<text x="222" y="246" fill="#86efac" font-family="ui-monospace,Consolas,monospace" font-size="9">I2C SDA/SCL/3.3V</text>',
+        # PCA9685 0x40 block
+        '<rect x="314" y="106" width="230" height="214" rx="8" fill="#111827" stroke="#a855f7" stroke-width="2.0"/>',
+        '<text x="328" y="134" fill="#c084fc" font-family="ui-monospace,Consolas,monospace" font-size="12.5" font-weight="700">PCA9685 16ch I2C (0x40)</text>',
+        '<text x="328" y="154" fill="#e2e8f0" font-family="ui-monospace,Consolas,monospace" font-size="10">Driver PWM 12-bit · 50 Hz</text>',
+        '<text x="328" y="174" fill="#fca5a5" font-family="ui-monospace,Consolas,monospace" font-size="10">Bornera Verde V+: 5.0V 5A</text>',
+        '<text x="328" y="194" fill="#86efac" font-family="ui-monospace,Consolas,monospace" font-size="10">I2C: GPIO21/22 · VCC 3.3V</text>',
+        '<text x="328" y="220" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">Canales Activos: CH0..CH3</text>',
+        '<text x="328" y="240" fill="#fbbf24" font-family="ui-monospace,Consolas,monospace" font-size="10">CH0–CH2: 3× MG996R (Base/H/C)</text>',
+        '<text x="328" y="260" fill="#38bdf8" font-family="ui-monospace,Consolas,monospace" font-size="10">CH3: 1× MG90S (Pinza)</text>',
+        '<text x="328" y="294" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="9.5">Sin XT60 ni E-Stop industrial</text>',
+        # Bus trunk to CH0..CH3
+        '<line x1="544" y1="214" x2="612" y2="214" stroke="#ef4444" stroke-width="2.4"/>',
+        '<line x1="612" y1="110" x2="612" y2="338" stroke="#ef4444" stroke-width="2.0"/>',
+        '<line x1="622" y1="118" x2="622" y2="346" stroke="#f59e0b" stroke-width="1.8"/>',
+    ]
+    for idx, (ch, label, sub) in enumerate(channels):
+        cy = 110 + idx * 76
+        stroke = "#38bdf8" if idx == 3 else "#22c55e"
+        lines.extend(
+            [
+                f'<line x1="612" y1="{cy}" x2="674" y2="{cy}" stroke="#ef4444" stroke-width="1.8"/>',
+                f'<line x1="622" y1="{cy + 8}" x2="674" y2="{cy + 8}" stroke="#f59e0b" stroke-width="1.6"/>',
+                f'<rect x="674" y="{cy - 20}" width="282" height="48" rx="6" fill="#0f172a" stroke="{stroke}" stroke-width="1.6"/>',
+                f'<text x="686" y="{cy - 2}" fill="#f8fafc" font-family="ui-monospace,Consolas,monospace" font-size="10.5" font-weight="700">{ch} · {escape(label)}</text>',
+                f'<text x="686" y="{cy + 16}" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="9.5">{escape(sub)}</text>',
+            ]
+        )
+    lines.extend(
+        [
+            '<text x="24" y="420" fill="#cbd5e1" font-family="ui-monospace,Consolas,monospace" font-size="10">'
+            'Rojo: V+ 5V 5A (18 AWG) · Ámbar: PWM 50Hz (22 AWG) · Verde/Cian: Bus I2C ESP32 (GPIO21/22)</text>',
+            "</svg>",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def generate_circuit_schematic_svg(mechatronics: MechatronicsResponse, dof: int) -> str:
     """
     Generate a clean dark-mode WireViz-style electrical schematic SVG (100% offline).
-    Shows PSU -> E-Stop/Fuse -> MCU -> CAN-FD Bus, Step/Dir, or Arduino + PCA9685 I2C.
+    Shows PSU -> E-Stop/Fuse -> MCU -> CAN-FD Bus, Step/Dir, Arduino + PCA9685, or ESP32 + PCA9685 (5V 5A).
     """
     pb = mechatronics.power_budget
+    if pb.bus_architecture == "esp32_pca9685_5v":
+        return _generate_esp32_pca9685_schematic_svg(mechatronics)
     if pb.bus_architecture == "arduino_pca9685_i2c":
         return _generate_pca9685_schematic_svg(mechatronics)
     is_can = pb.bus_architecture == "can_fd_bus"
@@ -1650,6 +1757,64 @@ def generate_circuit_schematic_svg(mechatronics: MechatronicsResponse, dof: int)
 def generate_wireviz_yaml(mechatronics: MechatronicsResponse, dof: int) -> str:
     """Export wiring harness definition in standard WireViz YAML format."""
     pb = mechatronics.power_budget
+    if pb.bus_architecture == "esp32_pca9685_5v":
+        out_esp = [
+            "# RoboForge Studio Pro v9.0 — Mars-Mini (ESP32 DevKit + PCA9685 0x40 + 5V 5A)",
+            "connectors:",
+            "  X1_PSU_5V5A:",
+            f"    type: {pb.recommended_psu}",
+            "    subtype: DC-Jack-5.5x2.1mm",
+            "    pins: ['+5.0V', 'GND']",
+            "  X2_ESP32_DEVKIT:",
+            "    type: ESP32 DevKit V1 (Wi-Fi AP + Web Server)",
+            "    pins: ['3V3', 'GND', 'GPIO21_SDA', 'GPIO22_SCL']",
+            "  X3_PCA9685_0x40:",
+            "    type: PCA9685 16ch I2C PWM Driver (0x40)",
+            "    pins: ['V+', 'GND', 'VCC_3V3', 'SDA', 'SCL', 'PWM']",
+        ]
+        esp_channels = [
+            ("CH0_J0_Base_Yaw", "Servo MG996R 10kg-cm (Metal Gear)"),
+            ("CH1_J1_Shoulder", "Servo MG996R 10kg-cm (Metal Gear)"),
+            ("CH2_J2_Elbow_4Bar", "Servo MG996R 10kg-cm (Metal Gear)"),
+            ("CH3_Gripper", "Micro-Servo MG90S 2.2kg-cm (Metal Gear)"),
+        ]
+        for ch_id, servo_type in esp_channels:
+            out_esp.extend(
+                [
+                    f"  S_{ch_id}:",
+                    f"    type: {servo_type}",
+                    "    subtype: JR-3Pin",
+                    "    pins: ['PWM', 'V+', 'GND']",
+                ]
+            )
+        out_esp.extend(
+            [
+                "",
+                "cables:",
+                "  W1_PSU_5V:",
+                "    gauge: 18 AWG",
+                "    length: 0.35 m",
+                "    colors: [RD, BK]",
+                "  W2_I2C_DUPONT:",
+                "    gauge: 24 AWG",
+                "    length: 0.15 m",
+                "    colors: [RD, BK, GN, BU]",
+                "  W3_SERVO_3PIN:",
+                "    gauge: 22 AWG",
+                f"    length: {pb.total_harness_length_m:.2f} m",
+                "    colors: [OG, RD, BN]",
+                "",
+                "connections:",
+                "  - [X1_PSU_5V5A: [1, 2], W1_PSU_5V: [1, 2], X3_PCA9685_0x40: [1, 2]]",
+                "  - [X2_ESP32_DEVKIT: [1, 2, 3, 4], W2_I2C_DUPONT: [1, 2, 3, 4], X3_PCA9685_0x40: [3, 2, 4, 5]]",
+            ]
+        )
+        for ch_id, _ in esp_channels:
+            out_esp.append(
+                f"  - [X3_PCA9685_0x40: [6, 1, 2], W3_SERVO_3PIN: [1, 2, 3], S_{ch_id}: [1, 2, 3]]"
+            )
+        return "\n".join(out_esp) + "\n"
+
     if pb.bus_architecture == "arduino_pca9685_i2c":
         out_pca = [
             "# RoboForge Studio Pro v4.1 — Brazo Arduino 5.0 (PCA9685 I2C · 8 Servos)",

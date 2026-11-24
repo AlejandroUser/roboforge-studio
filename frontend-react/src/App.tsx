@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "./api";
 import { ArmDatabaseModal } from "./components/ArmDatabaseModal";
 import { AssemblyTree } from "./components/AssemblyTree";
+import { ProjectsInspector, ProjectsSidebar } from "./components/families/ProjectsWorkspace";
 import { MechatronicsPanel } from "./components/MechatronicsPanel";
 import { ModularArmPanel } from "./components/ModularArmPanel";
 import { ParetoChart } from "./components/ParetoChart";
@@ -22,6 +23,7 @@ import type {
   ModularArmRequest,
   ModularArmResponse,
   ModularArmSlots,
+  ProjectGenerateResponse,
   VariantResult,
 } from "./types";
 
@@ -342,6 +344,10 @@ export default function App() {
   const [armDatabase, setArmDatabase] = useState<ArmDatabaseResponse | null>(null);
   const [showArmDbModal, setShowArmDbModal] = useState(false);
 
+  // v9.0 Multi-Project Workspace state (FPV Drone, Rover 4WD, Camera Gimbal)
+  const [projectRes, setProjectRes] = useState<ProjectGenerateResponse | null>(null);
+  const [projectMaterialId, setProjectMaterialId] = useState<string>("pa12_cf");
+
   // v4.1/v4.2 Pose Sequencer (5-axis 60 FPS GPU FK playback + .INO export)
   const [recordedPoses, setRecordedPoses] = useState<
     Array<{
@@ -457,6 +463,7 @@ export default function App() {
   }, [state]);
 
   const runGeneration = useCallback(async () => {
+    if (state.family === "projects") return;
     setBusyLabel("Sintetizando CAD B-Rep & Física...");
     setViewingFea(false);
     setViewingGyroid(false);
@@ -508,7 +515,7 @@ export default function App() {
   }, [structuralKey]);
 
   const runFea = async (overrideDir?: "y_inplane" | "z_outofplane", overrideDef?: number) => {
-    if (!genRes || !activeVariant || state.family === "arm") return;
+    if (!genRes || !activeVariant || state.family === "arm" || state.family === "projects") return;
     const dir = overrideDir ?? loadDir;
     const def = overrideDef ?? deformScale;
     setBusyLabel("Resolviendo FEA 3D Ortotrópico + Modal + Pandeo...");
@@ -1266,13 +1273,15 @@ export default function App() {
   }, [ikTarget, state.arm, histIdx, showToast]);
 
   const activeGlbUrl =
-    state.family === "arm"
-      ? modularArmRes?.files?.glb || armRes?.glb_url || null
-      : viewingGyroid && gyroidRes
-        ? gyroidRes.glb_url
-        : viewingFea && feaRes
-          ? feaRes.fea_glb_url
-          : activeVariant?.glb_url || null;
+    state.family === "projects"
+      ? projectRes?.files?.glb || null
+      : state.family === "arm"
+        ? modularArmRes?.files?.glb || armRes?.glb_url || null
+        : viewingGyroid && gyroidRes
+          ? gyroidRes.glb_url
+          : viewingFea && feaRes
+            ? feaRes.fea_glb_url
+            : activeVariant?.glb_url || null;
 
   const secondaryGlbUrl = useMemo(() => {
     if (!splitCompare || !genRes || genRes.variants.length < 2 || !activeVariant) return null;
@@ -1312,7 +1321,7 @@ export default function App() {
         <div className="header-left">
           <div className="brand">
             <span>RoboForge</span>
-            <span className="brand-badge">PRO v8.0 · R3F</span>
+            <span className="brand-badge">PRO v9.0 · R3F</span>
           </div>
           <nav className="family-tabs">
             {(
@@ -1321,6 +1330,7 @@ export default function App() {
                 ["mounts", "Monturas Mecatrónicas"],
                 ["gears", "Transmisión"],
                 ["arm", "Brazo Completo"],
+                ["projects", "Proyectos 3D"],
               ] as Array<[FamilyId, string]>
             ).map(([fid, label]) => (
               <button
@@ -2200,7 +2210,23 @@ export default function App() {
             </>
           )}
 
+          {state.family === "projects" && (
+            <ProjectsSidebar
+              materials={materials}
+              printers={printers}
+              busy={Boolean(busyLabel)}
+              onResult={(res, mid) => {
+                setProjectRes(res);
+                setProjectMaterialId(mid);
+                setExplodeFactor(0);
+              }}
+              onBusyChange={setBusyLabel}
+              onToast={showToast}
+            />
+          )}
+
           {/* SHARED MATERIAL & PRINTER */}
+          {state.family !== "projects" && (
           <div className="section-card">
             <div className="section-title">
               <span>Material e Impresora 3D</span>
@@ -2267,6 +2293,7 @@ export default function App() {
               </select>
             </div>
           </div>
+          )}
         </aside>
 
         {/* CENTER R3F 3D VIEWPORT */}
@@ -2368,13 +2395,15 @@ export default function App() {
             meshOpacity={meshOpacity}
             family={state.family}
             materialId={
-              state.family === "arm"
-                ? state.arm.material_id
-                : state.family === "mounts"
-                  ? state.mount.material_id
-                  : state.family === "gears"
-                    ? state.gear.material_id
-                    : state.link.material_id
+              state.family === "projects"
+                ? projectMaterialId
+                : state.family === "arm"
+                  ? state.arm.material_id
+                  : state.family === "mounts"
+                    ? state.mount.material_id
+                    : state.family === "gears"
+                      ? state.gear.material_id
+                      : state.link.material_id
             }
             loadDirection={loadDir}
             armAngles={{
@@ -2390,7 +2419,11 @@ export default function App() {
             armBaseHeightMm={state.arm.base_height_mm}
             selectedArmNode={selectedArmNode}
             onSelectArmNode={setSelectedArmNode}
-            explodeVectors={modularArmRes?.explode_vectors || null}
+            explodeVectors={
+              state.family === "projects"
+                ? projectRes?.explode_vectors || null
+                : modularArmRes?.explode_vectors || null
+            }
             explodeFactor={explodeFactor}
             onExplodeFactorChange={setExplodeFactor}
             hoveredArmPart={hoveredArmPart}
@@ -2503,7 +2536,7 @@ export default function App() {
             </div>
           )}
 
-          {genRes && state.family !== "arm" && (
+          {genRes && state.family !== "arm" && state.family !== "projects" && (
             <>
               <ParetoChart
                 variants={genRes.variants}
@@ -2649,6 +2682,8 @@ export default function App() {
               ))}
             </>
           )}
+
+          {state.family === "projects" && <ProjectsInspector result={projectRes} />}
 
           {state.family === "arm" && (
             <>
