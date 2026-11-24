@@ -1,11 +1,11 @@
 {
-  "schema_version": "4.1.0",
-  "roboforge_version": "7.1.0",
+  "schema_version": "5.0.0",
+  "roboforge_version": "9.0.0",
   "updated_at": "2026-11-23",
-  "description": "Base de datos estructurada de benchmarking de 21 sistemas manipuladores reales (8 Oleada 1 + 6 Oleada 2 + 6 Oleada 3 + Demostrador Nativo MSLA RoboForge Mars-Mini) en RoboForge Studio Pro v7.1.",
-  "total_arms": 21,
+  "description": "Base de datos estructurada de benchmarking de 22 sistemas manipuladores reales (Oleadas 1–3 + Mars-Mini MSLA + Benchmark 48-piezas Franka Emika Panda 7-DOF) en RoboForge Studio Pro v9.0.",
+  "total_arms": 22,
   "previous_average_replicability_v42_pct": 63.5,
-  "average_replicability_pct": 93.0,
+  "average_replicability_pct": 92.7,
   "arms": [
     {
       "id": "fabri_creator_5_0",
@@ -1133,6 +1133,69 @@
         "Guía completa de fabricación y cableado en docs/MARS_MINI_BUILD_GUIDE.md"
       ],
       "missing_capabilities": []
+    },
+    {
+      "id": "franka_emika_panda",
+      "name": "Franka Emika Panda 7-DOF (Cobot de Investigación)",
+      "manufacturer_or_project": "Franka Robotics (formerly Franka Emika)",
+      "category": "Cobot 7-DOF Investigación / Sensado de Par",
+      "kinematics_type": "7dof_redundant",
+      "dof": 7,
+      "reach_mm": 855.0,
+      "payload_kg": 3.0,
+      "repeatability_mm": 0.1,
+      "mass_kg": 18.0,
+      "primary_materials": [
+        "Aluminio 7075-T6 / Fundición CNC",
+        "Polímero técnico (carcasas)",
+        "Acero (armónicos)"
+      ],
+      "actuators_summary": "7× Actuadores de eje hueco brushless con reductores armónicos (100:1), 7× sensores de par integrados (resolución 0.05 N·m), 7× frenos electromagnéticos + pinza paralela Franka Hand.",
+      "transmission_summary": "Reductores armónicos strain-wave de juego cero con eje hueco para cableado interno y offsets cinemáticos asimétricos característicos (a4=+82.5, a5=-82.5, a7=+88 mm).",
+      "electronics_summary": "Bus de tiempo real a 1 kHz (FCI / EtherCAT / CAN-FD 48V) + Controlador externo + interfaz ROS 2 / MoveIt / MuJoCo.",
+      "estimated_cost_usd": 30000,
+      "roboforge_preset_id": "openarm_7dof",
+      "wave": 5,
+      "difficulty": "Muy Alta (45+ Piezas · Offsets DH · 7 Sensores de Par)",
+      "roboforge_replicability_pct": 86,
+      "benchmark_v90": {
+        "roboforge_v90": {
+          "http_status": 200,
+          "elapsed_s": 8.9,
+          "compatible": true,
+          "reach_mm": 855.0,
+          "mass_kg": 5.93,
+          "torque_j1_nm": 66.15,
+          "min_sf": 4.35,
+          "bom_usd": 2579.89,
+          "peak_power_w": 1741.0,
+          "step_solids": 38,
+          "step_brep_valid": true,
+          "stl_parts": 10,
+          "stl_all_watertight": true,
+          "urdf_joints": 7,
+          "mujoco_joints": 7
+        },
+        "external_brep_script": {
+          "named_parts": 48,
+          "elapsed_s": 0.69,
+          "step_brep_valid": true,
+          "volume_cm3": 7899.8,
+          "key_parts_watertight": "10/10"
+        },
+        "external_openscad_lines": 148
+      },
+      "supported_today": [
+        "Cinemática redundante 7-DOF exacta (855 mm, 3.0 kg, FS 4.35 en al_7075_t6, compatible: true)",
+        "7× reductores armónicos (harmonic_50) + bus CAN-FD 48V + muñeca esférica 3-DOF + placas CNC .DXF R12",
+        "Exportación .STEP 100% válida (38 sólidos B-Rep, 0 inválidos), 10/10 STLs watertight, 7 joints URDF y 7 joints MuJoCo en 8.90 s",
+        "Benchmark comparativo completo con OpenSCAD y OpenCASCADE B-Rep (48 sólidos) en docs/ARM_SCOUT_FRANKA_7DOF_BENCHMARK.md"
+      ],
+      "missing_capabilities": [
+        "Offsets cinemáticos laterales DH asimétricos por articulación (a4=+82.5, a5=-82.5, a7=+88 mm) en arm_assembly.py",
+        "Sub-ensambles dedicados de 7 anillos sensores de par y 7 frenos electromagnéticos de seguridad en CAD y BOM",
+        "División automática con cola de milano (auto-dovetail split) para eslabones > 300 mm que exceden cama Voron 2.4"
+      ]
     }
   ],
   "capability_gaps_summary": [
