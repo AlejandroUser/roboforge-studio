@@ -131,6 +131,10 @@ const DEFAULT_ARM = {
   environment_mode: "earth" as EnvironmentMode,
   gravity_m_s2: 9.81,
   counterbalance_j2: false,
+  dh_lateral_offsets_mm: [] as number[],
+  joint_torque_sensors: false,
+  electromagnetic_brakes: false,
+  auto_dovetail_split: false,
   base_yaw_deg: 0,
   shoulder_joint_deg: 35,
   elbow_joint_deg: -55,
@@ -678,6 +682,10 @@ export default function App() {
       environment_mode: state.arm.environment_mode,
       gravity_m_s2: state.arm.environment_mode === "space_zero_g" ? 0.0 : state.arm.gravity_m_s2,
       counterbalance_j2: state.arm.counterbalance_j2,
+      dh_lateral_offsets_mm: state.arm.dh_lateral_offsets_mm,
+      joint_torque_sensors: state.arm.joint_torque_sensors,
+      electromagnetic_brakes: state.arm.electromagnetic_brakes,
+      auto_dovetail_split: state.arm.auto_dovetail_split,
     }),
     [state.arm, armSlots, mechatronicsConfig]
   );
@@ -718,6 +726,7 @@ export default function App() {
         Boolean(presetDefaults.vacuum_eoat);
       const isCounterbalance = presetId === "kuka_kr210" || Boolean(presetDefaults.counterbalance_j2);
       const isMarsMini = presetId === "mars_mini";
+      const isFrankaPanda = presetId === "franka_panda";
 
       pushState((s) => ({
         ...s,
@@ -736,12 +745,32 @@ export default function App() {
                 printer_id: "elegoo_mars_5_ultra",
               }
             : {}),
+          ...(isFrankaPanda
+            ? {
+                dof: 7,
+                payload_kg: 3.0,
+                base_height_mm: 140,
+                upper_arm_mm: 316,
+                forearm_mm: 384,
+                wrist_mm: 107,
+                material_id: "al_7075_t6",
+                printer_id: "voron_24_350",
+              }
+            : {}),
           ...presetDefaults,
           preset: presetId,
           kinematics_type: kinType,
           environment_mode: envMode,
           gravity_m_s2: envMode === "space_zero_g" ? 0.0 : 9.81,
           counterbalance_j2: isCounterbalance,
+          dh_lateral_offsets_mm: isFrankaPanda
+            ? [0, 0, 0, 82.5, -82.5, 0, 88]
+            : Array.isArray(presetDefaults.dh_lateral_offsets_mm)
+              ? presetDefaults.dh_lateral_offsets_mm
+              : [],
+          joint_torque_sensors: isFrankaPanda || Boolean(presetDefaults.joint_torque_sensors),
+          electromagnetic_brakes: isFrankaPanda || Boolean(presetDefaults.electromagnetic_brakes),
+          auto_dovetail_split: isFrankaPanda || Boolean(presetDefaults.auto_dovetail_split),
           cnc_plate_mode: isCnc,
           wrist_3dof: !isMarsMini && (kinType === "articulated" || kinType === "bimanual_dual_arm"),
           remote_base_motors: isCapstan,
@@ -751,7 +780,18 @@ export default function App() {
         },
       }));
 
-      if (presetId === "mars_mini") {
+      if (presetId === "franka_panda") {
+        setMechatronicsConfig({
+          bus_architecture: "can_fd_bus",
+          system_voltage_v: 48,
+          joint_actuators: {
+            J1: { motor_id: "bldc_qdd_8308", reducer_id: "harmonic_50", target_rpm: 28, parallel_count: 1 },
+            J2: { motor_id: "bldc_qdd_8308", reducer_id: "harmonic_50", target_rpm: 28, parallel_count: 1 },
+            J3: { motor_id: "bldc_qdd_5010", reducer_id: "harmonic_50", target_rpm: 35, parallel_count: 1 },
+          },
+        });
+        showToast("Preset Franka Emika Panda 7-DOF (Offsets DH, Par J1–J7, Frenos 24V, ISO 9409 y Auto-Split) cargado.");
+      } else if (presetId === "mars_mini") {
         setMechatronicsConfig({
           bus_architecture: "esp32_pca9685_5v",
           system_voltage_v: 5,
@@ -1000,6 +1040,8 @@ export default function App() {
         festo_bionic_pneumatic: "festo_bellows",
         kuka_kr210_r2700: "kuka_kr210",
         roboforge_mars_mini: "mars_mini",
+        franka_emika_panda: "franka_panda",
+        franka_panda: "franka_panda",
       };
       const presetId = arm.roboforge_preset_id || idMap[arm.id] || "parol6_desktop";
       const presetObj = presets.arms?.[presetId];
@@ -1321,7 +1363,7 @@ export default function App() {
         <div className="header-left">
           <div className="brand">
             <span>RoboForge</span>
-            <span className="brand-badge">PRO v9.0 · R3F</span>
+            <span className="brand-badge">PRO v10.0 · R3F</span>
           </div>
           <nav className="family-tabs">
             {(
@@ -1905,11 +1947,41 @@ export default function App() {
                     }
                   />
                 </label>
+                <label className="check-row">
+                  <span>Sensores de Par (J1–J7)</span>
+                  <input
+                    type="checkbox"
+                    checked={state.arm.joint_torque_sensors}
+                    onChange={(e) =>
+                      pushState((s) => ({ ...s, arm: { ...s.arm, joint_torque_sensors: e.target.checked } }))
+                    }
+                  />
+                </label>
+                <label className="check-row">
+                  <span>Frenos Electromag. 24V</span>
+                  <input
+                    type="checkbox"
+                    checked={state.arm.electromagnetic_brakes}
+                    onChange={(e) =>
+                      pushState((s) => ({ ...s, arm: { ...s.arm, electromagnetic_brakes: e.target.checked } }))
+                    }
+                  />
+                </label>
+                <label className="check-row">
+                  <span>Auto-Split Cola de Milano</span>
+                  <input
+                    type="checkbox"
+                    checked={state.arm.auto_dovetail_split}
+                    onChange={(e) =>
+                      pushState((s) => ({ ...s, arm: { ...s.arm, auto_dovetail_split: e.target.checked } }))
+                    }
+                  />
+                </label>
                 {(
                   [
-                    ["upper_arm_mm", "Brazo Superior (L1)", 90, 350, 5],
-                    ["forearm_mm", "Antebrazo (L2)", 80, 300, 5],
-                    ["wrist_mm", "Muñeca (L3)", 40, 140, 5],
+                    ["upper_arm_mm", "Brazo Superior (L1)", 90, 420, 5],
+                    ["forearm_mm", "Antebrazo (L2)", 80, 420, 5],
+                    ["wrist_mm", "Muñeca (L3)", 40, 160, 5],
                   ] as const
                 ).map(([k, lbl, min, max, step]) => (
                   <div key={k} className="field-row">

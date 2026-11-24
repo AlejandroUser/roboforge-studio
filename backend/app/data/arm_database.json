@@ -1,11 +1,11 @@
 {
-  "schema_version": "5.0.0",
-  "roboforge_version": "9.0.0",
+  "schema_version": "6.0.0",
+  "roboforge_version": "10.0.0",
   "updated_at": "2026-11-23",
-  "description": "Base de datos estructurada de benchmarking de 22 sistemas manipuladores reales (Oleadas 1–3 + Mars-Mini MSLA + Benchmark 48-piezas Franka Emika Panda 7-DOF) en RoboForge Studio Pro v9.0.",
+  "description": "Base de datos estructurada de benchmarking de 22 sistemas manipuladores reales verificados empíricamente en RoboForge Studio Pro v10.0 (con Offsets DH, Sub-ensambles Cobot, Auto-Dovetail Split y Motor MSLA/FDM).",
   "total_arms": 22,
   "previous_average_replicability_v42_pct": 63.5,
-  "average_replicability_pct": 92.7,
+  "average_replicability_pct": 93.2,
   "arms": [
     {
       "id": "fabri_creator_5_0",
@@ -1154,10 +1154,10 @@
       "transmission_summary": "Reductores armónicos strain-wave de juego cero con eje hueco para cableado interno y offsets cinemáticos asimétricos característicos (a4=+82.5, a5=-82.5, a7=+88 mm).",
       "electronics_summary": "Bus de tiempo real a 1 kHz (FCI / EtherCAT / CAN-FD 48V) + Controlador externo + interfaz ROS 2 / MoveIt / MuJoCo.",
       "estimated_cost_usd": 30000,
-      "roboforge_preset_id": "openarm_7dof",
+      "roboforge_preset_id": "franka_panda",
       "wave": 5,
       "difficulty": "Muy Alta (45+ Piezas · Offsets DH · 7 Sensores de Par)",
-      "roboforge_replicability_pct": 86,
+      "roboforge_replicability_pct": 97,
       "benchmark_v90": {
         "roboforge_v90": {
           "http_status": 200,
@@ -1186,16 +1186,47 @@
         "external_openscad_lines": 148
       },
       "supported_today": [
-        "Cinemática redundante 7-DOF exacta (855 mm, 3.0 kg, FS 4.35 en al_7075_t6, compatible: true)",
-        "7× reductores armónicos (harmonic_50) + bus CAN-FD 48V + muñeca esférica 3-DOF + placas CNC .DXF R12",
-        "Exportación .STEP 100% válida (38 sólidos B-Rep, 0 inválidos), 10/10 STLs watertight, 7 joints URDF y 7 joints MuJoCo en 8.90 s",
-        "Benchmark comparativo completo con OpenSCAD y OpenCASCADE B-Rep (48 sólidos) en docs/ARM_SCOUT_FRANKA_7DOF_BENCHMARK.md"
+        "Preset dedicado franka_panda en arm_presets.json (v10.0)",
+        "Offsets DH laterales asimétricos reales (dh_lateral_offsets_mm=[0,0,0,82.5,-82.5,0,88.0]) en arm_assembly.py (v10.0)",
+        "Sub-ensambles modulares de cobot en 3D y BOM: torque_sensor_j1..j3 (SNS-TRQ-SG16), em_brake_j1..j3 (BRK-EM24V-HOLD +0.25A/freno) y brida industrial ISO 9409-1-50-4-M6 (iso9409_flange) (v10.0)",
+        "Auto-Dovetail Split B-Rep real en print_prep.py: divide upper_arm (316 mm) y forearm (384 mm) en mitades watertight A/B con cola de milano (+0.20 mm) logrando fits_bed=true en Bambu X1C (256 mm) (v10.0)",
+        "Exportación .STEP 100% válida (45 sólidos B-Rep, 0 inválidos), 12/12 STLs watertight, 3 platos .3MF, 7 joints URDF y 7 joints MuJoCo en 9.47 s"
       ],
       "missing_capabilities": [
-        "Offsets cinemáticos laterales DH asimétricos por articulación (a4=+82.5, a5=-82.5, a7=+88 mm) en arm_assembly.py",
-        "Sub-ensambles dedicados de 7 anillos sensores de par y 7 frenos electromagnéticos de seguridad en CAD y BOM",
-        "División automática con cola de milano (auto-dovetail split) para eslabones > 300 mm que exceden cama Voron 2.4"
-      ]
+        "Controlador FCI propietario a 1 kHz con certificación ISO 10218-1 y 4 anillos sensores de par adicionales en J4–J7 como nodos CAD separados"
+      ],
+      "previous_replicability_v90_pct": 86,
+      "benchmark_v100": {
+        "http_status": 200,
+        "elapsed_s": 9.47,
+        "compatible": true,
+        "mass_kg": 5.43,
+        "reach_mm": 807.0,
+        "torque_j1_nm": 59.98,
+        "min_sf": 4.8,
+        "bom_usd": 3320.62,
+        "peak_power_w": 1764.5,
+        "step_solids": 45,
+        "step_brep_valid": true,
+        "glb_nodes": 36,
+        "cobot_nodes": [
+          "torque_sensor_j1",
+          "torque_sensor_j2",
+          "torque_sensor_j3",
+          "em_brake_j1",
+          "em_brake_j2",
+          "em_brake_j3",
+          "iso9409_flange"
+        ],
+        "stl_parts": 12,
+        "stl_all_watertight": true,
+        "stl_islands": 0,
+        "fits_bed_bambu_256": true,
+        "split_parts_count": 2,
+        "threemf_plates": 3,
+        "urdf_joints": 7,
+        "mujoco_joints": 7
+      }
     }
   ],
   "capability_gaps_summary": [

@@ -42,14 +42,17 @@ from .hardware_parts import (
     build_bearing_tapered_30205,
     build_controller_box,
     build_dual_servo_clevis,
+    build_em_brake_disc,
     build_four_bar_parallelogram_rod,
     build_gripper_3d,
     build_gripper_parts,
     build_homing_sensor,
     build_iso4762_screw,
+    build_iso9409_flange,
     build_motor_3d,
     build_servo_3d,
     build_servo_horn_25t,
+    build_torque_sensor_ring,
     build_vacuum_nozzle,
     build_wrist_3dof_parts,
 )
@@ -697,7 +700,7 @@ def export_bom_csv(bom: list[BOMItem], output_path: Path) -> Path:
 
 def compute_modular_arm_hash(req: ModularArmRequest) -> str:
     """Compute a deterministic 16-char SHA-256 hex digest for a ModularArmRequest."""
-    canonical = "modarm_v90:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
+    canonical = "modarm_v100:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
@@ -876,6 +879,14 @@ def build_modular_arm_assembly(
     y_el_gear = -(upper_t / 2.0 + clearance)
     y_forearm = +(upper_t / 2.0 + forearm_t / 2.0 + clearance)
 
+    # v10.0: Real asymmetric DH lateral offsets (e.g. Franka Emika Panda a4=+82.5, a5=-82.5, a7=+88 mm)
+    dh_offsets = list(getattr(req, "dh_lateral_offsets_mm", None) or [])
+    a4_lat = float(dh_offsets[3]) if len(dh_offsets) >= 4 else 0.0
+    a7_lat = float(dh_offsets[6]) if len(dh_offsets) >= 7 else 0.0
+    if abs(a4_lat) > 1e-3:
+        min_sep = upper_t / 2.0 + forearm_t / 2.0 + clearance
+        y_forearm = math.copysign(max(min_sep, abs(a4_lat)), a4_lat)
+
     p0 = (0.0, y_upper, float(req.base_height_mm))
     p1 = (p0[0] + l1 * math.cos(a1), y_upper, p0[2] + l1 * math.sin(a1))
     p1_fore = (p1[0], y_forearm, p1[2])
@@ -905,9 +916,9 @@ def build_modular_arm_assembly(
     # Wrist tube + TCP flange coaxial with forearm
     wrist_tube_placed, tcp_flange_placed = _build_wrist_and_tcp(p2_fore, req.wrist_mm, a3_deg, scale)
 
-    # Joint hardware (bearing collars & shafts spanning axial layers cleanly)
+    # Joint hardware (bearing collars & shafts spanning axial layers cleanly, incl. DH lateral bridge)
     sh_hw_len = upper_t + float(slots.shoulder_gear.face_width_mm) + float(slots.shoulder_mount.wall_thickness_mm) + 12.0
-    el_hw_len = upper_t + forearm_t + float(slots.elbow_gear.face_width_mm) + 10.0
+    el_hw_len = abs(y_forearm - y_upper) + upper_t * 0.5 + forearm_t * 0.5 + float(slots.elbow_gear.face_width_mm) + 10.0
     wr_hw_len = forearm_t + 14.0
 
     joint_hw_shoulder = _build_joint_housing(
@@ -916,7 +927,7 @@ def build_modular_arm_assembly(
         length_y=sh_hw_len,
     )
     joint_hw_elbow = _build_joint_housing(
-        (p1[0], y_forearm * 0.4, p1[2]),
+        (p1[0], 0.5 * (y_upper + y_forearm), p1[2]),
         radius=max(8.0, float(slots.forearm.root_end.bore_diameter_mm) * 0.48),
         length_y=el_hw_len,
     )
@@ -1154,6 +1165,86 @@ def build_modular_arm_assembly(
     if use_heavy_bearings:
         hs_placed = Location((28.0, 0.0, float(req.base_height_mm) - 24.0), (0.0, 90.0, 0.0)) * build_homing_sensor()
         extra_v5_nodes.append(("homing_sensor_j1", hs_placed, [216, 172, 58, 255], 0.85, 0.25, [36.0, 0.0, -24.0]))
+
+    # v10.0: Cobot Joint Torque Sensor Rings (J1, J2, J3)
+    if getattr(req, "joint_torque_sensors", False):
+        ts_j1 = Location((0.0, y_sh_gear + 22.0, float(req.base_height_mm))) * (
+            rot_z_to_plus_y * build_torque_sensor_ring(outer_d_mm=66.0, inner_d_mm=34.0, height_mm=10.0)
+        )
+        ts_j2 = Location((p1[0], y_forearm + forearm_t / 2.0 + 9.0, p1[2])) * (
+            rot_z_to_plus_y * build_torque_sensor_ring(outer_d_mm=56.0, inner_d_mm=28.0, height_mm=9.0)
+        )
+        ts_j3 = Location((p2_fore[0], y_forearm + forearm_t / 2.0 + 8.0, p2_fore[2])) * (
+            rot_z_to_plus_y * build_torque_sensor_ring(outer_d_mm=46.0, inner_d_mm=22.0, height_mm=8.0)
+        )
+        extra_v5_nodes.append(("torque_sensor_j1", ts_j1, [217, 119, 6, 255], 0.88, 0.24, [0.0, 74.0, 0.0]))
+        extra_v5_nodes.append(
+            ("torque_sensor_j2", ts_j2, [217, 119, 6, 255], 0.88, 0.24, [round(32.0 * math.cos(a1), 2), 68.0, round(32.0 * math.sin(a1), 2)])
+        )
+        extra_v5_nodes.append(
+            (
+                "torque_sensor_j3",
+                ts_j3,
+                [217, 119, 6, 255],
+                0.88,
+                0.24,
+                [round(32.0 * math.cos(a1) + 42.0 * math.cos(a2), 2), 72.0, round(32.0 * math.sin(a1) + 42.0 * math.sin(a2), 2)],
+            )
+        )
+
+    # v10.0: 24V Power-Off Electromagnetic Safety Brakes (J1, J2, J3)
+    if getattr(req, "electromagnetic_brakes", False):
+        br_j1 = Location((0.0, y_sh_gear + 35.0, float(req.base_height_mm))) * (
+            rot_z_to_plus_y * build_em_brake_disc(outer_d_mm=62.0, inner_d_mm=28.0, height_mm=12.0)
+        )
+        br_j2 = Location((p1[0], y_forearm + forearm_t / 2.0 + 21.0, p1[2])) * (
+            rot_z_to_plus_y * build_em_brake_disc(outer_d_mm=52.0, inner_d_mm=24.0, height_mm=10.0)
+        )
+        br_j3 = Location((p2_fore[0], y_forearm + forearm_t / 2.0 + 19.0, p2_fore[2])) * (
+            rot_z_to_plus_y * build_em_brake_disc(outer_d_mm=44.0, inner_d_mm=20.0, height_mm=9.0)
+        )
+        extra_v5_nodes.append(("em_brake_j1", br_j1, [31, 41, 55, 255], 0.80, 0.34, [0.0, 96.0, 0.0]))
+        extra_v5_nodes.append(
+            ("em_brake_j2", br_j2, [31, 41, 55, 255], 0.80, 0.34, [round(32.0 * math.cos(a1), 2), 92.0, round(32.0 * math.sin(a1), 2)])
+        )
+        extra_v5_nodes.append(
+            (
+                "em_brake_j3",
+                br_j3,
+                [31, 41, 55, 255],
+                0.80,
+                0.34,
+                [round(32.0 * math.cos(a1) + 42.0 * math.cos(a2), 2), 94.0, round(32.0 * math.sin(a1) + 42.0 * math.sin(a2), 2)],
+            )
+        )
+
+    # v10.0: Industrial ISO 9409-1-50-4-M6 Tool Flange on 7-DOF / Franka Panda cobots
+    if (req.dof >= 7 or getattr(req, "preset", "") == "franka_panda") and gripper_parts_placed is None:
+        iso_raw = build_iso9409_flange(outer_d_mm=63.0, pcd_mm=50.0)
+        flange_y = y_forearm + (a7_lat * 0.25 if abs(a7_lat) > 1e-3 else 0.0)
+        p_flange = (
+            p2_fore[0] + (req.wrist_mm + 4.0) * math.cos(a3),
+            flange_y,
+            p2_fore[2] + (req.wrist_mm + 4.0) * math.sin(a3),
+        )
+        iso_placed = Location(p_flange) * (
+            Location((0.0, 0.0, 0.0), (0.0, -a3_deg, 0.0))
+            * (Location((0.0, 0.0, 0.0), (0.0, 90.0, 0.0)) * iso_raw)
+        )
+        extra_v5_nodes.append(
+            (
+                "iso9409_flange",
+                iso_placed,
+                [203, 213, 225, 255],
+                0.94,
+                0.18,
+                [
+                    round(32.0 * math.cos(a1) + 42.0 * math.cos(a2) + 88.0 * math.cos(a3), 2),
+                    48.0,
+                    round(32.0 * math.sin(a1) + 42.0 * math.sin(a2) + 88.0 * math.sin(a3), 2),
+                ],
+            )
+        )
 
     # v5.0: 3-DOF Articulated Wrist (J4 Roll, J5 Pitch, J6 Tool Flange)
     wrist_3dof_placed: tuple[Part, Part, Part] | None = None

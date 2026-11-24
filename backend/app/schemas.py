@@ -362,6 +362,7 @@ ArmPresetType = Literal[
     "festo_bellows",
     "kuka_kr210",
     "mars_mini",
+    "franka_panda",
 ]
 
 
@@ -532,6 +533,10 @@ class ModularArmRequest(BaseModel):
     four_bar_parallelogram: bool = False
     bevel_differential_wrist: bool = False
     vacuum_eoat: bool = False
+    dh_lateral_offsets_mm: list[float] = Field(default_factory=list)
+    joint_torque_sensors: bool = False
+    electromagnetic_brakes: bool = False
+    auto_dovetail_split: bool = False
     payload_kg: float = Field(1.0, ge=0.05, le=250.0)
     material_id: str = "petg_cf"
     printer_id: Optional[str] = "bambu_x1c"
@@ -617,6 +622,7 @@ class PrintReadinessSummary(BaseModel):
     bottom_exposure_s: Optional[float] = None
     recommended_tilt_deg: Optional[int] = None
     plates: list[PrintPlateInfo] = Field(default_factory=list)
+    split_parts_count: int = 0
     warnings: list[str] = Field(default_factory=list)
 
 

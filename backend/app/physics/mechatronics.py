@@ -720,6 +720,17 @@ def evaluate_mechatronics(
         else:
             signal_awg = "26 AWG Apantallado (Step/Dir)"
 
+    # v10.0: Electromagnetic brakes holding current (+0.25 A per brake)
+    if req.electromagnetic_brakes:
+        brake_hold_i = 0.25 * float(req.dof)
+        cont_i_total = round(cont_i_total + brake_hold_i, 2)
+        peak_i_total = round(peak_i_total + brake_hold_i, 2)
+        cont_w = round(system_v * cont_i_total, 1)
+        peak_w = round(system_v * peak_i_total, 1)
+        if not (is_esp32_5v or is_pca_servo or is_uart_bus):
+            psu_name, psu_cost = _select_psu(system_v, peak_w)
+            power_awg = _select_power_awg(peak_i_total)
+
     # Harness length (m): sum real arm segment runs * 1.20 dynamic service loop
     h_base_m = float(req.base_height_mm) / 1000.0
     l1_m = float(ua.length_mm) / 1000.0
@@ -1406,6 +1417,25 @@ def evaluate_mechatronics(
             "Sellado submarino IP68 para manipulador ROV",
             1,
             65.0,
+        )
+    # v10.0: Cobot Industrial Joint Torque Sensors & 24V Power-Off Electromagnetic Brakes
+    if req.joint_torque_sensors:
+        _add_bom(
+            "electronics_wiring",
+            "SNS-TRQ-SG16",
+            "Sensor de Par de Galgas 16-bit",
+            "Puente de galgas extensiométricas por junta · 42 g c/u · resolución 16-bit",
+            req.dof,
+            65.0,
+        )
+    if req.electromagnetic_brakes:
+        _add_bom(
+            "electronics_wiring",
+            "BRK-EM24V-HOLD",
+            "Freno Electromagnético 24V Power-Off",
+            "Retención fail-safe sin energía · 95 g c/u · 0.25 A mantenimiento/freno",
+            req.dof,
+            42.0,
         )
 
     total_bom_cost_usd = round(sum(item.total_cost_usd for item in master_bom), 2)

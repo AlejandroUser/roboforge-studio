@@ -218,6 +218,8 @@ export interface PrintReadinessSummary {
   exposure_s?: number | null;
   bottom_exposure_s?: number | null;
   recommended_tilt_deg?: number | null;
+  // v10.0 Auto-Dovetail Split
+  split_parts_count?: number;
 }
 
 export interface ModularArmRequest {
@@ -245,6 +247,11 @@ export interface ModularArmRequest {
   environment_mode?: EnvironmentMode;
   gravity_m_s2?: number;
   counterbalance_j2?: boolean;
+  // v10.0 Industrial Cobots (DH offsets, Torque Sensors, 24V Brakes, Auto-Dovetail Split)
+  dh_lateral_offsets_mm?: number[];
+  joint_torque_sensors?: boolean;
+  electromagnetic_brakes?: boolean;
+  auto_dovetail_split?: boolean;
 }
 
 export interface CompatibilityIssue {

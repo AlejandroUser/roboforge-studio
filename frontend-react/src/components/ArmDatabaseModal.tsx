@@ -34,6 +34,11 @@ function getTopologyBadges(arm: ArmDatabaseEntry): string[] {
   if (tx.includes("cicloidal")) badges.push("Cicloidal");
   if (id.includes("lerobot") || id.includes("so_arm") || elec.includes("sts3215")) badges.push("LeRobot");
   if (id.includes("mars_mini") || mats.includes("resin") || mats.includes("msla")) badges.push("MSLA Resina");
+  if (id.includes("franka") || id.includes("panda")) {
+    badges.push("Par J1–J7");
+    badges.push("Frenos 24V");
+    badges.push("ISO 9409");
+  }
   if (elec.includes("esp32")) badges.push("ESP32 Wi-Fi");
   if (id.includes("fabri") || (elec.includes("pca9685") && !elec.includes("esp32"))) badges.push("Servo 5.0");
   if (mats.includes("6061") || mats.includes("cnc")) badges.push("CNC 6061");

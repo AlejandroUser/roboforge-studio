@@ -799,3 +799,135 @@ def build_vacuum_nozzle() -> Part:
     return nozzle
 
 
+def build_torque_sensor_ring(
+    outer_d_mm: float = 66.0,
+    inner_d_mm: float = 34.0,
+    height_mm: float = 10.0,
+) -> Part:
+    """Build a hollow-shaft cobot joint torque sensor ring with 4 internal strain-gauge flexure spokes
+    and 4xM4 perimeter mounting bores. Centered on Z=0, axis along Z.
+    """
+    od = round(max(36.0, float(outer_d_mm)), 1)
+    id_ = round(max(16.0, min(od - 16.0, float(inner_d_mm))), 1)
+    h = round(max(6.0, float(height_mm)), 1)
+    cache_key = f"torque_sensor:{od}:{id_}:{h}"
+    if cache_key in _HARDWARE_CACHE:
+        return _HARDWARE_CACHE[cache_key]
+
+    r_out = od / 2.0
+    r_in = id_ / 2.0
+    r_mid_out = r_out - 6.0
+    r_mid_in = r_in + 4.5
+
+    outer_ring = Cylinder(radius=r_out, height=h) - Cylinder(radius=r_mid_out, height=h + 2.0)
+    inner_ring = Cylinder(radius=r_mid_in, height=h) - Cylinder(radius=r_in, height=h + 2.0)
+    spoke_len = (r_mid_out - r_mid_in) + 4.0
+    spoke_r_mid = 0.5 * (r_mid_out + r_mid_in)
+
+    sensor = outer_ring + inner_ring
+    for k in range(4):
+        ang_deg = k * 90.0
+        ang = math.radians(ang_deg)
+        spoke = Location((spoke_r_mid * math.cos(ang), spoke_r_mid * math.sin(ang), 0.0), (0.0, 0.0, ang_deg)) * Box(
+            spoke_len, 4.2, h * 0.72
+        )
+        sensor = sensor + spoke
+
+    # 4xM4 mounting bores on outer ring
+    pcd_r = r_out - 3.2
+    for k in range(4):
+        ang = math.radians(45.0 + k * 90.0)
+        hole = Location((pcd_r * math.cos(ang), pcd_r * math.sin(ang), 0.0)) * Cylinder(radius=2.1, height=h + 4.0)
+        try:
+            cand = sensor - hole
+            if cand.is_valid and cand.volume > 0:
+                sensor = cand
+        except Exception:
+            pass
+
+    _HARDWARE_CACHE[cache_key] = sensor
+    return sensor
+
+
+def build_em_brake_disc(
+    outer_d_mm: float = 62.0,
+    inner_d_mm: float = 28.0,
+    height_mm: float = 12.0,
+) -> Part:
+    """Build a 24V power-off electromagnetic safety brake stator + coil housing with wire gland boss.
+    Centered on Z=0, axis along Z.
+    """
+    od = round(max(34.0, float(outer_d_mm)), 1)
+    id_ = round(max(14.0, min(od - 14.0, float(inner_d_mm))), 1)
+    h = round(max(8.0, float(height_mm)), 1)
+    cache_key = f"em_brake:{od}:{id_}:{h}"
+    if cache_key in _HARDWARE_CACHE:
+        return _HARDWARE_CACHE[cache_key]
+
+    r_out = od / 2.0
+    r_in = id_ / 2.0
+    body = Cylinder(radius=r_out, height=h) - Cylinder(radius=r_in, height=h + 2.0)
+    # Recessed electromagnetic coil face groove on +Z face
+    groove = Location((0.0, 0.0, h * 0.35)) * (
+        Cylinder(radius=r_out - 4.0, height=h * 0.45) - Cylinder(radius=r_in + 4.0, height=h * 0.55)
+    )
+    try:
+        cand = body - groove
+        if cand.is_valid and cand.volume > 0:
+            body = cand
+    except Exception:
+        pass
+    # Side 24V power cable gland boss
+    gland = Location((r_out + 2.5, 0.0, 0.0)) * Box(7.0, 9.0, h * 0.65)
+    brake = body + gland
+
+    _HARDWARE_CACHE[cache_key] = brake
+    return brake
+
+
+def build_iso9409_flange(
+    outer_d_mm: float = 63.0,
+    pcd_mm: float = 50.0,
+) -> Part:
+    """Build a standard ISO 9409-1-50-4-M6 industrial robot tool flange with Ø31.5 mm centering spigot,
+    4xM6 bolt holes on Ø50 mm PCD, and Ø6 mm index dowel pin bore. Mounting face at Z=0, extends along +Z.
+    """
+    od = round(max(40.0, float(outer_d_mm)), 1)
+    pcd = round(max(25.0, min(od - 8.0, float(pcd_mm))), 1)
+    cache_key = f"iso9409:{od}:{pcd}"
+    if cache_key in _HARDWARE_CACHE:
+        return _HARDWARE_CACHE[cache_key]
+
+    flange_h = 10.0
+    disc = Location((0.0, 0.0, flange_h / 2.0)) * Cylinder(radius=od / 2.0, height=flange_h)
+    spigot = Location((0.0, 0.0, flange_h + 2.0)) * Cylinder(radius=min(15.75, pcd * 0.315), height=4.0)
+    flange = disc + spigot
+
+    # Central cable pass-through bore (Ø18 mm)
+    try:
+        cand = flange - (Location((0.0, 0.0, flange_h / 2.0)) * Cylinder(radius=9.0, height=flange_h + 10.0))
+        if cand.is_valid and cand.volume > 0:
+            flange = cand
+    except Exception:
+        pass
+
+    # 4xM6 mounting bores (Ø6.4 mm) at 45°/135°/225°/315° + 1xØ6 mm index pin bore at 0°
+    pcd_r = pcd / 2.0
+    hole_specs = [(45.0 + k * 90.0, 3.2) for k in range(4)] + [(0.0, 3.0)]
+    for ang_deg, r_hole in hole_specs:
+        ang = math.radians(ang_deg)
+        hole = Location((pcd_r * math.cos(ang), pcd_r * math.sin(ang), flange_h / 2.0)) * Cylinder(
+            radius=r_hole, height=flange_h + 6.0
+        )
+        try:
+            cand = flange - hole
+            if cand.is_valid and cand.volume > 0:
+                flange = cand
+        except Exception:
+            pass
+
+    _HARDWARE_CACHE[cache_key] = flange
+    return flange
+
+
+

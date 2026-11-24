@@ -39,6 +39,9 @@ export type CadMaterialRole =
   | "tpu_bellows_cyan"
   | "pneumatic_manifold_alu"
   | "resin_abs_like"
+  | "torque_sensor_copper"
+  | "em_brake_dark_steel"
+  | "iso9409_stainless"
   | "matte_polymer"
   | "single_part_enhanced";
 
@@ -169,6 +172,12 @@ export function detectCadMaterialRole(
 
   if (name.includes("bellows_chamber") || name.includes("bellows_end")) {
     role = "tpu_bellows_cyan";
+  } else if (name.includes("torque_sensor")) {
+    role = "torque_sensor_copper";
+  } else if (name.includes("em_brake")) {
+    role = "em_brake_dark_steel";
+  } else if (name.includes("iso9409")) {
+    role = "iso9409_stainless";
   } else if (name.includes("pneumatic_manifold")) {
     role = "pneumatic_manifold_alu";
   } else if (name.includes("stewart_leg")) {
@@ -648,6 +657,36 @@ export function createCadPhysicalMaterial(
         clearcoat: 0.38,
         clearcoatRoughness: 0.22,
         envMapIntensity: 1.15,
+      });
+
+    case "torque_sensor_copper":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#d97706"),
+        metalness: 0.88,
+        roughness: 0.24,
+        clearcoat: 0.28,
+        clearcoatRoughness: 0.2,
+        envMapIntensity: 1.5,
+      });
+
+    case "em_brake_dark_steel":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#1f2937"),
+        metalness: 0.8,
+        roughness: 0.34,
+        clearcoat: 0.22,
+        clearcoatRoughness: 0.28,
+        envMapIntensity: 1.35,
+      });
+
+    case "iso9409_stainless":
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color("#cbd5e1"),
+        metalness: 0.94,
+        roughness: 0.18,
+        clearcoat: 0.35,
+        clearcoatRoughness: 0.14,
+        envMapIntensity: 1.7,
       });
 
     case "matte_polymer":

@@ -19,6 +19,7 @@ from build123d import (
     Locations,
     Part,
     Plane,
+    Polygon,
     RectangleRounded,
     RegularPolygon,
     extrude,
@@ -140,6 +141,118 @@ def _orient_part_flat_on_z0(part: Part | Compound) -> tuple[trimesh.Trimesh, tup
     return mesh, size
 
 
+def _split_solid_dovetail_x(
+    solid: Part | Compound,
+    clearance_mm: float = 0.20,
+) -> tuple[Part, Part]:
+    """Split a long CAD solid along its X midpoint with a real trapezoidal dovetail tenon (A) and
+    matching mortise socket (B, +clearance_mm) using exact OpenCASCADE B-Rep booleans.
+    """
+    bb = solid.bounding_box()
+    x0, x1 = float(bb.min.X), float(bb.max.X)
+    y0, y1 = float(bb.min.Y), float(bb.max.Y)
+    z0, z1 = float(bb.min.Z), float(bb.max.Z)
+    sx, sy, sz = x1 - x0, y1 - y0, z1 - z0
+    x_mid = 0.5 * (x0 + x1)
+    y_mid = 0.5 * (y0 + y1)
+
+    dt_len = min(14.0, max(6.0, sx * 0.055))
+    neck_h = min(6.5, max(3.0, sy * 0.16))
+    head_h = min(10.5, max(4.8, sy * 0.26))
+    c = max(0.05, float(clearance_mm))
+
+    left_pts = [
+        (x0 - 5.0, y0 - 5.0),
+        (x_mid, y0 - 5.0),
+        (x_mid, y_mid - neck_h),
+        (x_mid + dt_len, y_mid - head_h),
+        (x_mid + dt_len, y_mid + head_h),
+        (x_mid, y_mid + neck_h),
+        (x_mid, y1 + 5.0),
+        (x0 - 5.0, y1 + 5.0),
+    ]
+    right_pts = [
+        (x_mid + c, y0 - 5.0),
+        (x1 + 5.0, y0 - 5.0),
+        (x1 + 5.0, y1 + 5.0),
+        (x_mid + c, y1 + 5.0),
+        (x_mid + c, y_mid + neck_h + c),
+        (x_mid + dt_len + c, y_mid + head_h + c),
+        (x_mid + dt_len + c, y_mid - head_h - c),
+        (x_mid + c, y_mid - neck_h - c),
+    ]
+
+    with BuildSketch(Plane.XY) as sk_l:
+        Polygon(*left_pts, align=None)
+    with BuildPart() as bp_l:
+        extrude(sk_l.sketch.faces()[0].moved(Location((0.0, 0.0, z0 - 5.0))), amount=sz + 10.0)
+
+    with BuildSketch(Plane.XY) as sk_r:
+        Polygon(*right_pts, align=None)
+    with BuildPart() as bp_r:
+        extrude(sk_r.sketch.faces()[0].moved(Location((0.0, 0.0, z0 - 5.0))), amount=sz + 10.0)
+
+    half_a = solid & bp_l.part
+    half_b = solid & bp_r.part
+    return half_a, half_b
+
+
+def _cap_planar_cut_x(half: trimesh.Trimesh, normal_sign: float) -> trimesh.Trimesh:
+    """Close an open planar cut loop perpendicular to X without requiring shapely."""
+    trimesh.repair.fill_holes(half)
+    if half.is_watertight:
+        return half
+    # Find boundary edges (edges appearing only once) on the cut plane and fan-cap them
+    edges = half.edges_sorted
+    _, idx, counts = np.unique(edges, axis=0, return_index=True, return_counts=True)
+    boundary = edges[idx[counts == 1]]
+    if len(boundary) >= 3:
+        b_verts = np.unique(boundary.ravel())
+        center = half.vertices[b_verts].mean(axis=0)
+        c_idx = len(half.vertices)
+        new_verts = np.vstack([half.vertices, center.reshape(1, 3)])
+        new_faces = []
+        for u, v in boundary:
+            p0, p1 = new_verts[u], new_verts[v]
+            n = np.cross(p1 - p0, center - p0)
+            if n[0] * normal_sign >= 0:
+                new_faces.append([u, v, c_idx])
+            else:
+                new_faces.append([v, u, c_idx])
+        half = trimesh.Trimesh(vertices=new_verts, faces=np.vstack([half.faces, new_faces]), process=True)
+        half.fix_normals()
+    return half
+
+
+def _split_mesh_dovetail_x(
+    mesh: trimesh.Trimesh,
+    clearance_mm: float = 0.20,
+) -> tuple[trimesh.Trimesh, trimesh.Trimesh]:
+    """Split a flat-oriented Trimesh along X_mid into two clean watertight halves (part_A & part_B
+    offset by clearance_mm) grounded at (0, 0, 0) without requiring shapely.
+    """
+    m = mesh.copy()
+    bmin = m.bounds[0]
+    m.apply_translation([-float(bmin[0]), -float(bmin[1]), -float(bmin[2])])
+    sx = float(m.extents[0])
+    x_mid = sx * 0.5
+    c = max(0.05, float(clearance_mm))
+
+    va, fa, _ = trimesh.intersections.slice_faces_plane(
+        m.vertices, m.faces, plane_normal=[-1.0, 0.0, 0.0], plane_origin=[x_mid, 0.0, 0.0]
+    )
+    vb, fb, _ = trimesh.intersections.slice_faces_plane(
+        m.vertices, m.faces, plane_normal=[1.0, 0.0, 0.0], plane_origin=[x_mid + c, 0.0, 0.0]
+    )
+    part_a = _cap_planar_cut_x(trimesh.Trimesh(vertices=va, faces=fa, process=True), normal_sign=1.0)
+    part_b = _cap_planar_cut_x(trimesh.Trimesh(vertices=vb, faces=fb, process=True), normal_sign=-1.0)
+    for half in (part_a, part_b):
+        half.fix_normals()
+        hb = half.bounds[0]
+        half.apply_translation([-float(hb[0]), -float(hb[1]), -float(hb[2])])
+    return part_a, part_b
+
+
 def _write_multi_mesh_3mf(meshes: list[tuple[str, trimesh.Trimesh]], output_path: Path) -> Path:
     """Write a valid multi-object OPC ZIP .3MF build plate containing all placed part meshes."""
     obj_blocks: list[str] = []
@@ -235,26 +348,64 @@ def generate_print_readiness_pack(
             f"Material '{mat_name}' es metálico/CNC: los platos .3MF sirven para prototipado de ajuste en PLA/PETG antes de mecanizar."
         )
 
-    # 1. Orient all printable parts flat on Z=0 and measure extents
+    # 1. Orient all printable parts flat on Z=0 and measure extents (with optional v10.0 Auto-Dovetail Split)
     oriented_items: list[tuple[str, trimesh.Trimesh, tuple[float, float, float], float]] = []
     fits_bed = True
     margin = 5.0
     xy_margin = margin
+    auto_split = bool(getattr(req, "auto_dovetail_split", False))
+    split_parts_count = 0
+    split_part_names: list[str] = []
+
+    def _fits(sx_: float, sy_: float, sz_: float) -> bool:
+        return (
+            ((sx_ <= bed_x - xy_margin and sy_ <= bed_y - xy_margin) or (sy_ <= bed_x - xy_margin and sx_ <= bed_y - xy_margin))
+            and sz_ <= bed_z - 4.0
+        )
+
     for part_name, solid in printable_parts.items():
         try:
             mesh, size = _orient_part_flat_on_z0(solid)
-            vol_cm3 = max(0.5, float(abs(mesh.volume)) / 1000.0)
             sx, sy, sz = size
-            # Check if part fits in bed (allowing 90° XY rotation)
-            part_fits = (
-                ((sx <= bed_x - xy_margin and sy <= bed_y - xy_margin) or (sy <= bed_x - xy_margin and sx <= bed_y - xy_margin))
-                and sz <= bed_z - 4.0
-            )
-            if not part_fits:
+            if not _fits(sx, sy, sz) and auto_split and sx > bed_x - 10.0:
+                # Split oversized part into two watertight dovetail halves (part_A tenon + part_B mortise +0.20mm)
+                halves_ok = False
+                try:
+                    bb = solid.bounding_box()
+                    if float(bb.size.X) >= max(float(bb.size.Y), float(bb.size.Z)) * 0.95:
+                        ha_solid, hb_solid = _split_solid_dovetail_x(solid, clearance_mm=0.20)
+                        ma, sa = _orient_part_flat_on_z0(ha_solid)
+                        mb, sb = _orient_part_flat_on_z0(hb_solid)
+                        if ma.is_watertight and mb.is_watertight:
+                            halves = [(f"{part_name}_A", ma, sa), (f"{part_name}_B", mb, sb)]
+                            halves_ok = True
+                except Exception:
+                    halves_ok = False
+
+                if not halves_ok:
+                    ma, mb = _split_mesh_dovetail_x(mesh, clearance_mm=0.20)
+                    sa = (float(ma.extents[0]), float(ma.extents[1]), float(ma.extents[2]))
+                    sb = (float(mb.extents[0]), float(mb.extents[1]), float(mb.extents[2]))
+                    halves = [(f"{part_name}_A", ma, sa), (f"{part_name}_B", mb, sb)]
+
+                split_parts_count += 1
+                split_part_names.append(part_name)
+                for h_name, h_mesh, h_size in halves:
+                    h_vol = max(0.5, float(abs(h_mesh.volume)) / 1000.0)
+                    if not _fits(*h_size):
+                        fits_bed = False
+                        warnings.append(
+                            f"Mitad '{h_name}' ({h_size[0]:.0f}×{h_size[1]:.0f}×{h_size[2]:.0f} mm) aún excede la cama de {printer_name}."
+                        )
+                    oriented_items.append((h_name, h_mesh, h_size, h_vol))
+                continue
+
+            vol_cm3 = max(0.5, float(abs(mesh.volume)) / 1000.0)
+            if not _fits(sx, sy, sz):
                 fits_bed = False
                 warnings.append(
                     f"Pieza '{part_name}' ({sx:.0f}×{sy:.0f}×{sz:.0f} mm) excede la cama de {printer_name} "
-                    f"({bed_x:.0f}×{bed_y:.0f}×{bed_z:.0f} mm): requiere dividir con cola de milano o impresora mayor."
+                    f"({bed_x:.0f}×{bed_y:.0f}×{bed_z:.0f} mm): activa Auto-Split Cola de Milano o usa impresora mayor."
                 )
             oriented_items.append((part_name, mesh, size, vol_cm3))
         except Exception:
@@ -441,6 +592,14 @@ def generate_print_readiness_pack(
 - [ ] Verificar el giro suave de cada junta antes de apretar los tornillos ISO 4762.
 - [ ] Consultar `arm_circuit_schematic.svg` y `arm_master_bom.csv` para el cableado final.
 """
+    if split_parts_count > 0:
+        dovetail_md = (
+            f"\n## 7. Ensamblaje de Piezas Divididas con Cola de Milano (Auto-Split v10.0)\n"
+            f"- **Piezas divididas automáticamente ({split_parts_count}):** {', '.join(f'`{n}`' for n in split_part_names)}\n"
+            f"- Cada pieza larga fue dividida en **`*_A.stl`** (espiga trapezoidal macho) y **`*_B.stl`** (caja hembra con holgura `+0.20 mm`).\n"
+            f"- Desliza la espiga verticalmente en la caja, aplica cianoacrilato / epoxi estructural 2K y prensa 15 min antes de montar en el brazo.\n"
+        )
+        guide_md = guide_md + dovetail_md
     guide_path = output_dir / "PRINT_GUIDE.md"
     guide_path.write_text(guide_md, encoding="utf-8")
     exported_files["print_guide_md"] = guide_path
@@ -494,6 +653,7 @@ def generate_print_readiness_pack(
         exposure_s=exposure_s,
         bottom_exposure_s=bottom_exposure_s,
         recommended_tilt_deg=recommended_tilt_deg,
+        split_parts_count=split_parts_count,
         plates=plate_infos,
         warnings=warnings,
     )

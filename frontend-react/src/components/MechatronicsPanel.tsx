@@ -323,7 +323,7 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
   return (
     <div className="mech-card">
       <div className="pareto-head">
-        <strong>Mecatrónica &amp; Impresión 3D (v8.0)</strong>
+        <strong>Mecatrónica &amp; Impresión 3D (v10.0)</strong>
         {mechatronics && (
           <span className="badge good">${mechatronics.total_bom_cost_usd.toFixed(0)} USD</span>
         )}
@@ -690,6 +690,14 @@ export const MechatronicsPanel: React.FC<MechatronicsPanelProps> = ({
                   {printReadiness.fits_bed ? "✓ Cabe en Cama" : "⚠ Requiere Dividir"}
                 </span>
               </div>
+
+              {(printReadiness.split_parts_count ?? 0) > 0 && (
+                <div style={{ marginTop: 6 }}>
+                  <span className="badge good">
+                    ✂ {printReadiness.split_parts_count} piezas divididas (Cola de Milano)
+                  </span>
+                </div>
+              )}
 
               <div className="metrics-grid">
                 <div className="metric-box">

@@ -94,6 +94,13 @@ const SEMANTIC_PART_KEYS = [
   "bellows_chamber_3",
   "bellows_end_cap",
   "pneumatic_manifold",
+  "torque_sensor_j1",
+  "torque_sensor_j2",
+  "torque_sensor_j3",
+  "em_brake_j1",
+  "em_brake_j2",
+  "em_brake_j3",
+  "iso9409_flange",
 ] as const;
 
 const FALLBACK_EXPLODE_VECTORS: Record<string, [number, number, number]> = {
@@ -181,6 +188,13 @@ const FALLBACK_EXPLODE_VECTORS: Record<string, [number, number, number]> = {
   bellows_chamber_3: [-18, -30, 20],
   bellows_end_cap: [0, 0, 70],
   pneumatic_manifold: [0, 0, -45],
+  torque_sensor_j1: [0, -76, 14],
+  torque_sensor_j2: [55, 68, 52],
+  torque_sensor_j3: [130, 56, 82],
+  em_brake_j1: [0, -104, 12],
+  em_brake_j2: [55, 96, 50],
+  em_brake_j3: [130, 82, 80],
+  iso9409_flange: [175, 0, 98],
 };
 
 const PART_LABELS_ES: Record<string, string> = {
@@ -268,6 +282,13 @@ const PART_LABELS_ES: Record<string, string> = {
   bellows_chamber_3: "Fuelle Neumático TPU 3",
   bellows_end_cap: "Tapa Efectora Fuelle",
   pneumatic_manifold: "Colector Neumático / Electroválvulas",
+  torque_sensor_j1: "Sensor de Par J1 (Galgas 16-bit)",
+  torque_sensor_j2: "Sensor de Par J2 (Galgas 16-bit)",
+  torque_sensor_j3: "Sensor de Par J3 (Galgas 16-bit)",
+  em_brake_j1: "Freno Electromagnético 24V J1",
+  em_brake_j2: "Freno Electromagnético 24V J2",
+  em_brake_j3: "Freno Electromagnético 24V J3",
+  iso9409_flange: "Brida Industrial ISO 9409-1-50-4-M6",
 };
 
 function resolveSemanticKey(obj: THREE.Object3D | null): string | null {
