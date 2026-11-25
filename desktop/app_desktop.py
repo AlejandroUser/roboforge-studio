@@ -80,7 +80,7 @@ def main() -> None:
     webview.settings["ALLOW_DOWNLOADS"] = True
 
     webview.create_window(
-        title="RoboForge Studio Pro v7.0 — Ingeniería Computacional CAD",
+        title="RoboForge Studio Pro v10.0 — Ingeniería Computacional CAD & Robótica",
         url=base_url,
         width=1480,
         height=920,
