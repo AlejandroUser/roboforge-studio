@@ -30,6 +30,11 @@ def _pose_to_servo_angles(pose: dict[str, Any]) -> tuple[int, int, int, int, int
     return s_base, s_shoulder, s_elbow, s_wrist, s_grip
 
 
+def _sanitize_comment_name(raw_name: str, default_name: str) -> str:
+    cleaned = (raw_name or default_name).replace("*/", "* /").replace("/*", "/ *")
+    return cleaned.replace("\r", " ").replace("\n", " ").strip()
+
+
 def generate_arduino_pca9685_ino(
     arm_name: str,
     poses: list[dict[str, Any]],
@@ -39,9 +44,10 @@ def generate_arduino_pca9685_ino(
     Generate a complete, compilable Arduino IDE (.ino) sketch for the Brazo 5.0
     using <Wire.h> and <Adafruit_PWMServoDriver.h> (PCA9685 @ 0x40, 50 Hz).
     Maps CH0..CH7 with automatic inversion (180 - ang) on dual-servo channels
-    CH2 (Shoulder B) and CH4 (Elbow B), plus smooth step interpolation in loop().
+    CH2 (Shoulder B) and CH4 (Elbow B), plus smooth step interpolation and
+    non-blocking USB live serial control (P:<j0>,<j1>,<j2>,<j3>,<g>\\n @ 115200).
     """
-    safe_name = (arm_name or "Brazo Robotico 5.0").replace("\n", " ").strip()
+    safe_name = _sanitize_comment_name(arm_name, "Brazo Robotico 5.0")
     step_delay = max(4, min(120, int(speed_ms)))
 
     effective_poses = poses if poses else [
@@ -136,6 +142,37 @@ void aplicarPose(const Pose& p) {{
   pwm.setPWM(CH7_GRIPPER,     0, degToPulse(p.pinza));
 }}
 
+// Control Serial USB en tiempo real (115200 baud): P:<j0>,<j1>,<j2>,<j3>,<g>\\n
+static char serialBuf[64];
+static uint8_t serialIdx = 0;
+static bool modoLiveSerial = false;
+
+void leerSerialLive() {{
+  while (Serial.available() > 0) {{
+    char c = (char)Serial.read();
+    if (c == '\\r') continue;
+    if (c == '\\n') {{
+      serialBuf[serialIdx] = '\\0';
+      if (serialIdx > 2 && serialBuf[0] == 'P' && serialBuf[1] == ':') {{
+        int j0 = 0, j1 = 35, j2 = -55, j3 = 20, gp = 50;
+        if (sscanf(serialBuf + 2, "%d,%d,%d,%d,%d", &j0, &j1, &j2, &j3, &gp) == 5) {{
+          poseActual.base   = constrain((int)round(90.0f + j0 * 0.5f), 0, 180);
+          poseActual.hombro = constrain(90 + j1, 15, 165);
+          poseActual.codo   = constrain((int)round(90.0f + j2 * 0.6f), 15, 165);
+          poseActual.muneca = constrain(90 + j3, 10, 170);
+          poseActual.pinza  = constrain((int)round(25.0f + (constrain(gp, 0, 100) / 100.0f) * 110.0f), 20, 145);
+          aplicarPose(poseActual);
+          modoLiveSerial = true;
+          Serial.println(F("OK"));
+        }}
+      }}
+      serialIdx = 0;
+    }} else if (serialIdx < sizeof(serialBuf) - 1) {{
+      serialBuf[serialIdx++] = c;
+    }}
+  }}
+}}
+
 void moverSuave(const Pose& objetivo, int pasoMs) {{
   int maxDelta = max(
     max(abs(objetivo.base - poseActual.base), abs(objetivo.hombro - poseActual.hombro)),
@@ -148,6 +185,8 @@ void moverSuave(const Pose& objetivo, int pasoMs) {{
 
   Pose inicio = poseActual;
   for (int step = 1; step <= maxDelta; step++) {{
+    leerSerialLive();
+    if (modoLiveSerial) return;
     float t = (float)step / (float)maxDelta;
     // Curva suave ease-in-out cubica
     float s = t * t * (3.0f - 2.0f * t);
@@ -171,17 +210,28 @@ void setup() {{
   pwm.setPWMFreq(50);  // 50 Hz estandar para servos RC TD-8120MG
   delay(200);
 
-  Serial.println(F("RoboForge Studio v4.2 - Iniciando secuencia PCA9685..."));
+  Serial.println(F("RoboForge Studio v10.0 - PCA9685 listo (Secuencia + Serial P:j0,j1,j2,j3,g)"));
   aplicarPose(poseActual);
   delay(800);
 }}
 
 void loop() {{
+  leerSerialLive();
+  if (modoLiveSerial) {{
+    return;
+  }}
   for (int i = 0; i < NUM_POSES; i++) {{
+    leerSerialLive();
+    if (modoLiveSerial) return;
     Serial.print(F("Moviendo a Pose #"));
     Serial.println(i + 1);
     moverSuave(SECUENCIA[i], SPEED_MS);
-    delay(PAUSA_ENTRE_POSES_MS);
+    unsigned long t0 = millis();
+    while (millis() - t0 < (unsigned long)PAUSA_ENTRE_POSES_MS) {{
+      leerSerialLive();
+      if (modoLiveSerial) return;
+      delay(2);
+    }}
   }}
 }}
 """
@@ -199,7 +249,7 @@ def generate_esp32_wifi_pca9685_ino(
     - Serves mobile-friendly dark HTML UI with live J0/J1/J2/Pinza sliders + Play Secuencia
     - Drives 3x MG996R (CH0..CH2) + 1x MG90S Gripper (CH3) via PCA9685 @ 0x40, 50 Hz.
     """
-    safe_name = (arm_name or "RoboForge Mars-Mini").replace("\n", " ").strip()
+    safe_name = _sanitize_comment_name(arm_name, "RoboForge Mars-Mini")
     step_delay = max(4, min(120, int(speed_ms)))
     effective_poses = poses if poses else [
         {"j0_base": 0.0, "j1_shoulder": 35.0, "j2_elbow": -55.0, "j3_wrist": 20.0, "gripper_pct": 80.0},
@@ -273,6 +323,43 @@ void aplicarPose(const Pose& p) {{
   pwm.setPWM(3, 0, degToPulse(p.pinza));
 }}
 
+// Control Serial USB en tiempo real (115200 baud): P:<j0>,<j1>,<j2>,<j3>,<g>\\n
+static char serialBuf[64];
+static uint8_t serialIdx = 0;
+
+void leerSerialLive() {{
+  while (Serial.available() > 0) {{
+    char c = (char)Serial.read();
+    if (c == '\\r') continue;
+    if (c == '\\n') {{
+      serialBuf[serialIdx] = '\\0';
+      if (serialIdx > 2 && serialBuf[0] == 'P' && serialBuf[1] == ':') {{
+        int j0 = 0, j1 = 35, j2 = -55, j3 = 20, gp = 50;
+        if (sscanf(serialBuf + 2, "%d,%d,%d,%d,%d", &j0, &j1, &j2, &j3, &gp) == 5) {{
+          poseActual.j0    = constrain((int)round(90.0f + j0 * 0.5f), 0, 180);
+          poseActual.j1    = constrain(90 + j1, 15, 165);
+          poseActual.j2    = constrain((int)round(90.0f + j2 * 0.6f), 15, 165);
+          poseActual.pinza = constrain((int)round(25.0f + (constrain(gp, 0, 100) / 100.0f) * 110.0f), 20, 145);
+          aplicarPose(poseActual);
+          Serial.println(F("OK"));
+        }}
+      }}
+      serialIdx = 0;
+    }} else if (serialIdx < sizeof(serialBuf) - 1) {{
+      serialBuf[serialIdx++] = c;
+    }}
+  }}
+}}
+
+void esperarNoBloqueante(unsigned long ms) {{
+  unsigned long t0 = millis();
+  while (millis() - t0 < ms) {{
+    server.handleClient();
+    leerSerialLive();
+    delay(1);
+  }}
+}}
+
 void moverSuave(const Pose& obj, int pasoMs) {{
   int maxD = max(max(abs(obj.j0 - poseActual.j0), abs(obj.j1 - poseActual.j1)),
                  max(abs(obj.j2 - poseActual.j2), abs(obj.pinza - poseActual.pinza)));
@@ -286,7 +373,7 @@ void moverSuave(const Pose& obj, int pasoMs) {{
     poseActual.j2    = ini.j2    + (int)round((obj.j2    - ini.j2)    * k);
     poseActual.pinza = ini.pinza + (int)round((obj.pinza - ini.pinza) * k);
     aplicarPose(poseActual);
-    delay(pasoMs);
+    esperarNoBloqueante((unsigned long)pasoMs);
   }}
   poseActual = obj;
   aplicarPose(poseActual);
@@ -325,7 +412,7 @@ void handleSet() {{
 void handlePlay() {{
   for (int i = 0; i < NUM_POSES; i++) {{
     moverSuave(SECUENCIA[i], SPEED_MS);
-    delay(450);
+    esperarNoBloqueante(450);
   }}
   server.send(200, "text/plain", "DONE");
 }}
@@ -351,6 +438,7 @@ void setup() {{
 
 void loop() {{
   server.handleClient();
+  leerSerialLive();
 }}
 """
 

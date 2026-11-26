@@ -699,6 +699,10 @@ class PowerBudget(BaseModel):
     signal_wire_awg: str
     total_harness_length_m: float
     fuse_rating_a: float
+    bus_voltage_drop_v: float = 0.0
+    bus_voltage_droop_pct: float = 0.0
+    estimated_stall_temp_30s_c: float = 25.0
+    safe_stall_time_s: float = 999.0
 
 
 class MasterBomItem(BaseModel):

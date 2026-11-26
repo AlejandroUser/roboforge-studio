@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import re
 import tempfile
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -1017,6 +1019,54 @@ def list_hardware_ports() -> dict[str, Any]:
     return {"ports": ports}
 
 
+_SERIAL_POOL: dict[str, Any] = {}
+_SERIAL_LOCK = threading.Lock()
+_SERIAL_BOOT_WAIT_S = 1.8
+
+
+def _get_or_open_serial(port: str, baudrate: int) -> Any:
+    """Return an open serial handle from the persistent pool, opening once if needed."""
+    import serial  # type: ignore[import-not-found]
+
+    existing = _SERIAL_POOL.get(port)
+    if existing is not None and getattr(existing, "is_open", True):
+        if getattr(existing, "baudrate", baudrate) == baudrate:
+            return existing
+        try:
+            existing.close()
+        except Exception:
+            pass
+        _SERIAL_POOL.pop(port, None)
+
+    ser = serial.Serial(port, baudrate, timeout=0.5)
+    time.sleep(_SERIAL_BOOT_WAIT_S)
+    _SERIAL_POOL[port] = ser
+    return ser
+
+
+def _close_pooled_serial(port: str) -> bool:
+    """Close and evict a serial port from the persistent pool."""
+    with _SERIAL_LOCK:
+        ser = _SERIAL_POOL.pop(port, None)
+        if ser is None:
+            return False
+        try:
+            ser.close()
+        except Exception:
+            pass
+        return True
+
+
+class HardwareClosePortRequest(BaseModel):
+    port: str = Field(..., min_length=1, max_length=64)
+
+
+@app.post("/api/hardware/close-port")
+def close_hardware_port(req: HardwareClosePortRequest) -> dict[str, Any]:
+    closed = _close_pooled_serial(req.port)
+    return {"ok": True, "port": req.port, "closed": closed}
+
+
 @app.post("/api/hardware/send-pose")
 def send_hardware_pose(req: HardwarePoseRequest) -> dict[str, Any]:
     frame = (
@@ -1032,9 +1082,8 @@ def send_hardware_pose(req: HardwarePoseRequest) -> dict[str, Any]:
             "mode": "virtual_sim",
         }
     try:
-        import serial  # type: ignore[import-not-found]
-
-        with serial.Serial(req.port, req.baudrate, timeout=0.5) as ser:
+        with _SERIAL_LOCK:
+            ser = _get_or_open_serial(req.port, req.baudrate)
             ser.write(frame.encode("ascii"))
             ser.flush()
         return {
@@ -1044,6 +1093,7 @@ def send_hardware_pose(req: HardwarePoseRequest) -> dict[str, Any]:
             "mode": "serial_usb",
         }
     except Exception as exc:
+        _close_pooled_serial(req.port)
         return {
             "ok": False,
             "frame": frame,

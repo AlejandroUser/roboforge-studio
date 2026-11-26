@@ -112,7 +112,7 @@ def test_arduino_pca9685_i2c_power_budget_bom_and_schematics():
 
     assert mech.bus_architecture == "arduino_pca9685_i2c"
     assert mech.power_budget.system_voltage_v == pytest.approx(6.5)
-    assert "3–12V 10A" in mech.power_budget.recommended_psu
+    assert "6.5V 15A" in mech.power_budget.recommended_psu
     assert "22 AWG" in mech.power_budget.signal_wire_awg
 
     bom_by_code = {item.part_code: item for item in mech.master_bom}

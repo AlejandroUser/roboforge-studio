@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import math
+import re
 from html import escape
 
 from ..schemas import (
@@ -532,6 +533,89 @@ def _select_power_awg(peak_current_a: float) -> str:
     return "10 AWG (Silicona)"
 
 
+AWG_RESISTANCE_OHM_PER_M: dict[int, float] = {
+    10: 0.00328,
+    12: 0.00521,
+    14: 0.00829,
+    16: 0.01318,
+    18: 0.02095,
+    20: 0.03331,
+    22: 0.05296,
+    24: 0.08422,
+    26: 0.13390,
+}
+
+# (winding_resistance_ohm, thermal_resistance_c_per_w, thermal_time_constant_s, min_stall_i_a)
+ACTUATOR_THERMAL_RC: dict[str, tuple[float, float, float, float]] = {
+    "rc_servo": (1.60, 18.0, 45.0, 2.0),
+    "serial_bus_servo": (2.10, 16.0, 55.0, 1.8),
+    "stepper": (1.40, 6.5, 180.0, 2.0),
+    "closed_loop_stepper": (1.20, 6.0, 170.0, 2.2),
+    "bldc_qdd": (0.45, 4.2, 120.0, 4.5),
+}
+
+
+def evaluate_electro_thermal_bus(
+    bus_voltage_v: float,
+    peak_current_a: float,
+    continuous_current_a: float,
+    awg: int | str,
+    cable_length_m: float,
+    actuator_class: str = "rc_servo",
+) -> dict:
+    """
+    Evaluate two real-world electro-thermal limits:
+    1. Round-trip DC bus I*R voltage droop across the power cable (2 * R_awg * L * I_peak).
+    2. First-order RC winding thermal model under 30 s stall:
+           T(t) = T_amb + P_loss * R_th * (1 - exp(-t / tau_th))
+       computing estimated_stall_temp_30s_c and safe_stall_time_s before exceeding 85 C.
+    """
+    if isinstance(awg, int):
+        awg_num = awg
+    else:
+        m = re.search(r"(\d+)\s*AWG", str(awg), re.IGNORECASE)
+        awg_num = int(m.group(1)) if m else 18
+    r_per_m = AWG_RESISTANCE_OHM_PER_M.get(awg_num, 0.02095)
+
+    # Round-trip (V+ and GND return) bus resistance
+    r_roundtrip_ohm = 2.0 * r_per_m * max(float(cable_length_m), 0.1)
+    v_drop = float(peak_current_a) * r_roundtrip_ohm
+    v_bus = max(float(bus_voltage_v), 0.5)
+    droop_pct = (v_drop / v_bus) * 100.0
+
+    r_w, r_th, tau_th, min_stall_i = ACTUATOR_THERMAL_RC.get(
+        actuator_class, ACTUATOR_THERMAL_RC["rc_servo"]
+    )
+    t_amb_c = 25.0
+    t_limit_c = 85.0
+
+    # Per-actuator worst-case stall current (single stalled joint)
+    if actuator_class in ("stepper", "closed_loop_stepper"):
+        i_stall = max(min_stall_i, float(continuous_current_a) / 3.0)
+    else:
+        i_stall = max(min_stall_i, float(peak_current_a) / 3.0)
+
+    p_loss_w = (i_stall**2) * r_w
+    delta_t_inf = p_loss_w * r_th
+    temp_30s_c = t_amb_c + delta_t_inf * (1.0 - math.exp(-30.0 / tau_th))
+
+    if (t_amb_c + delta_t_inf) <= t_limit_c:
+        safe_stall_s = 999.0
+    else:
+        frac = (t_limit_c - t_amb_c) / max(delta_t_inf, 1e-6)
+        safe_stall_s = -tau_th * math.log(max(1.0 - frac, 1e-6))
+
+    return {
+        "awg": awg_num,
+        "roundtrip_resistance_ohm": round(r_roundtrip_ohm, 4),
+        "bus_voltage_drop_v": round(v_drop, 3),
+        "bus_voltage_droop_pct": round(droop_pct, 2),
+        "stall_power_loss_w": round(p_loss_w, 2),
+        "estimated_stall_temp_30s_c": round(temp_30s_c, 1),
+        "safe_stall_time_s": round(safe_stall_s, 1),
+    }
+
+
 def evaluate_mechatronics(
     req: ModularArmRequest,
     eval_result: dict,
@@ -691,9 +775,15 @@ def evaluate_mechatronics(
         peak_i_total = round(min(20.0, (sum_peak_i * 0.65 + 1.5) * arm_mult), 2)
         cont_w = round(system_v * cont_i_total, 1)
         peak_w = round(system_v * peak_i_total, 1)
-        psu_name = "Fuente Ajustable 3–12V 10A (6.5V · Jack DC 5.5×2.1mm)"
-        psu_cost = 16.5 * arm_mult
-        power_awg = "16 AWG (Jack DC → PCA9685 V+)"
+        psu_amps = max(10, int(math.ceil(peak_i_total / 5.0) * 5))
+        psu_conn = "Bornera / XT30" if peak_i_total > 8.0 else "Jack DC 5.5×2.1mm"
+        psu_name = f"Fuente Conmutada {system_v:.1f}V {psu_amps}A ({psu_conn})"
+        psu_cost = (16.5 if psu_amps <= 10 else 21.0) * arm_mult
+        power_awg = (
+            "14 AWG (XT30 → PCA9685 V+)"
+            if peak_i_total > 12.0
+            else "16 AWG (Bornera/XT30 → PCA9685 V+)"
+        )
         signal_awg = "22 AWG Extensiones Servo (10/30/50 cm)"
     elif is_uart_bus:
         system_v = 12.0 if float(cfg.system_voltage_v) >= 10.0 else 7.4
@@ -701,9 +791,11 @@ def evaluate_mechatronics(
         peak_i_total = round((sum_peak_i * 0.72 + 0.6) * arm_mult, 2)
         cont_w = round(system_v * cont_i_total, 1)
         peak_w = round(system_v * peak_i_total, 1)
-        psu_name = f"Fuente Conmutada {system_v:.1f}V {int(5 * arm_mult)}A (Jack DC / XT30)"
-        psu_cost = 15.0 * arm_mult
-        power_awg = "18 AWG (Silicona)"
+        uart_psu_amps = max(5, int(math.ceil(peak_i_total / 5.0) * 5))
+        uart_conn = "XT30 / Bornera" if peak_i_total > 5.0 else "Jack DC / XT30"
+        psu_name = f"Fuente Conmutada {system_v:.1f}V {uart_psu_amps}A ({uart_conn})"
+        psu_cost = (15.0 if uart_psu_amps <= 5 else 19.5) * arm_mult
+        power_awg = "16 AWG (Silicona)" if peak_i_total > 8.0 else "18 AWG (Silicona)"
         signal_awg = "22 AWG Bus Serie TTL 3-Pin Half-Duplex (1 Mbps)"
     else:
         system_v = 48.0 if max_motor_voltage >= 40.0 else 24.0
@@ -751,6 +843,30 @@ def evaluate_mechatronics(
     total_harness_m = round(raw_harness_m * 1.20, 2)
     fuse_a = float(math.ceil((peak_i_total * 1.25) / 5.0) * 5)
 
+    primary_actuator_class = (
+        joint_reports[0].motor_type if joint_reports else "rc_servo"
+    )
+    # Effective power bus run (PSU -> distribution/driver -> heaviest joint)
+    pwr_bus_len_m = 0.45 + h_base_m + l1_m
+    et_bus = evaluate_electro_thermal_bus(
+        bus_voltage_v=system_v,
+        peak_current_a=peak_i_total,
+        continuous_current_a=cont_i_total,
+        awg=power_awg,
+        cable_length_m=pwr_bus_len_m,
+        actuator_class=primary_actuator_class,
+    )
+    if et_bus["bus_voltage_droop_pct"] > 5.0:
+        notes.append(
+            f"Caída de voltaje I·R en bus ({et_bus['bus_voltage_drop_v']:.2f}V / "
+            f"{et_bus['bus_voltage_droop_pct']:.1f}% > 5%): sube el calibre AWG de potencia o acorta el arnés."
+        )
+    if et_bus["estimated_stall_temp_30s_c"] > 85.0:
+        notes.append(
+            f"Riesgo térmico en bloqueo (RC 30s = {et_bus['estimated_stall_temp_30s_c']:.1f}°C > 85°C, "
+            f"tiempo seguro máx. {et_bus['safe_stall_time_s']:.1f}s): añade protección térmica o timeout de stall."
+        )
+
     power_budget = PowerBudget(
         bus_architecture=bus_arch,
         system_voltage_v=system_v,
@@ -764,6 +880,10 @@ def evaluate_mechatronics(
         signal_wire_awg=signal_awg,
         total_harness_length_m=total_harness_m,
         fuse_rating_a=fuse_a,
+        bus_voltage_drop_v=et_bus["bus_voltage_drop_v"],
+        bus_voltage_droop_pct=et_bus["bus_voltage_droop_pct"],
+        estimated_stall_temp_30s_c=et_bus["estimated_stall_temp_30s_c"],
+        safe_stall_time_s=et_bus["safe_stall_time_s"],
     )
 
     # Master Unit-Level BOM (4 categories)
@@ -1463,19 +1583,24 @@ def evaluate_mechatronics(
     )
 
 
+# Canonical PCA9685 channel map shared 1:1 with firmware_gen.py (Brazo 5.0 Arduino UNO)
+ARDUINO_PCA9685_CHANNELS: tuple[tuple[str, str, str, str], ...] = (
+    ("CH0", "CH0_J0_Base_Yaw", "J0 Base Yaw", "TD-8120MG · Ext 10cm"),
+    ("CH1", "CH1_J1_Shoulder_A", "J1 Hombro Servo A (Paralelo ×2)", "TD-8120MG · 22 AWG"),
+    ("CH2", "CH2_J1_Shoulder_B", "J1 Hombro Servo B (Paralelo ×2)", "TD-8120MG · Invertido"),
+    ("CH3", "CH3_J2_Elbow_A", "J2 Codo Servo A (Paralelo ×2)", "TD-8120MG · 22 AWG"),
+    ("CH4", "CH4_J2_Elbow_B", "J2 Codo Servo B (Paralelo ×2)", "TD-8120MG · Invertido"),
+    ("CH5", "CH5_J3_Wrist_Pitch", "J3 Muñeca Pitch", "TD-8120MG · Ext 30cm"),
+    ("CH6", "CH6_J4_Wrist_Roll", "J4 Muñeca Roll", "TD-8120MG · Ext 50cm"),
+    ("CH7", "CH7_Gripper", "Pinza / Gripper 2-Dedos", "TD-8120MG · Ext 50cm"),
+)
+
+
 def _generate_pca9685_schematic_svg(mechatronics: MechatronicsResponse) -> str:
     """Dedicated dark-mode SVG schematic for Arduino UNO + PCA9685 16ch I2C (8 Servos + Gripper)."""
     pb = mechatronics.power_budget
-    channels = [
-        ("CH0", "J1 Hombro Servo A (Paralelo ×2)", "TD-8120MG · 22 AWG"),
-        ("CH1", "J1 Hombro Servo B (Paralelo ×2)", "TD-8120MG · Invertido"),
-        ("CH2", "J2 Codo Servo A (Paralelo ×2)", "TD-8120MG · 22 AWG"),
-        ("CH3", "J2 Codo Servo B (Paralelo ×2)", "TD-8120MG · Invertido"),
-        ("CH4", "J3 Muñeca Pitch", "TD-8120MG · Ext 30cm"),
-        ("CH5", "J4 Base Yaw", "TD-8120MG · Ext 10cm"),
-        ("CH6", "J5 Muñeca Roll", "TD-8120MG · Ext 50cm"),
-        ("CH7", "Pinza / Gripper 2-Dedos", "TD-8120MG · Ext 50cm"),
-    ]
+    channels = [(ch, label, sub) for ch, _, label, sub in ARDUINO_PCA9685_CHANNELS]
+    psu_conn_txt = "Bornera / XT30 (>8A)" if pb.peak_current_a > 8.0 else "Jack DC 5.5×2.1 mm"
     svg_w, svg_h = 980, 560
     lines: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {svg_w} {svg_h}" width="{svg_w}" height="{svg_h}">',
@@ -1487,40 +1612,40 @@ def _generate_pca9685_schematic_svg(mechatronics: MechatronicsResponse) -> str:
         f'<rect width="{svg_w}" height="{svg_h}" fill="#0b1120"/>',
         f'<rect width="{svg_w}" height="{svg_h}" fill="url(#rf-grid-pca)"/>',
         '<text x="24" y="32" fill="#f8fafc" font-family="ui-monospace,Consolas,monospace" font-size="16" font-weight="700">'
-        'ROBOFORGE v4.1 — ESQUEMÁTICO BRAZO 5.0 (ARDUINO UNO + PCA9685 I2C · 8 SERVOS)</text>',
+        'ROBOFORGE v10.0 — ESQUEMÁTICO BRAZO 5.0 (ARDUINO UNO + PCA9685 I2C · 8 SERVOS)</text>',
         '<text x="24" y="52" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="11">'
         f'{escape(pb.recommended_psu)} · {pb.system_voltage_v:.1f}V · Pico {pb.peak_current_a:.1f}A ({pb.peak_power_w:.0f}W) · Arnés {pb.total_harness_length_m:.2f} m</text>',
         # PSU block
         '<rect x="24" y="120" width="190" height="104" rx="8" fill="#111827" stroke="#f59e0b" stroke-width="1.8"/>',
-        '<text x="36" y="144" fill="#fbbf24" font-family="ui-monospace,Consolas,monospace" font-size="12" font-weight="700">FUENTE 6.5V 10A</text>',
-        '<text x="36" y="164" fill="#e2e8f0" font-family="ui-monospace,Consolas,monospace" font-size="10">Ajustable 3–12V · 10A</text>',
-        '<text x="36" y="182" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">Jack DC 5.5×2.1 mm</text>',
-        f'<text x="36" y="200" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">Vout: {pb.system_voltage_v:.1f} V DC (V+)</text>',
+        f'<text x="36" y="144" fill="#fbbf24" font-family="ui-monospace,Consolas,monospace" font-size="12" font-weight="700">FUENTE {pb.system_voltage_v:.1f}V (SERVOS)</text>',
+        f'<text x="36" y="164" fill="#e2e8f0" font-family="ui-monospace,Consolas,monospace" font-size="9.5">{escape(pb.recommended_psu[:26])}</text>',
+        f'<text x="36" y="182" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">{escape(psu_conn_txt)}</text>',
+        f'<text x="36" y="200" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">Vout: {pb.system_voltage_v:.1f} V DC → V+ (Aislado 5V)</text>',
         # Arduino UNO block
         '<rect x="24" y="290" width="190" height="114" rx="8" fill="#111827" stroke="#38bdf8" stroke-width="1.8"/>',
         '<text x="36" y="314" fill="#38bdf8" font-family="ui-monospace,Consolas,monospace" font-size="12" font-weight="700">ARDUINO UNO R3</text>',
         '<text x="36" y="334" fill="#e2e8f0" font-family="ui-monospace,Consolas,monospace" font-size="10">ATmega328P · 5V Logic</text>',
         '<text x="36" y="352" fill="#22c55e" font-family="ui-monospace,Consolas,monospace" font-size="10">A4 (SDA) / A5 (SCL)</text>',
-        '<text x="36" y="370" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">GND común + VCC 5V</text>',
-        '<text x="36" y="388" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">USB Secuenciador Poses</text>',
-        # Wires PSU -> PCA9685 and Arduino -> PCA9685
+        '<text x="36" y="370" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">5V → VCC_5V · GND común</text>',
+        '<text x="36" y="388" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">USB 115200 Live (P:...)</text>',
+        # Wires PSU -> PCA9685 (V+ / GND) and Arduino -> PCA9685 (VCC_5V / SDA / SCL / GND)
         '<line x1="214" y1="162" x2="310" y2="162" stroke="#ef4444" stroke-width="2.8"/>',
         '<line x1="214" y1="184" x2="310" y2="184" stroke="#64748b" stroke-width="2.4" stroke-dasharray="4 2"/>',
-        '<text x="224" y="154" fill="#fca5a5" font-family="ui-monospace,Consolas,monospace" font-size="9">Jack DC V+ 16AWG</text>',
+        f'<text x="218" y="154" fill="#fca5a5" font-family="ui-monospace,Consolas,monospace" font-size="9">V+ {pb.system_voltage_v:.1f}V ({escape(pb.power_wire_awg[:6])})</text>',
         '<line x1="214" y1="336" x2="310" y2="274" stroke="#22c55e" stroke-width="2.0"/>',
         '<line x1="214" y1="354" x2="310" y2="292" stroke="#38bdf8" stroke-width="2.0"/>',
         '<line x1="214" y1="372" x2="310" y2="310" stroke="#64748b" stroke-width="1.8" stroke-dasharray="4 2"/>',
-        '<text x="220" y="294" fill="#86efac" font-family="ui-monospace,Consolas,monospace" font-size="9">I2C SDA/SCL/GND</text>',
+        '<text x="216" y="294" fill="#86efac" font-family="ui-monospace,Consolas,monospace" font-size="8.5">VCC_5V/SDA/SCL/GND</text>',
         # PCA9685 16ch Shield block
         '<rect x="310" y="130" width="230" height="215" rx="8" fill="#111827" stroke="#a855f7" stroke-width="2.0"/>',
         '<text x="324" y="158" fill="#c084fc" font-family="ui-monospace,Consolas,monospace" font-size="12.5" font-weight="700">PCA9685 16ch I2C</text>',
         '<text x="324" y="178" fill="#e2e8f0" font-family="ui-monospace,Consolas,monospace" font-size="10">Driver PWM 12-bit (50 Hz)</text>',
-        '<text x="324" y="198" fill="#fca5a5" font-family="ui-monospace,Consolas,monospace" font-size="10">Bornera V+: 6.5V / 10A</text>',
-        '<text x="324" y="218" fill="#86efac" font-family="ui-monospace,Consolas,monospace" font-size="10">Dir I2C: 0x40 (SDA/SCL)</text>',
-        '<text x="324" y="244" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">Canales Activos: CH0..CH7</text>',
-        '<text x="324" y="264" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">8× Servos TD-8120MG</text>',
-        '<text x="324" y="284" fill="#fbbf24" font-family="ui-monospace,Consolas,monospace" font-size="10">CH0–CH1: Hombro ×2</text>',
-        '<text x="324" y="304" fill="#fbbf24" font-family="ui-monospace,Consolas,monospace" font-size="10">CH2–CH3: Codo ×2</text>',
+        f'<text x="324" y="198" fill="#fca5a5" font-family="ui-monospace,Consolas,monospace" font-size="10">Bornera V+: {pb.system_voltage_v:.1f}V (Servos)</text>',
+        '<text x="324" y="218" fill="#86efac" font-family="ui-monospace,Consolas,monospace" font-size="10">Lógica VCC_5V · I2C 0x40</text>',
+        '<text x="324" y="244" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">CH0: Base Yaw (J0)</text>',
+        '<text x="324" y="264" fill="#fbbf24" font-family="ui-monospace,Consolas,monospace" font-size="10">CH1–CH2: Hombro ×2 (J1)</text>',
+        '<text x="324" y="284" fill="#fbbf24" font-family="ui-monospace,Consolas,monospace" font-size="10">CH3–CH4: Codo ×2 (J2)</text>',
+        '<text x="324" y="304" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">CH5–CH6: Muñeca Pitch/Roll</text>',
         '<text x="324" y="324" fill="#38bdf8" font-family="ui-monospace,Consolas,monospace" font-size="10">CH7: Pinza / Gripper</text>',
         # Bus trunk to CH0..CH7
         '<line x1="540" y1="238" x2="612" y2="238" stroke="#ef4444" stroke-width="2.4"/>',
@@ -1757,7 +1882,14 @@ def generate_circuit_schematic_svg(mechatronics: MechatronicsResponse, dof: int)
     for idx, jr in enumerate(mechatronics.joint_reports[:n_joints]):
         cy = y_first + idx * 56
         stroke_c = status_colors.get(jr.status, "#38bdf8")
-        conn_tag = "JST-GH 4P" if is_can else "JST-XH 4P"
+        if is_can:
+            conn_tag = "XT30 (Pwr) + JST-GH (CAN)"
+        elif is_uart:
+            conn_tag = "Molex 5264 3P (TTL)"
+        elif is_teensy or jr.peak_current_a > 3.0:
+            conn_tag = "Bornera / GX16-4"
+        else:
+            conn_tag = "JST-XH 4P (18AWG)"
         lines.extend(
             [
                 f'<line x1="{trunk_x}" y1="{cy}" x2="716" y2="{cy}" stroke="#ef4444" stroke-width="1.8"/>',
@@ -1846,30 +1978,23 @@ def generate_wireviz_yaml(mechatronics: MechatronicsResponse, dof: int) -> str:
         return "\n".join(out_esp) + "\n"
 
     if pb.bus_architecture == "arduino_pca9685_i2c":
+        psu_subtype = "XT30-M / Bornera" if pb.peak_current_a > 8.0 else "DC-Jack-5.5x2.1mm"
+        psu_gauge = "14 AWG" if pb.peak_current_a > 12.0 else "16 AWG"
         out_pca = [
-            "# RoboForge Studio Pro v4.1 — Brazo Arduino 5.0 (PCA9685 I2C · 8 Servos)",
+            "# RoboForge Studio Pro v10.0 — Brazo Arduino 5.0 (PCA9685 I2C · 8 Servos)",
             "connectors:",
             "  X1_PSU_6V5:",
             f"    type: {pb.recommended_psu}",
-            "    subtype: DC-Jack-5.5x2.1mm",
+            f"    subtype: {psu_subtype}",
             f"    pins: ['+{pb.system_voltage_v:.1f}V', 'GND']",
             "  X2_ARDUINO_UNO:",
             "    type: Arduino UNO R3 (ATmega328P)",
             "    pins: ['5V', 'GND', 'A4_SDA', 'A5_SCL']",
             "  X3_PCA9685:",
-            "    type: PCA9685 16ch I2C Servo Shield",
-            "    pins: ['V+', 'GND', 'SDA', 'SCL', 'PWM']",
+            "    type: PCA9685 16ch I2C Servo Shield (0x40)",
+            "    pins: ['V+', 'GND', 'VCC_5V', 'SDA', 'SCL', 'PWM']",
         ]
-        ch_names = [
-            "CH0_J1_Shoulder_A",
-            "CH1_J1_Shoulder_B",
-            "CH2_J2_Elbow_A",
-            "CH3_J2_Elbow_B",
-            "CH4_J3_Wrist_Pitch",
-            "CH5_J4_Base_Yaw",
-            "CH6_J5_Wrist_Roll",
-            "CH7_Gripper",
-        ]
+        ch_names = [ch_id for _, ch_id, _, _ in ARDUINO_PCA9685_CHANNELS]
         for ch in ch_names:
             out_pca.extend(
                 [
@@ -1884,7 +2009,7 @@ def generate_wireviz_yaml(mechatronics: MechatronicsResponse, dof: int) -> str:
                 "",
                 "cables:",
                 "  W1_PSU_DC:",
-                "    gauge: 16 AWG",
+                f"    gauge: {psu_gauge}",
                 "    length: 0.40 m",
                 "    colors: [RD, BK]",
                 "  W2_I2C_BUS:",
@@ -1898,18 +2023,179 @@ def generate_wireviz_yaml(mechatronics: MechatronicsResponse, dof: int) -> str:
                 "",
                 "connections:",
                 "  - [X1_PSU_6V5: [1, 2], W1_PSU_DC: [1, 2], X3_PCA9685: [1, 2]]",
-                "  - [X2_ARDUINO_UNO: [1, 2, 3, 4], W2_I2C_BUS: [1, 2, 3, 4], X3_PCA9685: [1, 2, 3, 4]]",
+                "  - [X2_ARDUINO_UNO: [1, 2, 3, 4], W2_I2C_BUS: [1, 2, 3, 4], X3_PCA9685: [3, 2, 4, 5]]",
             ]
         )
         for ch in ch_names:
-            out_pca.append(f"  - [X3_PCA9685: [5, 1, 2], W3_SERVO_EXT: [1, 2, 3], S_{ch}: [1, 2, 3]]")
+            out_pca.append(f"  - [X3_PCA9685: [6, 1, 2], W3_SERVO_EXT: [1, 2, 3], S_{ch}: [1, 2, 3]]")
         return "\n".join(out_pca) + "\n"
 
-    is_can = pb.bus_architecture == "can_fd_bus"
     n_joints = max(1, min(dof, len(mechatronics.joint_reports)))
 
+    if pb.bus_architecture == "uart_serial_bus":
+        psu_sub = "XT30-M / Bornera" if pb.peak_current_a > 5.0 else "DC-Jack-5.5x2.1mm"
+        out_uart = [
+            "# RoboForge Studio Pro v10.0 — Bus Serie UART 1 Mbps (STS3215 / LeRobot)",
+            "connectors:",
+            "  X1_PSU_UART:",
+            f"    type: {pb.recommended_psu}",
+            f"    subtype: {psu_sub}",
+            f"    pins: ['+{pb.system_voltage_v:.1f}V', 'GND']",
+            "  X2_WAVESHARE_TTL:",
+            "    type: Waveshare Bus Servo Adapter (USB-TTL 1 Mbps)",
+            "    subtype: Molex-5264-3P",
+            "    pins: ['VCC', 'GND', 'DATA_HALF_DUPLEX']",
+        ]
+        for jr in mechatronics.joint_reports[:n_joints]:
+            out_uart.extend(
+                [
+                    f"  S_{jr.joint_id}:",
+                    f"    type: {jr.motor_name}",
+                    "    subtype: Molex-5264-3P",
+                    "    pins: ['VCC', 'GND', 'DATA']",
+                ]
+            )
+        out_uart.extend(
+            [
+                "",
+                "cables:",
+                "  W1_PSU_UART:",
+                f"    gauge: {pb.power_wire_awg}",
+                "    length: 0.40 m",
+                "    colors: [RD, BK]",
+                "  W2_TTL_BUS_3P:",
+                "    gauge: 22 AWG",
+                f"    length: {pb.total_harness_length_m:.2f} m",
+                "    colors: [RD, BK, YE]",
+                "",
+                "connections:",
+                "  - [X1_PSU_UART: [1, 2], W1_PSU_UART: [1, 2], X2_WAVESHARE_TTL: [1, 2]]",
+            ]
+        )
+        for jr in mechatronics.joint_reports[:n_joints]:
+            out_uart.append(
+                f"  - [X2_WAVESHARE_TTL: [1, 2, 3], W2_TTL_BUS_3P: [1, 2, 3], S_{jr.joint_id}: [1, 2, 3]]"
+            )
+        return "\n".join(out_uart) + "\n"
+
+    if pb.bus_architecture == "teensy_dm542":
+        out_t = [
+            "# RoboForge Studio Pro v10.0 — Teensy 4.1 + Drivers Industriales DM542T",
+            "connectors:",
+            "  X1_PSU:",
+            f"    type: {pb.recommended_psu}",
+            "    subtype: XT60-M",
+            f"    pins: ['+{pb.system_voltage_v:.0f}V', 'GND']",
+            "  X2_ESTOP:",
+            f"    type: E-Stop + Fuse {pb.fuse_rating_a:.0f}A",
+            "    pins: ['IN+', 'OUT+', 'GND']",
+            "  X3_TEENSY41:",
+            "    type: Teensy 4.1 + Breakout AR4 (Step/Dir + Encoders + Homing)",
+            "    pins: ['PUL+', 'DIR+', 'ENA+', 'GND_SIG', 'ENC_A', 'ENC_B', 'HOME_IN']",
+        ]
+        for jr in mechatronics.joint_reports[:n_joints]:
+            out_t.extend(
+                [
+                    f"  D_DM542T_{jr.joint_id}:",
+                    "    type: Driver Industrial DM542T (4.2A)",
+                    "    subtype: Screw-Terminal",
+                    "    pins: ['VDC', 'GND', 'PUL+', 'DIR+', 'ENA+', 'A+', 'A-', 'B+', 'B-']",
+                    f"  M_{jr.joint_id}:",
+                    f"    type: {jr.motor_name}",
+                    "    subtype: GX16-4 / Bornera",
+                    "    pins: ['A+', 'A-', 'B+', 'B-']",
+                ]
+            )
+        out_t.extend(
+            [
+                "",
+                "cables:",
+                "  W1_MAIN_PWR:",
+                f"    gauge: {pb.power_wire_awg}",
+                "    length: 0.45 m",
+                "    colors: [RD, BK]",
+                "  W2_CTRL_STEP_DIR:",
+                "    gauge: 24 AWG Apantallado",
+                "    length: 0.30 m",
+                "    colors: [YE, GN, BU]",
+                "  W3_MOTOR_PHASE:",
+                "    gauge: 18 AWG Silicona",
+                f"    length: {pb.total_harness_length_m:.2f} m",
+                "    colors: [RD, BU, GN, BK]",
+                "",
+                "connections:",
+                "  - [X1_PSU: [1, 2], W1_MAIN_PWR: [1, 2], X2_ESTOP: [1, 3]]",
+            ]
+        )
+        for jr in mechatronics.joint_reports[:n_joints]:
+            out_t.append(f"  - [X2_ESTOP: [2, 3], W1_MAIN_PWR: [1, 2], D_DM542T_{jr.joint_id}: [1, 2]]")
+            out_t.append(f"  - [X3_TEENSY41: [1, 2, 3], W2_CTRL_STEP_DIR: [1, 2, 3], D_DM542T_{jr.joint_id}: [3, 4, 5]]")
+            out_t.append(f"  - [D_DM542T_{jr.joint_id}: [6, 7, 8, 9], W3_MOTOR_PHASE: [1, 2, 3, 4], M_{jr.joint_id}: [1, 2, 3, 4]]")
+        return "\n".join(out_t) + "\n"
+
+    if pb.bus_architecture == "can_fd_bus":
+        out_can = [
+            "# RoboForge Studio Pro v10.0 — Bus CAN-FD (Potencia XT30/XT60 Separada de Señal JST-GH 120Ω)",
+            "connectors:",
+            "  X1_PSU:",
+            f"    type: {pb.recommended_psu}",
+            "    subtype: XT60-M",
+            f"    pins: ['+{pb.system_voltage_v:.0f}V', 'GND']",
+            "  X2_ESTOP:",
+            f"    type: E-Stop + Fuse {pb.fuse_rating_a:.0f}A",
+            "    pins: ['IN+', 'OUT+', 'GND']",
+            "  X3_PWR_DIST:",
+            "    type: Bus Distribución Potencia (XT60 -> XT30)",
+            "    subtype: XT30-F",
+            "    pins: ['VBUS', 'GND']",
+            "  X4_MCU_CANFD:",
+            "    type: STM32H743 CAN-FD Controller (Terminador 120Ω)",
+            "    subtype: JST-GH 4P",
+            "    pins: ['CAN_H', 'CAN_L', 'GND_REF', 'NC']",
+        ]
+        for jr in mechatronics.joint_reports[:n_joints]:
+            out_can.extend(
+                [
+                    f"  M_PWR_{jr.joint_id}:",
+                    f"    type: {jr.motor_name} (Power)",
+                    "    subtype: XT30-M",
+                    "    pins: ['VBUS', 'GND']",
+                    f"  M_CAN_{jr.joint_id}:",
+                    f"    type: {jr.motor_name} (CAN-FD 120Ω)",
+                    "    subtype: JST-GH 4P",
+                    "    pins: ['CAN_H', 'CAN_L', 'GND_REF', 'NC']",
+                ]
+            )
+        out_can.extend(
+            [
+                "",
+                "cables:",
+                "  W1_MAIN_PWR:",
+                f"    gauge: {pb.power_wire_awg}",
+                "    length: 0.45 m",
+                "    colors: [RD, BK]",
+                "  W2_PWR_TRUNK:",
+                f"    gauge: {pb.power_wire_awg}",
+                f"    length: {pb.total_harness_length_m:.2f} m",
+                "    colors: [RD, BK]",
+                "  W3_CAN_FD_BUS:",
+                "    gauge: 24 AWG Par Trenzado 120Ω (CAN-FD)",
+                f"    length: {pb.total_harness_length_m:.2f} m",
+                "    colors: [GN, YE, BK]",
+                "",
+                "connections:",
+                "  - [X1_PSU: [1, 2], W1_MAIN_PWR: [1, 2], X2_ESTOP: [1, 3]]",
+                "  - [X2_ESTOP: [2, 3], W1_MAIN_PWR: [1, 2], X3_PWR_DIST: [1, 2]]",
+            ]
+        )
+        for jr in mechatronics.joint_reports[:n_joints]:
+            out_can.append(f"  - [X3_PWR_DIST: [1, 2], W2_PWR_TRUNK: [1, 2], M_PWR_{jr.joint_id}: [1, 2]]")
+            out_can.append(f"  - [X4_MCU_CANFD: [1, 2, 3], W3_CAN_FD_BUS: [1, 2, 3], M_CAN_{jr.joint_id}: [1, 2, 3]]")
+        return "\n".join(out_can) + "\n"
+
+    # Default: stm32_step_dir (separate 26 AWG STEP/DIR/EN logic from 18 AWG motor phase coils A+/A-/B+/B-)
     out: list[str] = [
-        "# RoboForge Studio Pro v4.0 — WireViz Harness Specification",
+        "# RoboForge Studio Pro v10.0 — STM32F407 + TMC2209 Step/Dir (Fases 18 AWG Separadas)",
         "connectors:",
         "  X1_PSU:",
         f"    type: {pb.recommended_psu}",
@@ -1918,17 +2204,21 @@ def generate_wireviz_yaml(mechatronics: MechatronicsResponse, dof: int) -> str:
         "  X2_ESTOP:",
         f"    type: E-Stop + Fuse {pb.fuse_rating_a:.0f}A",
         "    pins: ['IN+', 'OUT+', 'GND']",
-        "  X3_MCU:",
-        f"    type: {'STM32H743 CAN-FD Controller' if is_can else 'STM32F407 + TMC2209 Shield'}",
-        "    pins: ['VBUS', 'GND', 'CAN_H', 'CAN_L']" if is_can else "    pins: ['VBUS', 'GND', 'STEP', 'DIR']",
+        "  X3_MCU_STM32:",
+        "    type: STM32F407 Controller (Logic)",
+        "    pins: ['STEP', 'DIR', 'EN', 'GND_SIG']",
+        "  X4_TMC2209_SHIELD:",
+        "    type: Drivers TMC2209 Step/Dir Shield",
+        "    pins: ['VBUS', 'GND', 'STEP', 'DIR', 'EN', 'A+', 'A-', 'B+', 'B-']",
     ]
     for jr in mechatronics.joint_reports[:n_joints]:
+        m_sub = "GX16-4 / Bornera" if jr.peak_current_a > 3.0 else "JST-XH 4P"
         out.extend(
             [
                 f"  M_{jr.joint_id}:",
                 f"    type: {jr.motor_name}",
-                f"    subtype: {'JST-GH 4P' if is_can else 'JST-XH 4P'}",
-                "    pins: ['VBUS', 'GND', 'CAN_H', 'CAN_L']" if is_can else "    pins: ['A+', 'A-', 'B+', 'B-']",
+                f"    subtype: {m_sub}",
+                "    pins: ['A+', 'A-', 'B+', 'B-']",
             ]
         )
 
@@ -1940,19 +2230,24 @@ def generate_wireviz_yaml(mechatronics: MechatronicsResponse, dof: int) -> str:
             f"    gauge: {pb.power_wire_awg}",
             "    length: 0.45 m",
             "    colors: [RD, BK]",
-            "  W2_TRUNK_BUS:",
-            f"    gauge: {pb.signal_wire_awg}",
+            "  W2_STEP_DIR_SIG:",
+            "    gauge: 26 AWG Apantallado (Step/Dir)",
+            "    length: 0.15 m",
+            "    colors: [YE, GN, BU]",
+            "  W3_MOTOR_PHASE:",
+            "    gauge: 18 AWG Silicona",
             f"    length: {pb.total_harness_length_m:.2f} m",
-            "    colors: [RD, BK, GN, YE]",
+            "    colors: [RD, BU, GN, BK]",
             "",
             "connections:",
             "  - [X1_PSU: [1, 2], W1_MAIN_PWR: [1, 2], X2_ESTOP: [1, 3]]",
-            "  - [X2_ESTOP: [2, 3], W1_MAIN_PWR: [1, 2], X3_MCU: [1, 2]]",
+            "  - [X2_ESTOP: [2, 3], W1_MAIN_PWR: [1, 2], X4_TMC2209_SHIELD: [1, 2]]",
+            "  - [X3_MCU_STM32: [1, 2, 3], W2_STEP_DIR_SIG: [1, 2, 3], X4_TMC2209_SHIELD: [3, 4, 5]]",
         ]
     )
     for jr in mechatronics.joint_reports[:n_joints]:
         out.append(
-            f"  - [X3_MCU: [1, 2, 3, 4], W2_TRUNK_BUS: [1, 2, 3, 4], M_{jr.joint_id}: [1, 2, 3, 4]]"
+            f"  - [X4_TMC2209_SHIELD: [6, 7, 8, 9], W3_MOTOR_PHASE: [1, 2, 3, 4], M_{jr.joint_id}: [1, 2, 3, 4]]"
         )
     return "\n".join(out) + "\n"
 
@@ -2053,12 +2348,12 @@ def generate_lerobot_config_json(req: ModularArmRequest) -> str:
             "wrist_mm": req.wrist_mm,
         },
         "motors": {
-            "shoulder_pan": {"id": 1, "model": "sts3215", "homing_offset": 0, "range_deg": [-150, 150]},
-            "shoulder_lift": {"id": 2, "model": "sts3215", "homing_offset": 0, "range_deg": [-60, 90]},
-            "elbow_flex": {"id": 3, "model": "sts3215", "homing_offset": 0, "range_deg": [-130, 130]},
-            "wrist_flex": {"id": 4, "model": "sts3215", "homing_offset": 0, "range_deg": [-90, 90]},
-            "wrist_roll": {"id": 5, "model": "sts3215", "homing_offset": 0, "range_deg": [-180, 180]},
-            "gripper": {"id": 6, "model": "sts3215", "homing_offset": 0, "range_deg": [0, 100]},
+            "shoulder_pan": {"id": 1, "model": "sts3215", "drive_mode": 0, "homing_offset": 0, "range_min": 0, "range_max": 4095, "range_deg": [-150, 150]},
+            "shoulder_lift": {"id": 2, "model": "sts3215", "drive_mode": 0, "homing_offset": 0, "range_min": 0, "range_max": 4095, "range_deg": [-60, 90]},
+            "elbow_flex": {"id": 3, "model": "sts3215", "drive_mode": 0, "homing_offset": 0, "range_min": 0, "range_max": 4095, "range_deg": [-130, 130]},
+            "wrist_flex": {"id": 4, "model": "sts3215", "drive_mode": 0, "homing_offset": 0, "range_min": 0, "range_max": 4095, "range_deg": [-90, 90]},
+            "wrist_roll": {"id": 5, "model": "sts3215", "drive_mode": 0, "homing_offset": 0, "range_min": 0, "range_max": 4095, "range_deg": [-180, 180]},
+            "gripper": {"id": 6, "model": "sts3215", "drive_mode": 0, "homing_offset": 0, "range_min": 0, "range_max": 4095, "range_deg": [0, 100]},
         },
         "calibration_mode": "zero_center_4096_ticks",
     }
