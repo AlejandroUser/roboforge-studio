@@ -67,10 +67,9 @@ def _make_airfoil_face(
         z_local = -u * sin_b - v * cos_b + rake_mm
         pts_3d.append(Vector(r_mm, y_local, z_local))
 
-    # Smooth NURBS airfoil curve + crisp finite trailing-edge closing segment
-    curve = Spline(pts_3d)
-    te_close = Line(pts_3d[-1], pts_3d[0])
-    wire = Wire([curve, te_close])
+    # Cosine-clustered closed polygon wire guarantees identical vertex alignment across
+    # all radial stations -> 100% watertight, zero BSpline overshoot at the trailing edge.
+    wire = Wire.make_polygon(pts_3d, close=True)
     return Face(wire)
 
 
@@ -136,10 +135,7 @@ def _build_conventional_blade(
             )
         )
 
-    try:
-        blade = loft(section_faces, ruled=False)
-    except Exception:
-        blade = loft(section_faces, ruled=True)
+    blade = loft(section_faces, ruled=True)
     return blade
 
 
@@ -218,13 +214,10 @@ def _build_toroidal_lobe(
             v_rot = u * sb + v * cb
             ring_pts.append(pt + side * u_rot + normal * v_rot)
 
-        wire = Wire([Spline(ring_pts, periodic=True)])
+        wire = Wire.make_polygon(ring_pts, close=True)
         section_faces.append(Face(wire))
 
-    try:
-        lobe = loft(section_faces, ruled=False)
-    except Exception:
-        lobe = loft(section_faces, ruled=True)
+    lobe = loft(section_faces, ruled=True)
     return lobe
 
 

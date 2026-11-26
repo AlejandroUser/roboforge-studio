@@ -265,7 +265,7 @@ def _write_multi_mesh_3mf(meshes: list[tuple[str, trimesh.Trimesh]], output_path
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<model unit="millimeter" xml:lang="es-ES" '
         'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n'
-        '  <metadata name="Application">RoboForge Studio Pro v7.0</metadata>\n'
+        '  <metadata name="Application">RoboForge Studio Pro v11.0</metadata>\n'
         '  <metadata name="Description">Plato de impresión 3D auto-orientado y empaquetado para Bambu Studio / OrcaSlicer / PrusaSlicer</metadata>\n'
         "  <resources>\n"
         + "\n".join(obj_blocks)
@@ -358,8 +358,10 @@ def generate_print_readiness_pack(
     split_part_names: list[str] = []
 
     def _fits(sx_: float, sy_: float, sz_: float) -> bool:
+        u_x = max(20.0, bed_x - 2.0 * xy_margin)
+        u_y = max(20.0, bed_y - 2.0 * xy_margin)
         return (
-            ((sx_ <= bed_x - xy_margin and sy_ <= bed_y - xy_margin) or (sy_ <= bed_x - xy_margin and sx_ <= bed_y - xy_margin))
+            ((sx_ <= u_x and sy_ <= u_y) or (sy_ <= u_x and sx_ <= u_y))
             and sz_ <= bed_z - 4.0
         )
 
@@ -367,7 +369,7 @@ def generate_print_readiness_pack(
         try:
             mesh, size = _orient_part_flat_on_z0(solid)
             sx, sy, sz = size
-            if not _fits(sx, sy, sz) and auto_split and sx > bed_x - 10.0:
+            if not _fits(sx, sy, sz) and auto_split and (sx > bed_x - 2.0 * xy_margin or sy > bed_y - 2.0 * xy_margin):
                 # Split oversized part into two watertight dovetail halves (part_A tenon + part_B mortise +0.20mm)
                 halves_ok = False
                 try:
@@ -408,7 +410,11 @@ def generate_print_readiness_pack(
                     f"({bed_x:.0f}×{bed_y:.0f}×{bed_z:.0f} mm): activa Auto-Split Cola de Milano o usa impresora mayor."
                 )
             oriented_items.append((part_name, mesh, size, vol_cm3))
-        except Exception:
+        except Exception as exc:
+            fits_bed = False
+            warnings.append(
+                f"Error al orientar/exportar la pieza '{part_name}' para impresión 3D: {exc}"
+            )
             continue
 
     # Sort largest footprint first for clean 2D shelf bin-packing

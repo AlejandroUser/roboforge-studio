@@ -59,8 +59,12 @@ def audit_assembly_dfm(
     margin = 5.0
 
     non_watertight: list[str] = []
+    inverted_normals: list[str] = []
     multi_body: list[str] = []
     oversized: list[str] = []
+    usable_x = max(20.0, bed_x - 2.0 * margin)
+    usable_y = max(20.0, bed_y - 2.0 * margin)
+    usable_z = max(20.0, bed_z - 4.0)
 
     for name, solid in printable_parts.items():
         try:
@@ -71,22 +75,24 @@ def audit_assembly_dfm(
 
         if not mesh.is_watertight:
             non_watertight.append(name)
+        elif float(mesh.volume) <= 1e-3:
+            inverted_normals.append(f"{name} (vol={mesh.volume:.1f})")
 
         bodies = mesh.split(only_watertight=False)
         if len(bodies) != 1:
             multi_body.append(f"{name} ({len(bodies)} cuerpos)")
 
-        # Orient shortest axis to Z for flat print bed check
+        # Orient shortest axis to Z for flat print bed check (consistent with 2*margin bin-packer)
         dims = sorted([float(x) for x in mesh.extents])
         sz, sy, sx = dims[0], dims[1], dims[2]
         fits = (
-            ((sx <= bed_x - margin and sy <= bed_y - margin) or (sy <= bed_x - margin and sx <= bed_y - margin))
-            and sz <= bed_z - 4.0
+            ((sx <= usable_x and sy <= usable_y) or (sy <= usable_x and sx <= usable_y))
+            and sz <= usable_z
         )
         if not fits:
             oversized.append(f"{name} ({sx:.0f}×{sy:.0f}×{sz:.0f} mm)")
 
-    # 1. Watertight check
+    # 1. Watertight & outward-normals check
     if not printable_parts:
         checks.append(
             DFMCheckItem(
@@ -96,22 +102,27 @@ def audit_assembly_dfm(
                 detail="No se declararon piezas imprimibles para auditar.",
             )
         )
-    elif not non_watertight:
+    elif not non_watertight and not inverted_normals:
         checks.append(
             DFMCheckItem(
                 id="watertight",
                 label="Mallas Watertight (Manifold)",
                 status="pass",
-                detail=f"{len(printable_parts)}/{len(printable_parts)} piezas STL cerradas y sin bordes abiertos.",
+                detail=f"{len(printable_parts)}/{len(printable_parts)} piezas STL cerradas, volumen positivo y sin bordes abiertos.",
             )
         )
     else:
+        issues = []
+        if non_watertight:
+            issues.append(f"no-manifold: {', '.join(non_watertight)}")
+        if inverted_normals:
+            issues.append(f"normales invertidas/vol<=0: {', '.join(inverted_normals)}")
         checks.append(
             DFMCheckItem(
                 id="watertight",
                 label="Mallas Watertight (Manifold)",
                 status="fail",
-                detail=f"Piezas no-manifold detectadas: {', '.join(non_watertight)}.",
+                detail=f"Defectos de malla detectados ({'; '.join(issues)}).",
             )
         )
 
@@ -145,13 +156,22 @@ def audit_assembly_dfm(
         )
 
     # 3. Printer bed fit check
-    if not oversized:
+    if not printable_parts:
+        checks.append(
+            DFMCheckItem(
+                id="fits_bed",
+                label=f"Ajuste a Cama ({printer_name})",
+                status="warn",
+                detail="Sin piezas imprimibles para verificar ajuste en cama.",
+            )
+        )
+    elif not oversized:
         checks.append(
             DFMCheckItem(
                 id="fits_bed",
                 label=f"Ajuste a Cama ({printer_name})",
                 status="pass",
-                detail=f"Todas las piezas caben en {bed_x:.0f}×{bed_y:.0f}×{bed_z:.0f} mm (margen {margin:.0f} mm).",
+                detail=f"Todas las piezas caben en área útil {usable_x:.0f}×{usable_y:.0f}×{usable_z:.0f} mm (cama {bed_x:.0f}×{bed_y:.0f} mm, margen {margin:.0f} mm/lado).",
             )
         )
     else:
@@ -160,7 +180,7 @@ def audit_assembly_dfm(
                 id="fits_bed",
                 label=f"Ajuste a Cama ({printer_name})",
                 status="fail",
-                detail=f"Exceden cama {bed_x:.0f}×{bed_y:.0f} mm: {', '.join(oversized)}.",
+                detail=f"Exceden área útil {usable_x:.0f}×{usable_y:.0f} mm: {', '.join(oversized)}.",
             )
         )
 

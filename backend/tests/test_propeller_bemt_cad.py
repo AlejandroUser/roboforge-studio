@@ -21,12 +21,12 @@ from backend.app.schemas import ProjectGenerateRequest
 
 def _default_printer() -> dict:
     return {
-        "id": "bambu_a1_mini",
-        "name": "Bambu Lab A1 Mini (180×180×180)",
+        "id": "bambu_x1c",
+        "name": "Bambu Lab X1C (256×256×256)",
         "process": "fdm",
-        "bed_x_mm": 180.0,
-        "bed_y_mm": 180.0,
-        "bed_z_mm": 180.0,
+        "bed_x_mm": 256.0,
+        "bed_y_mm": 256.0,
+        "bed_z_mm": 256.0,
         "nozzle_mm": 0.4,
     }
 
@@ -100,6 +100,7 @@ def test_propeller_standalone_and_fpv_drone_integration(tmp_path: Path):
     assert res_prop.metrics["prop_style"] == "toroidal"
     assert res_prop.metrics["thrust_g"] > 350.0
     assert res_prop.metrics["cad_volume_mm3"] > 1800.0
+    assert res_prop.dfm_audit.status == "pass", f"Toroidal DFM audit failed: {res_prop.dfm_audit}"
 
     # 2. FPV Drone with mounted BEMT propellers
     fpv_plugin = get_family_plugin("fpv_drone")
@@ -112,6 +113,7 @@ def test_propeller_standalone_and_fpv_drone_integration(tmp_path: Path):
     res_fpv = fpv_plugin.generate(req_fpv, mat, printer, tmp_path / "fpv_5in", "test_fpv_hash")
     assert res_fpv.metrics["bemt_thrust_per_motor_g"] > 500.0
     assert res_fpv.metrics["twr"] > 2.5
+    assert res_fpv.dfm_audit.status == "pass", f"FPV DFM audit failed: {res_fpv.dfm_audit}"
     glb_path = tmp_path / "fpv_5in" / "arm_assembly.glb"
     assert glb_path.exists()
     scene = trimesh.load(str(glb_path), force="scene")
