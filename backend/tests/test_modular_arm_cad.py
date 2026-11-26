@@ -26,8 +26,9 @@ REQUIRED_SEMANTIC_NODES = {
     "upper_arm_link",
     "elbow_gear",
     "forearm_link",
-    "wrist_tube",
-    "tcp_flange",
+    "wrist_j4_roll",
+    "wrist_j5_pitch",
+    "wrist_j6_flange",
 }
 
 

@@ -22,6 +22,8 @@ from build123d import (
     extrude,
 )
 
+from ..cad.propeller_gen import generate_propeller_part
+from ..physics.propeller_bemt import solve_propeller_bemt
 from ..schemas import MasterBomItem, ProjectGenerateRequest, ProjectGenerateResponse
 from .base import ProjectFamilyPlugin, package_project_exports, write_simple_dxf_outline
 
@@ -29,9 +31,14 @@ FPV_PRESETS: dict[str, dict[str, Any]] = {
     "cinewhoop_3in": {
         "id": "cinewhoop_3in",
         "name": 'Cinewhoop 3" Ductless (20×20)',
-        "subtitle": "Compacto 148 mm · Motores 1404 · Batería 4S 850 mAh",
+        "subtitle": "Compacto 148 mm · Motores 1404 · Hélices 3028×4 BEMT · 4S 850 mAh",
         "defaults": {
             "prop_inch": 3.0,
+            "prop_pitch_inch": 2.8,
+            "prop_blades": 4,
+            "prop_rpm": 25000.0,
+            "prop_airfoil": "clark_y",
+            "prop_style": "conventional",
             "wheelbase_mm": 148.0,
             "stack_mm": 20.0,
             "motor_pcd_mm": 12.0,
@@ -43,9 +50,14 @@ FPV_PRESETS: dict[str, dict[str, Any]] = {
     "freestyle_5in": {
         "id": "freestyle_5in",
         "name": 'Freestyle 5" True-X (30.5×30.5)',
-        "subtitle": "Estándar 215 mm · Motores 2207 · Batería 6S 1300 mAh",
+        "subtitle": "Estándar 215 mm · Motores 2207 · Hélices 5043×3 BEMT · 6S 1300 mAh",
         "defaults": {
             "prop_inch": 5.0,
+            "prop_pitch_inch": 4.3,
+            "prop_blades": 3,
+            "prop_rpm": 22500.0,
+            "prop_airfoil": "naca4412",
+            "prop_style": "conventional",
             "wheelbase_mm": 215.0,
             "stack_mm": 30.5,
             "motor_pcd_mm": 16.0,
@@ -57,9 +69,14 @@ FPV_PRESETS: dict[str, dict[str, Any]] = {
     "longrange_7in": {
         "id": "longrange_7in",
         "name": 'Long-Range 7" Cruiser (30.5×30.5)',
-        "subtitle": "Eficiencia 240 mm · Motores 2806.5 · Li-Ion 4000 mAh",
+        "subtitle": "Eficiencia 240 mm · Motores 2806.5 · Hélices 7035×2 Eppler · Li-Ion 4000 mAh",
         "defaults": {
             "prop_inch": 7.0,
+            "prop_pitch_inch": 3.5,
+            "prop_blades": 2,
+            "prop_rpm": 14500.0,
+            "prop_airfoil": "eppler_e63",
+            "prop_style": "conventional",
             "wheelbase_mm": 240.0,
             "stack_mm": 30.5,
             "motor_pcd_mm": 19.0,
@@ -92,11 +109,17 @@ class FpvDronePlugin(ProjectFamilyPlugin):
         cfg = {**preset["defaults"], **(req.params or {})}
 
         prop_inch = float(cfg.get("prop_inch", 5.0))
+        prop_pitch_inch = float(cfg.get("prop_pitch_inch", max(2.2, prop_inch * 0.82)))
+        prop_blades = max(2, min(4, int(cfg.get("prop_blades", 3))))
+        prop_rpm = float(cfg.get("prop_rpm", 22500.0))
+        prop_airfoil = str(cfg.get("prop_airfoil", "naca4412"))
+        prop_style = str(cfg.get("prop_style", "conventional"))
         wheelbase = max(120.0, min(255.0, float(cfg.get("wheelbase_mm", 215.0))))
         stack_mm = float(cfg.get("stack_mm", 30.5))
         motor_pcd = float(cfg.get("motor_pcd_mm", 16.0))
         plate_t = max(2.5, min(6.0, float(cfg.get("plate_thickness_mm", 4.0))))
         batt_mah = float(cfg.get("battery_mah", 1300.0))
+        explicit_thrust = "motor_thrust_g" in (req.params or {})
         motor_thrust_g = float(cfg.get("motor_thrust_g", 1150.0))
 
         arm_r = wheelbase / 2.0
@@ -185,17 +208,68 @@ class FpvDronePlugin(ProjectFamilyPlugin):
         ]
         brushless_motors = Compound(children=motor_solids)
 
+        # 6. Real BEMT Aerodynamic Propellers (2x CCW + 2x CW mounted on motor shafts)
+        prop_ccw_raw = generate_propeller_part(
+            diameter_inch=prop_inch,
+            pitch_inch=prop_pitch_inch,
+            blade_count=prop_blades,
+            airfoil_id=prop_airfoil,
+            prop_style=prop_style,
+            direction="ccw",
+            shaft_diam_mm=5.0,
+            fast_preview=True,
+        )
+        prop_cw_raw = generate_propeller_part(
+            diameter_inch=prop_inch,
+            pitch_inch=prop_pitch_inch,
+            blade_count=prop_blades,
+            airfoil_id=prop_airfoil,
+            prop_style=prop_style,
+            direction="cw",
+            shaft_diam_mm=5.0,
+            fast_preview=True,
+        )
+        prop_z = plate_t + 0.6 + motor_h + 4.8
+        # Diagonal True-X prop layout: indices (0, 2) = 45°, 225° CCW; indices (1, 3) = 135°, 315° CW
+        propellers_ccw = Compound(
+            children=[
+                Location((motor_centers[0][0], motor_centers[0][1], prop_z)) * prop_ccw_raw,
+                Location((motor_centers[2][0], motor_centers[2][1], prop_z)) * prop_ccw_raw,
+            ]
+        )
+        propellers_cw = Compound(
+            children=[
+                Location((motor_centers[1][0], motor_centers[1][1], prop_z)) * prop_cw_raw,
+                Location((motor_centers[3][0], motor_centers[3][1], prop_z)) * prop_cw_raw,
+            ]
+        )
+
         # CNC DXF export
         dxf_rects = [(-hub_l / 2.0, -hub_w / 2.0, hub_l / 2.0, hub_w / 2.0)]
         dxf_path = write_simple_dxf_outline(dxf_circles, dxf_rects, output_dir / "fpv_bottom_plate.dxf")
 
-        # Real FPV Flight Physics
+        # Real FPV Flight Physics + BEMT Aerodynamics
         density = float(material.get("density_g_cm3", 1.35))
+        yield_z = float(material.get("yield_z_mpa", material.get("yield_mpa", 38.0)))
+        bemt = solve_propeller_bemt(
+            diameter_inch=prop_inch,
+            pitch_inch=prop_pitch_inch,
+            blade_count=prop_blades,
+            rpm=prop_rpm,
+            airfoil_id=prop_airfoil,
+            prop_style=prop_style,
+            material_density_g_cm3=density,
+            material_yield_z_mpa=yield_z,
+        )
+        if not explicit_thrust:
+            motor_thrust_g = round(bemt.thrust_g, 1)
+
         frame_mass_g = max(25.0, (bottom_plate.volume + top_plate.volume + camera_mount.volume) / 1000.0 * density)
+        props_mass_g = round(4.0 * (prop_ccw_raw.volume / 1000.0) * density, 1)
         electronics_g = 48.0 if prop_inch <= 3.5 else (95.0 if prop_inch <= 5.5 else 130.0)
         motors_g = 4.0 * (12.0 if prop_inch <= 3.5 else (33.0 if prop_inch <= 5.5 else 52.0))
         batt_g = batt_mah * (0.11 if prop_inch <= 3.5 else 0.165)
-        auw_g = round(frame_mass_g + electronics_g + motors_g + batt_g, 1)
+        auw_g = round(frame_mass_g + props_mass_g + electronics_g + motors_g + batt_g, 1)
         total_thrust_g = round(4.0 * motor_thrust_g, 1)
         twr = round(total_thrust_g / max(auw_g, 1.0), 2)
         hover_throttle_pct = round(min(95.0, (auw_g / max(total_thrust_g, 1.0)) * 100.0), 1)
@@ -206,7 +280,14 @@ class FpvDronePlugin(ProjectFamilyPlugin):
         metrics = {
             "auw_mass_g": auw_g,
             "frame_mass_g": round(frame_mass_g, 1),
+            "props_mass_g": props_mass_g,
             "total_thrust_g": total_thrust_g,
+            "bemt_thrust_per_motor_g": round(bemt.thrust_g, 1),
+            "bemt_power_per_motor_w": round(bemt.power_w, 1),
+            "bemt_efficiency_g_per_w": round(bemt.efficiency_g_per_w, 2),
+            "prop_root_sf": round(bemt.root_safety_factor, 2),
+            "prop_noise_dba": round(bemt.estimated_noise_dba, 1),
+            "prop_style": bemt.prop_style,
             "twr": twr,
             "hover_throttle_pct": hover_throttle_pct,
             "flight_time_min": flight_time_min,
@@ -283,11 +364,15 @@ class FpvDronePlugin(ProjectFamilyPlugin):
             ("standoffs", standoffs, [220, 48, 56, 255], 0.88, 0.24),
             ("camera_mount", camera_mount, [14, 165, 233, 255], 0.28, 0.52),
             ("brushless_motors", brushless_motors, [196, 206, 218, 255], 0.90, 0.20),
+            ("propellers_ccw", propellers_ccw, [56, 189, 248, 255], 0.32, 0.40),
+            ("propellers_cw", propellers_cw, [251, 146, 60, 255], 0.32, 0.40),
         ]
         printable_parts = {
             "bottom_plate": bottom_plate,
             "top_plate": top_plate,
             "camera_mount": camera_mount,
+            "propeller_ccw": prop_ccw_raw,
+            "propeller_cw": prop_cw_raw,
         }
         explode_vectors = {
             "bottom_plate": [0.0, 0.0, -32.0],
@@ -295,6 +380,8 @@ class FpvDronePlugin(ProjectFamilyPlugin):
             "standoffs": [0.0, 0.0, 22.0],
             "camera_mount": [48.0, 0.0, 12.0],
             "brushless_motors": [0.0, 0.0, 34.0],
+            "propellers_ccw": [0.0, 0.0, 72.0],
+            "propellers_cw": [0.0, 0.0, 72.0],
         }
 
         return package_project_exports(
@@ -312,7 +399,8 @@ class FpvDronePlugin(ProjectFamilyPlugin):
             metrics=metrics,
             bom=bom,
             notes=[
-                f"Empuje/Peso (TWR): {twr:.2f}:1 ({total_thrust_g:.0f} g empuje / {auw_g:.0f} g AUW).",
+                f"Empuje/Peso (TWR): {twr:.2f}:1 ({total_thrust_g:.0f} g empuje BEMT / {auw_g:.0f} g AUW).",
+                f"Hélices {prop_inch:.1f}×{prop_pitch_inch:.1f}\" ({prop_blades}p · {prop_style} · {prop_airfoil.upper()}): {bemt.thrust_g:.0f} g/motor @ {prop_rpm:.0f} RPM ({bemt.efficiency_g_per_w:.2f} g/W · {bemt.estimated_noise_dba:.1f} dBA).",
                 f"Autonomía estimada crucero: {flight_time_min:.1f} min con batería {batt_mah:.0f} mAh.",
             ],
             dxf_path=dxf_path,

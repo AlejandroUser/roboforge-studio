@@ -7,10 +7,12 @@ from typing import Any
 from .base import ProjectFamilyPlugin, compute_project_hash
 from .camera_gimbal import CameraGimbalPlugin
 from .fpv_drone import FpvDronePlugin
+from .propeller import PropellerPlugin
 from .rover_4wd import Rover4WDPlugin
 
 FAMILY_REGISTRY: dict[str, ProjectFamilyPlugin] = {
     "fpv_drone": FpvDronePlugin(),
+    "propeller": PropellerPlugin(),
     "rover_4wd": Rover4WDPlugin(),
     "camera_gimbal": CameraGimbalPlugin(),
 }
