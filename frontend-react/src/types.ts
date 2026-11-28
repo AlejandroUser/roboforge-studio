@@ -1,4 +1,36 @@
-export type FamilyId = "links" | "mounts" | "gears" | "arm" | "projects";
+export type FamilyId = "links" | "mounts" | "gears" | "arm" | "projects" | "organic";
+
+export type OrganicDomainId =
+  | "link"
+  | "mount"
+  | "transmission"
+  | "full_arm"
+  | "propeller"
+  | "fpv_drone";
+
+export interface OrganicStudioRequest {
+  domain: OrganicDomainId;
+  material_id: string;
+  printer_id: string;
+  params: Record<string, unknown>;
+}
+
+export interface OrganicStudioResponse {
+  design_hash: string;
+  domain: OrganicDomainId;
+  name: string;
+  glb_url: string;
+  stl_url?: string;
+  threemf_url?: string;
+  step_url?: string;
+  dxf_url?: string;
+  explode_vectors?: Record<string, number[]>;
+  metrics: Record<string, number | string | boolean>;
+  compliance_history?: number[];
+  pareto_winners?: PropellerWinner[];
+  dfm_audit: DFMAuditReport;
+  notes?: string[];
+}
 
 export interface AlertItem {
   level: "info" | "warning" | "critical";

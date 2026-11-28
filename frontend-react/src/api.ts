@@ -192,4 +192,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ airfoil_id, dat_text }),
     }),
+
+  generateOrganicStudio: (body: import("./types").OrganicStudioRequest) =>
+    reqJson<import("./types").OrganicStudioResponse>("/api/projects/organic-studio/generate", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };

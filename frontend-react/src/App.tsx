@@ -4,6 +4,7 @@ import { ArmDatabaseModal } from "./components/ArmDatabaseModal";
 import { AssemblyTree } from "./components/AssemblyTree";
 import { CommandPalette, type CommandItem } from "./components/CommandPalette";
 import { ProjectsInspector, ProjectsSidebar } from "./components/families/ProjectsWorkspace";
+import { OrganicStudioInspector, OrganicStudioSidebar } from "./components/OrganicStudioWorkspace";
 import { MechatronicsPanel } from "./components/MechatronicsPanel";
 import { ModularArmPanel } from "./components/ModularArmPanel";
 import { ParetoChart } from "./components/ParetoChart";
@@ -24,6 +25,7 @@ import type {
   ModularArmRequest,
   ModularArmResponse,
   ModularArmSlots,
+  OrganicStudioResponse,
   ProjectGenerateResponse,
   VariantResult,
 } from "./types";
@@ -353,6 +355,10 @@ export default function App() {
   const [projectRes, setProjectRes] = useState<ProjectGenerateResponse | null>(null);
   const [projectMaterialId, setProjectMaterialId] = useState<string>("pa12_cf");
   const [projectInitialMode, setProjectInitialMode] = useState<"families" | "simp3d">("families");
+  // v14.0 Dedicated Organic Sculpting Studio state (6 domains)
+  const [organicRes, setOrganicRes] = useState<OrganicStudioResponse | null>(null);
+  const [organicMaterialId, setOrganicMaterialId] = useState<string>("pa12_cf");
+  const [organicPrinterId, setOrganicPrinterId] = useState<string>("bambu_x1c");
 
   // v4.1/v4.2 Pose Sequencer (5-axis 60 FPS GPU FK playback + .INO export)
   const [recordedPoses, setRecordedPoses] = useState<
@@ -509,7 +515,7 @@ export default function App() {
   }, [state]);
 
   const runGeneration = useCallback(async () => {
-    if (state.family === "projects") return;
+    if (state.family === "projects" || state.family === "organic") return;
     setBusyLabel("Sintetizando CAD B-Rep & Física...");
     setViewingFea(false);
     setViewingGyroid(false);
@@ -561,7 +567,7 @@ export default function App() {
   }, [structuralKey]);
 
   const runFea = async (overrideDir?: "y_inplane" | "z_outofplane", overrideDef?: number) => {
-    if (!genRes || !activeVariant || state.family === "arm" || state.family === "projects") return;
+    if (!genRes || !activeVariant || state.family === "arm" || state.family === "projects" || state.family === "organic") return;
     const dir = overrideDir ?? loadDir;
     const def = overrideDef ?? deformScale;
     setBusyLabel("Resolviendo FEA 3D Ortotrópico + Modal + Pandeo...");
@@ -1357,7 +1363,9 @@ export default function App() {
   }, [ikTarget, state.arm, histIdx, showToast]);
 
   const activeGlbUrl =
-    state.family === "projects"
+    state.family === "organic"
+      ? organicRes?.glb_url || null
+      : state.family === "projects"
       ? projectRes?.files?.glb || null
       : state.family === "arm"
         ? modularArmRes?.files?.glb || armRes?.glb_url || null
@@ -1577,6 +1585,7 @@ export default function App() {
                 ["gears", "Transmisión"],
                 ["arm", "Brazo Completo"],
                 ["projects", "Proyectos 3D"],
+                ["organic", "🧬 Esculpido Orgánico"],
               ] as Array<[FamilyId, string]>
             ).map(([fid, label]) => (
               <button
@@ -1691,10 +1700,9 @@ export default function App() {
                     color: "#6ee7b7",
                   }}
                   onClick={() => {
-                    setProjectInitialMode("simp3d");
-                    pushState((s) => ({ ...s, family: "projects" }));
+                    pushState((s) => ({ ...s, family: "organic" }));
                   }}
-                  title="Abrir optimizador topológico volumétrico SIMP 3D (Langelaar 45°) en Proyectos 3D"
+                  title="Abrir Estudio de Esculpido Orgánico (Eslabones, Monturas, Transmisiones, Brazos, Hélices y Drones)"
                 >
                   🧬 Esculpir Orgánico SIMP 3D →
                 </button>
@@ -2553,8 +2561,24 @@ export default function App() {
             />
           )}
 
+          {state.family === "organic" && (
+            <OrganicStudioSidebar
+              materials={materials}
+              printers={printers}
+              materialId={organicMaterialId}
+              printerId={organicPrinterId}
+              onChangeMaterial={setOrganicMaterialId}
+              onChangePrinter={setOrganicPrinterId}
+              onGenerated={(res) => {
+                setOrganicRes(res);
+                setExplodeFactor(0);
+              }}
+              onStatus={(msg) => showToast(msg)}
+            />
+          )}
+
           {/* SHARED MATERIAL & PRINTER */}
-          {state.family !== "projects" && (
+          {state.family !== "projects" && state.family !== "organic" && (
           <div className="section-card">
             <div className="section-title">
               <span>Material e Impresora 3D</span>
@@ -2739,7 +2763,9 @@ export default function App() {
             meshOpacity={meshOpacity}
             family={state.family}
             materialId={
-              state.family === "projects"
+              state.family === "organic"
+                ? organicMaterialId
+                : state.family === "projects"
                 ? projectMaterialId
                 : state.family === "arm"
                   ? state.arm.material_id
@@ -2764,7 +2790,9 @@ export default function App() {
             selectedArmNode={selectedArmNode}
             onSelectArmNode={setSelectedArmNode}
             explodeVectors={
-              state.family === "projects"
+              state.family === "organic"
+                ? organicRes?.explode_vectors || null
+                : state.family === "projects"
                 ? projectRes?.explode_vectors || null
                 : modularArmRes?.explode_vectors || null
             }
@@ -2883,7 +2911,7 @@ export default function App() {
             </div>
           )}
 
-          {genRes && state.family !== "arm" && state.family !== "projects" && (
+          {genRes && state.family !== "arm" && state.family !== "projects" && state.family !== "organic" && (
             <>
               <ParetoChart
                 variants={genRes.variants}
@@ -3031,6 +3059,7 @@ export default function App() {
           )}
 
           {state.family === "projects" && <ProjectsInspector result={projectRes} />}
+          {state.family === "organic" && <OrganicStudioInspector result={organicRes} />}
 
           {state.family === "arm" && (
             <>

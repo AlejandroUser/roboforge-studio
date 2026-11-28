@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from ..cad.exporter import get_export_dir
 from ..cad.organic_sdf_builder import build_organic_sdf_link, export_organic_sdf_link_files
+from ..cad.organic_studio import generate_organic_studio_model
 from ..families import compute_project_hash, get_family_plugin, list_family_infos
 from ..physics.mechanics import load_materials
 from ..physics.profiles import load_printers
@@ -53,6 +54,40 @@ class Simp3DLinkRequest(BaseModel):
 class AirfoilDatImportRequest(BaseModel):
     airfoil_id: str = Field(default="custom_dat", min_length=2, max_length=48)
     dat_text: str = Field(..., min_length=20)
+
+
+class OrganicStudioRequest(BaseModel):
+    domain: str = Field(default="link")
+    material_id: str = Field(default="pa12_cf")
+    printer_id: str = Field(default="bambu_x1c")
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.post("/organic-studio/generate")
+def generate_organic_studio_endpoint(req: OrganicStudioRequest) -> dict[str, Any]:
+    """Unified RoboForge v14.0 Organic Sculpting Studio across all 6 engineering domains."""
+    materials = load_materials()
+    printers = load_printers()
+    material = materials.get(req.material_id) or materials.get("pa12_cf") or next(iter(materials.values()))
+    printer = printers.get(req.printer_id) or printers.get("bambu_x1c") or next(iter(printers.values()))
+
+    key_blob = json.dumps(req.model_dump(), sort_keys=True)
+    design_hash = hashlib.sha256(("org14:" + key_blob).encode("utf-8")).hexdigest()[:16]
+    output_dir = get_export_dir(design_hash)
+
+    try:
+        return generate_organic_studio_model(
+            domain=req.domain,
+            params=req.params,
+            material=material,
+            printer=printer,
+            out_dir=output_dir,
+            design_hash=design_hash,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error en Esculpido Orgánico ({req.domain}): {exc}") from exc
 
 
 @router.get("/families")
