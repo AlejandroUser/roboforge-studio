@@ -90,6 +90,7 @@ def test_build_organic_sdf_link_watertight_single_body_and_exports() -> None:
 
     assert stats["is_watertight"] is True
     assert stats["bodies"] == 1
+    assert float(mesh.extents[0]) >= 180.0 + 0.35 * (38.0 + 28.0), f"Root-to-tip connectivity broken: extents={mesh.extents}"
     assert stats["volume_mm3"] > 10000.0
     assert stats["elapsed_s"] < 6.0
 

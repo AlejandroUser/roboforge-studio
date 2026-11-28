@@ -1251,3 +1251,83 @@ input[type="number"], input[type="text"], select { width: 100%; background: #090
   color: var(--muted);
   background: rgba(9, 11, 16, 0.6);
 }
+
+/* v13.0 Organic SIMP 3D Generative UI (nTop / Autodesk Generative Design style) */
+.simp-preset-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+.simp-preset-btn {
+  width: 100%;
+  padding: 7px 9px;
+}
+.simp-preset-btn.active {
+  border-color: var(--emerald);
+  background: rgba(16, 185, 129, 0.14);
+}
+.simp-pipeline {
+  margin-top: 8px;
+  padding: 8px 9px;
+  border-radius: 8px;
+  background: rgba(9, 12, 18, 0.72);
+  border: 1px solid rgba(16, 185, 129, 0.32);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.simp-stage-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.simp-stage-row.done {
+  color: #6ee7b7;
+}
+.simp-stage-row.active {
+  color: #38bdf8;
+  font-weight: 700;
+}
+.simp-stage-dot {
+  font-family: var(--mono);
+  width: 14px;
+  text-align: center;
+}
+.simp-compare-card {
+  border-color: rgba(16, 185, 129, 0.42);
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.08) 0%, var(--bg-card) 100%);
+}
+.simp-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0;
+}
+.simp-bar-row {
+  display: grid;
+  grid-template-columns: 108px 1fr 38px;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.simp-bar-track {
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.14);
+  overflow: hidden;
+}
+.simp-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.35s ease;
+}
+.simp-bar-fill.ref {
+  background: #475569;
+}
+.simp-bar-fill.org {
+  background: linear-gradient(90deg, #38bdf8, #10b981);
+}

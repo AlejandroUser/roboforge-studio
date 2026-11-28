@@ -205,14 +205,47 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
   const [evolveRes, setEvolveRes] = useState<PropellerEvolveResponse | null>(null);
   const [activeWinnerId, setActiveWinnerId] = useState<string | null>(null);
 
-  // v13.0 Organic SIMP 3D Topology Optimization state
+  // v13.0 Organic SIMP 3D Topology Optimization state + 3 presets + 4-stage pipeline
+  const SIMP3D_PRESETS = [
+    {
+      id: "arm_2kg_pa12",
+      label: "Brazo 2 kg · PA12-CF",
+      subtitle: "180 mm · 8 rad/s² · 38% vol",
+      material_id: "pa12_cf",
+      params: { length_mm: 180, payload_kg: 2.0, angular_accel_rad_s2: 8, volume_fraction: 0.38 },
+    },
+    {
+      id: "cobot_1kg_light",
+      label: "Cobot Ligero 1 kg",
+      subtitle: "220 mm · 12 rad/s² · 30% vol",
+      material_id: "petg_cf",
+      params: { length_mm: 220, payload_kg: 1.0, angular_accel_rad_s2: 12, volume_fraction: 0.3 },
+    },
+    {
+      id: "heavy_5kg",
+      label: "Heavy Duty 5 kg",
+      subtitle: "160 mm · 6 rad/s² · 45% vol",
+      material_id: "pa12_cf",
+      params: { length_mm: 160, payload_kg: 5.0, angular_accel_rad_s2: 6, volume_fraction: 0.45 },
+    },
+  ] as const;
+
+  const SIMP_STAGES = [
+    "1. Malla Hex8",
+    "2. SIMP 3D + Langelaar 45°",
+    "3. Fusión SDF + Taubin",
+    "4. Auditoría DFM",
+  ];
+
+  const [simpPresetId, setSimpPresetId] = useState<string>("arm_2kg_pa12");
+  const [simpStage, setSimpStage] = useState<number>(0);
   const [simpParams, setSimpParams] = useState({
     length_mm: 180,
     root_width_mm: 38,
     tip_width_mm: 24,
     thickness_mm: 22,
     payload_kg: 2.0,
-    angular_accel_rad_s2: 15,
+    angular_accel_rad_s2: 8,
     volume_fraction: 0.38,
     overhang_filter_45: true,
   });
@@ -338,7 +371,11 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
   };
 
   const handleGenerateSimp3D = async () => {
+    setSimpStage(1);
     onBusyChange("Esculpiendo eslabón orgánico SIMP 3D (TopOpt Volumétrico + Langelaar 45°)...");
+    const t1 = window.setTimeout(() => setSimpStage(2), 900);
+    const t2 = window.setTimeout(() => setSimpStage(3), 2400);
+    const t3 = window.setTimeout(() => setSimpStage(4), 4200);
     try {
       const res = await api.generateSimp3DLink({
         ...simpParams,
@@ -356,7 +393,12 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
         preset_id: "simp3d_link",
         design_hash: res.design_hash,
         name: res.name,
-        metrics: res.metrics || {},
+        metrics: {
+          ...(res.metrics || {}),
+          _compliance_history: res.compliance_history || [],
+          _overhang_filter_45: simpParams.overhang_filter_45,
+          _notes: res.notes || [],
+        },
         bom: [],
         total_bom_cost_usd: Number(res.metrics?.estimated_cost_usd ?? 0),
         dfm_audit: res.dfm_audit,
@@ -364,13 +406,17 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
         files: filesMap,
       };
       onResult(adapted, materialId);
-      const savePct = res.metrics?.mass_savings_pct;
+      const savePct = res.metrics?.mass_reduction_pct ?? res.metrics?.mass_savings_pct;
       onToast(
         `${res.name} esculpido${typeof savePct === "number" ? ` (-${savePct.toFixed(1)}% masa)` : ""} · DFM ${res.dfm_audit?.status?.toUpperCase() || "PASS"}.`
       );
     } catch (err: any) {
       onToast(`Error en SIMP 3D: ${err.message}`, true);
     } finally {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+      setSimpStage(0);
       onBusyChange(null);
     }
   };
@@ -802,6 +848,25 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
 
         {generativeMode === "simp3d" && (
           <>
+            {/* 3 Presets rápidos de 1 clic (nTop / Autodesk Generative style) */}
+            <div className="simp-preset-grid">
+              {SIMP3D_PRESETS.map((pr) => (
+                <button
+                  key={pr.id}
+                  type="button"
+                  className={`preset-btn simp-preset-btn ${simpPresetId === pr.id ? "active" : ""}`}
+                  onClick={() => {
+                    setSimpPresetId(pr.id);
+                    setMaterialId(pr.material_id);
+                    setSimpParams((p) => ({ ...p, ...pr.params }));
+                  }}
+                >
+                  <strong>{pr.label}</strong>
+                  <small>{pr.subtitle}</small>
+                </button>
+              ))}
+            </div>
+
             <div className="field-row">
               <div className="field-head">
                 <span>Longitud Eslabón</span>
@@ -813,7 +878,10 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
                 max={320}
                 step={10}
                 value={simpParams.length_mm}
-                onChange={(e) => setSimpParams((p) => ({ ...p, length_mm: Number(e.target.value) }))}
+                onChange={(e) => {
+                  setSimpPresetId("custom");
+                  setSimpParams((p) => ({ ...p, length_mm: Number(e.target.value) }));
+                }}
               />
             </div>
             <div className="field-row">
@@ -827,7 +895,10 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
                 max={6.0}
                 step={0.25}
                 value={simpParams.payload_kg}
-                onChange={(e) => setSimpParams((p) => ({ ...p, payload_kg: Number(e.target.value) }))}
+                onChange={(e) => {
+                  setSimpPresetId("custom");
+                  setSimpParams((p) => ({ ...p, payload_kg: Number(e.target.value) }));
+                }}
               />
             </div>
             <div className="field-row">
@@ -841,7 +912,10 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
                 max={30}
                 step={1}
                 value={simpParams.angular_accel_rad_s2}
-                onChange={(e) => setSimpParams((p) => ({ ...p, angular_accel_rad_s2: Number(e.target.value) }))}
+                onChange={(e) => {
+                  setSimpPresetId("custom");
+                  setSimpParams((p) => ({ ...p, angular_accel_rad_s2: Number(e.target.value) }));
+                }}
               />
             </div>
             <div className="field-row">
@@ -855,7 +929,10 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
                 max={55}
                 step={1}
                 value={Math.round(simpParams.volume_fraction * 100)}
-                onChange={(e) => setSimpParams((p) => ({ ...p, volume_fraction: Number(e.target.value) / 100 }))}
+                onChange={(e) => {
+                  setSimpPresetId("custom");
+                  setSimpParams((p) => ({ ...p, volume_fraction: Number(e.target.value) / 100 }));
+                }}
               />
             </div>
             <label className="check-row">
@@ -866,6 +943,26 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
                 onChange={(e) => setSimpParams((p) => ({ ...p, overhang_filter_45: e.target.checked }))}
               />
             </label>
+
+            {/* 4-Stage Pipeline Progress Indicator */}
+            {simpStage > 0 && (
+              <div className="simp-pipeline">
+                {SIMP_STAGES.map((label, idx) => {
+                  const stepNum = idx + 1;
+                  const stateCls =
+                    simpStage > stepNum ? "done" : simpStage === stepNum ? "active" : "pending";
+                  return (
+                    <div key={label} className={`simp-stage-row ${stateCls}`}>
+                      <span className="simp-stage-dot">
+                        {stateCls === "done" ? "✓" : stateCls === "active" ? "●" : "○"}
+                      </span>
+                      <span>{label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             <button
               type="button"
               className="btn-primary"
@@ -925,6 +1022,89 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
   );
 };
 
+function SimpConvergenceChart({ history }: { history: number[] }) {
+  if (!history || history.length < 2) return null;
+  const W = 290;
+  const H = 112;
+  const padL = 32;
+  const padR = 10;
+  const padT = 14;
+  const padB = 20;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+
+  const maxV = Math.max(...history, 1e-6);
+  const minV = Math.min(...history) * 0.92;
+  const span = Math.max(maxV - minV, 1e-6);
+
+  const toX = (i: number) => padL + (i / (history.length - 1)) * plotW;
+  const toY = (v: number) => padT + plotH - ((v - minV) / span) * plotH;
+
+  const linePath = history
+    .map((v, i) => `${i === 0 ? "M" : "L"}${toX(i).toFixed(1)},${toY(v).toFixed(1)}`)
+    .join(" ");
+  const areaPath = `${linePath} L${toX(history.length - 1).toFixed(1)},${(padT + plotH).toFixed(
+    1
+  )} L${toX(0).toFixed(1)},${(padT + plotH).toFixed(1)} Z`;
+
+  const first = history[0];
+  const last = history[history.length - 1];
+  const dropPct = first > 1e-9 ? ((first - last) / first) * 100 : 0;
+
+  return (
+    <div className="fea-card">
+      <div className="pareto-head">
+        <strong>Convergencia de Rigidez (SIMP 3D)</strong>
+        <span className="badge good">
+          {dropPct >= 0 ? `-${dropPct.toFixed(1)}%` : `${Math.abs(dropPct).toFixed(1)}%`} energía
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="torque-svg" role="img" aria-label="Curva de convergencia SIMP 3D">
+        <defs>
+          <linearGradient id="simpConvGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#38bdf8" />
+            <stop offset="100%" stopColor="#10b981" />
+          </linearGradient>
+          <linearGradient id="simpAreaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#10b981" stopOpacity="0.32" />
+            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {[0, 0.5, 1].map((f) => {
+          const y = padT + plotH * (1 - f);
+          return (
+            <line
+              key={f}
+              x1={padL}
+              y1={y}
+              x2={W - padR}
+              y2={y}
+              stroke="rgba(148,163,184,0.14)"
+              strokeDasharray="2 2"
+            />
+          );
+        })}
+        <path d={areaPath} fill="url(#simpAreaGrad)" />
+        <path d={linePath} fill="none" stroke="url(#simpConvGrad)" strokeWidth="2.2" />
+        <circle cx={toX(0)} cy={toY(first)} r="3" fill="#38bdf8" />
+        <circle cx={toX(history.length - 1)} cy={toY(last)} r="3.5" fill="#10b981" />
+        <text x={padL} y={H - 5} fontSize="8.5" fill="#94a3b8" fontFamily="monospace">
+          Iter 1
+        </text>
+        <text x={W - padR} y={H - 5} textAnchor="end" fontSize="8.5" fill="#6ee7b7" fontFamily="monospace">
+          Iter {history.length} (Convergido)
+        </text>
+        <text x={padL - 4} y={padT + 4} textAnchor="end" fontSize="8" fill="#64748b" fontFamily="monospace">
+          C₀
+        </text>
+        <text x={padL - 4} y={padT + plotH} textAnchor="end" fontSize="8" fill="#64748b" fontFamily="monospace">
+          C*
+        </text>
+      </svg>
+    </div>
+  );
+}
+
 export interface ProjectsInspectorProps {
   result: ProjectGenerateResponse | null;
 }
@@ -934,23 +1114,103 @@ export const ProjectsInspector: React.FC<ProjectsInspectorProps> = ({ result }) 
     return (
       <div className="fea-card">
         <div className="pareto-head">
-          <strong>Estudio Multi-Proyecto v9.0</strong>
+          <strong>Estudio Multi-Proyecto v13.0</strong>
           <span className="badge neutral">Listo</span>
         </div>
         <div className="mech-empty">
-          Elige una familia (<strong>Drones FPV</strong>, <strong>Rovers 4WD</strong> o <strong>Gimbals 2–3 Ejes</strong>), ajusta sus parámetros y pulsa <strong>«Generar Proyecto 3D»</strong> para sintetizar el ensamble CAD B-Rep, la auditoría <strong>Goldfish DFM</strong> y los archivos listos para imprimir.
+          Elige una familia (<strong>Drones FPV</strong>, <strong>Hélices BEMT</strong>, <strong>Rovers 4WD</strong>, <strong>Gimbals</strong>) o <strong>🧬 Generativo SIMP 3D</strong> y pulsa Generar para sintetizar geometría 3D validada por física y <strong>Goldfish DFM</strong>.
         </div>
       </div>
     );
   }
 
+  const isSimp3D = result.family_id === "simp3d_generative";
+  const complianceHistory: number[] = Array.isArray((result.metrics as any)?._compliance_history)
+    ? (result.metrics as any)._compliance_history
+    : [];
+  const overhangFree = Boolean((result.metrics as any)?._overhang_filter_45 ?? result.metrics?.overhang_filter_45);
+  const massRedPct = Number(
+    result.metrics?.mass_reduction_pct ??
+      result.metrics?.mass_savings_pct ??
+      (result.metrics?.volume_fraction ? (1 - Number(result.metrics.volume_fraction)) * 100 : 0)
+  );
+  const finalMassG = Number(result.metrics?.mass_g ?? result.metrics?.total_mass_g ?? 0);
+  const finalVolCm3 = Number(result.metrics?.volume_cm3 ?? 0);
+  const retainedPct = Math.max(15, Math.min(100, 100 - massRedPct));
+
   const kpiEntries = Object.entries(result.metrics || {}).filter(
-    ([, val]) => typeof val === "number" || typeof val === "string"
+    ([k, val]) => !k.startsWith("_") && (typeof val === "number" || typeof val === "string")
   );
   const partStls = Object.entries(result.files || {}).filter(([k]) => k.startsWith("part_stl_"));
 
   return (
     <>
+      {/* Comparative Card for Organic SIMP 3D vs Solid Beam */}
+      {isSimp3D && (
+        <div className="fea-card simp-compare-card">
+          <div className="pareto-head">
+            <strong>Orgánico SIMP 3D vs. Viga Maciza</strong>
+            <span className="badge good">-{massRedPct.toFixed(1)}% masa</span>
+          </div>
+
+          <div className="simp-bars">
+            <div className="simp-bar-row">
+              <span>Viga Maciza (Ref.)</span>
+              <div className="simp-bar-track">
+                <div className="simp-bar-fill ref" style={{ width: "100%" }} />
+              </div>
+              <strong className="mono">100%</strong>
+            </div>
+            <div className="simp-bar-row">
+              <span>Orgánico SIMP 3D</span>
+              <div className="simp-bar-track">
+                <div className="simp-bar-fill org" style={{ width: `${retainedPct.toFixed(0)}%` }} />
+              </div>
+              <strong className="mono good">{retainedPct.toFixed(0)}%</strong>
+            </div>
+          </div>
+
+          <div className="metrics-grid">
+            <div className="metric-box">
+              <span>Peso Final</span>
+              <strong className="good">{finalMassG > 0 ? `${finalMassG.toFixed(1)} g` : "—"}</strong>
+            </div>
+            <div className="metric-box">
+              <span>Volumen</span>
+              <strong>{finalVolCm3 > 0 ? `${finalVolCm3.toFixed(1)} cm³` : "—"}</strong>
+            </div>
+            <div className="metric-box">
+              <span>Ahorro Masa</span>
+              <strong className="good">-{massRedPct.toFixed(1)}%</strong>
+            </div>
+          </div>
+
+          {overhangFree && (
+            <div>
+              <span className="badge good">✓ Sin Soportes (Langelaar 45°)</span>
+            </div>
+          )}
+
+          <div className="dl-row modular-dl-row" style={{ marginTop: 4 }}>
+            {result.files?.stl && (
+              <a className="dl-link dl-zip" href={result.files.stl} download>
+                ★ Descargar Orgánico .STL
+              </a>
+            )}
+            {result.files?.threemf && (
+              <a className="dl-link dl-zip" href={result.files.threemf} download>
+                ★ Descargar Slicer .3MF
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Stiffness Convergence SVG Chart for SIMP 3D */}
+      {isSimp3D && complianceHistory.length >= 2 && (
+        <SimpConvergenceChart history={complianceHistory} />
+      )}
+
       {/* Header + Physical KPIs */}
       <div className="fea-card">
         <div className="pareto-head">
