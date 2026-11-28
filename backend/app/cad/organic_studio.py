@@ -719,41 +719,46 @@ def _gen_organic_fpv_drone(
     density = float(material.get("density_g_cm3", 1.25))
     yield_z = float(material.get("yield_z_mpa", material.get("yield_mpa", 45.0)))
 
-    # 1. Evolve optimal organic propellers for this drone via NSGA-II
+    # 1. Evolve optimal high-fatigue organic propellers for this drone via NSGA-II (FS_root >= 3.5 for 10^6 hot cycles)
+    prop_style = str(params.get("prop_style", "conventional"))
+    min_root_sf = float(params.get("min_root_sf", 3.5))
     target_per_motor_g = 360.0 if prop_in <= 3.5 else (820.0 if prop_in <= 5.5 else 1300.0)
     evol = evolve_propeller_pareto(
         target_thrust_g=target_per_motor_g,
         diameter_inch=prop_in,
         rpm=rpm,
         blade_count=3,
-        prop_style="conventional",
+        prop_style=prop_style,
         material_density_g_cm3=density,
         material_yield_z_mpa=yield_z,
         pop_size=36,
         generations=22,
+        min_root_sf=min_root_sf,
     )
     winners_map = evol.winners if isinstance(evol.winners, dict) else {w.candidate_id: w for w in evol.winners}
     chosen = winners_map.get(priority) or next(iter(winners_map.values()))
 
     prop_ccw = generate_propeller_part(
         diameter_inch=prop_in, pitch_inch=4.0, blade_count=3,
-        airfoil_id=chosen.airfoil_id, prop_style="conventional", direction="ccw",
+        airfoil_id=chosen.airfoil_id, prop_style=prop_style, direction="ccw",
         shaft_diam_mm=5.15,  # FDM shrinkage compensation (Pf_jam < 0.1%)
         custom_stations=chosen.stations, fast_preview=True,
     )
     prop_cw = generate_propeller_part(
         diameter_inch=prop_in, pitch_inch=4.0, blade_count=3,
-        airfoil_id=chosen.airfoil_id, prop_style="conventional", direction="cw",
+        airfoil_id=chosen.airfoil_id, prop_style=prop_style, direction="cw",
         shaft_diam_mm=5.15,
         custom_stations=chosen.stations, fast_preview=True,
     )
 
-    # 2. Build Organic Bionic Lightened True-X Frame (cellular cutouts along all 4 arms + hub)
+    # 2. Build Organic T-Beam Reinforced True-X Frame (v14.7: 40G crash + 65°C anti-resonance >440 Hz, flat-bed printable)
     arm_r = wheelbase / 2.0
-    arm_w = max(13.0, min(20.0, prop_in * 3.1))
-    hub_l = max(56.0, stack_mm + 34.0)
-    hub_w = max(36.0, stack_mm + 12.0)
-    pad_r = max(11.5, motor_pcd * 0.72)
+    arm_w = max(14.5, min(22.0, prop_in * 3.4))
+    hub_l = max(60.0, stack_mm + 36.0)
+    hub_w = max(40.0, stack_mm + 14.0)
+    pad_r = max(12.0, motor_pcd * 0.74)
+    t_beam_rib_h = float(params.get("t_beam_rib_mm", 9.0 if prop_in >= 5.0 else 5.5))
+    t_beam_rib_w = max(8.5, arm_w * 0.56)
 
     dxf_circles: list[tuple[float, float, float]] = []
     motor_centers: list[tuple[float, float]] = []
@@ -765,18 +770,14 @@ def _gen_organic_fpv_drone(
             motor_centers.append((mx, my))
             with Locations((mx * 0.5, my * 0.5)):
                 RectangleRounded(arm_r, arm_w, radius=3.5, rotation=ang_deg, mode=Mode.ADD)
+            # Tapered organic root gusset for 40G frontal crash load path
+            with Locations((mx * 0.30, my * 0.30)):
+                RectangleRounded(arm_r * 0.44, arm_w * 1.48, radius=5.0, rotation=ang_deg, mode=Mode.ADD)
             with Locations((mx, my)):
                 Circle(radius=pad_r, mode=Mode.ADD)
-            # Bionic cellular weight-reduction holes along each arm (preserve root & motor pad)
-            for frac in (0.44, 0.62, 0.78):
-                hx, hy = mx * frac, my * frac
-                hr = max(2.2, min(4.2, arm_w * (0.28 - 0.04 * frac)))
-                with Locations((hx, hy)):
-                    Circle(radius=hr, mode=Mode.SUBTRACT)
-                dxf_circles.append((hx, hy, hr))
         # Central bionic lightening + 4xM3 FC stack holes
         with Locations((0.0, 0.0)):
-            Circle(radius=max(5.0, stack_mm * 0.24), mode=Mode.SUBTRACT)
+            Circle(radius=max(5.0, stack_mm * 0.22), mode=Mode.SUBTRACT)
         s_half = stack_mm / 2.0
         for sx in (-s_half, s_half):
             for sy in (-s_half, s_half):
@@ -797,6 +798,21 @@ def _gen_organic_fpv_drone(
 
     with BuildPart() as bot_bp:
         extrude(bot_sk.sketch.faces()[0], amount=plate_t)
+        if t_beam_rib_h > 0.5:
+            # Continuous top-side T-Beam longitudinal stiffening ribs + hub spine (0° flat bed, zero supports!)
+            with BuildSketch(Plane.XY.offset(plate_t)) as rib_sk:
+                # Central hub ring spine tying all 4 T-beam arms into a monolithic load path
+                RectangleRounded(hub_l * 0.88, hub_w * 0.88, radius=6.0)
+                RectangleRounded(max(24.0, stack_mm + 4.0), max(24.0, stack_mm + 4.0), radius=4.0, mode=Mode.SUBTRACT)
+                for ang_deg, (mx, my) in zip((45.0, 135.0, 225.0, 315.0), motor_centers):
+                    # Rib spans cleanly from hub spine out to just before motor bell pad
+                    rib_start = 0.24
+                    rib_end = max(0.62, 1.0 - (pad_r + 3.0) / max(arm_r, 1.0))
+                    rib_mid = 0.5 * (rib_start + rib_end)
+                    rib_len = max(14.0, (rib_end - rib_start) * arm_r)
+                    with Locations((mx * rib_mid, my * rib_mid)):
+                        RectangleRounded(rib_len, t_beam_rib_w, radius=2.5, rotation=ang_deg, mode=Mode.ADD)
+            extrude(rib_sk.sketch.faces()[0], amount=t_beam_rib_h, mode=Mode.ADD)
     bottom_plate = bot_bp.part
 
     stack_h = 25.0

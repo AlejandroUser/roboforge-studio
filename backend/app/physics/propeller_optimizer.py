@@ -101,6 +101,7 @@ def _decode_genome_to_stations(
     rpm: float,
     hub_radius_mm: float = 6.5,
     n_stations: int = 10,
+    root_thickness_boost: float = 1.0,
 ) -> tuple[list[BladeStation], str, float, float]:
     """Decode 11-gene vector into 10 smooth radial BladeStation objects."""
     airfoil_idx = int(np.clip(math.floor(genome[10]), 0, len(AIRFOIL_IDS) - 1))
@@ -129,7 +130,8 @@ def _decode_genome_to_stations(
     al_pitch = _adkins_liebeck_seed_pitch_deg(r_frac_arr, target_thrust_g, diameter_inch, rpm)
     twist_arr = np.clip(al_pitch + db_poly, 7.0, 58.0)
 
-    t_factor = 1.0 + 0.95 * ((1.0 - u_grid) ** 2.0)
+    # Reinforced root fillet tapering smoothly to thin high-efficiency tip
+    t_factor = 1.0 + (0.95 * root_thickness_boost) * ((1.0 - u_grid) ** 1.85)
     thick_arr = np.maximum(1.15, chord_arr * spec.thickness_t * t_factor)
 
     span_arr = r_mm_arr - r_start
@@ -398,6 +400,7 @@ def evolve_propeller_pareto(
     pop_size: int = 44,
     generations: int = 28,
     seed: int = 42,
+    min_root_sf: float = 1.6,
 ) -> PropellerEvolutionResult:
     """
     Evolve unique propeller blade geometries via NSGA-II seeded around the Adkins-Liebeck
@@ -437,6 +440,8 @@ def evolve_propeller_pareto(
     )
 
     eval_count = 0
+    sf_req = max(1.6, float(min_root_sf))
+    root_t_boost = 1.0 + 0.55 * max(0.0, sf_req - 1.6)
 
     def _eval_pop(genomes: np.ndarray) -> tuple[np.ndarray, list[dict[str, Any]], list[tuple[list[BladeStation], str, float, float]]]:
         nonlocal eval_count
@@ -446,7 +451,8 @@ def evolve_propeller_pareto(
         decoded_list: list[tuple[list[BladeStation], str, float, float]] = []
         for idx in range(m):
             stations, af_id, sw, rk = _decode_genome_to_stations(
-                genomes[idx], diameter_inch, blade_count, target_thrust_g, rpm
+                genomes[idx], diameter_inch, blade_count, target_thrust_g, rpm,
+                root_thickness_boost=root_t_boost,
             )
             met = evaluate_custom_stations_bemt(
                 stations=stations,
@@ -461,10 +467,10 @@ def evolve_propeller_pareto(
                 material_yield_z_mpa=material_yield_z_mpa,
             )
             eval_count += 1
-            # Constraint violation penalties (hard structural SF >= 1.6 & Mach <= 0.72)
+            # Constraint violation penalties (hard structural SF >= sf_req & Mach <= 0.72)
             pen = 0.0
-            if met["root_safety_factor"] < 1.6:
-                pen += (1.6 - met["root_safety_factor"]) * 120.0
+            if met["root_safety_factor"] < sf_req:
+                pen += (sf_req - met["root_safety_factor"]) * 120.0
             if met["tip_mach"] > 0.72:
                 pen += (met["tip_mach"] - 0.72) * 100.0
             if met["thrust_g"] < 0.65 * target_thrust_g:
@@ -551,7 +557,9 @@ def evolve_propeller_pareto(
     final_fronts = _fast_nondominated_sort(objs)
     pf_indices = final_fronts[0]
 
-    feasible = [i for i in range(pop_size) if mets[i]["root_safety_factor"] >= 1.6]
+    feasible = [i for i in range(pop_size) if mets[i]["root_safety_factor"] >= sf_req]
+    if not feasible:
+        feasible = [i for i in range(pop_size) if mets[i]["root_safety_factor"] >= 1.6]
     pool = feasible if feasible else list(range(pop_size))
 
     # 1. Max Efficiency (meeting >= 85% target thrust if possible)
