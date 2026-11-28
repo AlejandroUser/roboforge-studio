@@ -709,7 +709,8 @@ def _gen_organic_fpv_drone(
     t0 = time.perf_counter()
     prop_in = max(3.0, min(7.0, float(params.get("prop_inch", 5.0))))
     wheelbase = max(140.0, min(250.0, float(params.get("wheelbase_mm", 215.0 if prop_in >= 5.0 else 148.0))))
-    plate_t = max(2.5, min(5.5, float(params.get("plate_thickness_mm", 4.0))))
+    default_plate_t = 5.0 if prop_in >= 5.0 else 3.5  # Anti-resonance modal clearance >25% above 22k RPM (367 Hz)
+    plate_t = max(2.5, min(6.5, float(params.get("plate_thickness_mm", default_plate_t))))
     rpm = max(12000.0, min(28000.0, float(params.get("rpm", 20000.0))))
     priority = str(params.get("priority", "max_efficiency"))
     stack_mm = 20.0 if prop_in < 4.5 else 30.5
@@ -737,11 +738,13 @@ def _gen_organic_fpv_drone(
     prop_ccw = generate_propeller_part(
         diameter_inch=prop_in, pitch_inch=4.0, blade_count=3,
         airfoil_id=chosen.airfoil_id, prop_style="conventional", direction="ccw",
+        shaft_diam_mm=5.15,  # FDM shrinkage compensation (Pf_jam < 0.1%)
         custom_stations=chosen.stations, fast_preview=True,
     )
     prop_cw = generate_propeller_part(
         diameter_inch=prop_in, pitch_inch=4.0, blade_count=3,
         airfoil_id=chosen.airfoil_id, prop_style="conventional", direction="cw",
+        shaft_diam_mm=5.15,
         custom_stations=chosen.stations, fast_preview=True,
     )
 
