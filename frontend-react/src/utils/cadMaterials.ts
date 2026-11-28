@@ -47,16 +47,22 @@ export type CadMaterialRole =
 
 let cachedCarbonColorTex: THREE.CanvasTexture | null = null;
 let cachedCarbonRoughTex: THREE.CanvasTexture | null = null;
+let cachedCarbonBumpTex: THREE.CanvasTexture | null = null;
+let cachedBrushedRoughTex: THREE.CanvasTexture | null = null;
+let cachedBrushedBumpTex: THREE.CanvasTexture | null = null;
+let cachedMachinedRoughTex: THREE.CanvasTexture | null = null;
+let cachedMachinedBumpTex: THREE.CanvasTexture | null = null;
 
 /**
- * Generates a procedural 2x2 twill carbon-fiber weave texture offline via HTMLCanvasElement.
+ * Generates procedural 2x2 twill carbon-fiber color, roughness & bump textures offline via HTMLCanvasElement.
  */
 function getCarbonFiberTextures(): {
   map: THREE.CanvasTexture;
   roughnessMap: THREE.CanvasTexture;
+  bumpMap: THREE.CanvasTexture;
 } {
-  if (cachedCarbonColorTex && cachedCarbonRoughTex) {
-    return { map: cachedCarbonColorTex, roughnessMap: cachedCarbonRoughTex };
+  if (cachedCarbonColorTex && cachedCarbonRoughTex && cachedCarbonBumpTex) {
+    return { map: cachedCarbonColorTex, roughnessMap: cachedCarbonRoughTex, bumpMap: cachedCarbonBumpTex };
   }
 
   const size = 128;
@@ -70,13 +76,21 @@ function getCarbonFiberTextures(): {
   roughCanvas.height = size;
   const rCtx = roughCanvas.getContext("2d");
 
-  if (cCtx && rCtx) {
+  const bumpCanvas = document.createElement("canvas");
+  bumpCanvas.width = size;
+  bumpCanvas.height = size;
+  const bCtx = bumpCanvas.getContext("2d");
+
+  if (cCtx && rCtx && bCtx) {
     // Base dark carbon matrix
-    cCtx.fillStyle = "#161b22";
+    cCtx.fillStyle = "#141820";
     cCtx.fillRect(0, 0, size, size);
 
     rCtx.fillStyle = "#6e6e6e";
     rCtx.fillRect(0, 0, size, size);
+
+    bCtx.fillStyle = "#202020";
+    bCtx.fillRect(0, 0, size, size);
 
     const cell = 16;
     for (let y = 0; y < size; y += cell) {
@@ -93,11 +107,11 @@ function getCarbonFiberTextures(): {
 
         if (isWarp) {
           grad.addColorStop(0, "#1c222b");
-          grad.addColorStop(0.5, "#333d4b");
+          grad.addColorStop(0.5, "#364150");
           grad.addColorStop(1, "#181d25");
         } else {
           grad.addColorStop(0, "#12161d");
-          grad.addColorStop(0.5, "#262e3a");
+          grad.addColorStop(0.5, "#28313e");
           grad.addColorStop(1, "#10141a");
         }
 
@@ -105,30 +119,159 @@ function getCarbonFiberTextures(): {
         cCtx.fillRect(x + 0.5, y + 0.5, cell - 1, cell - 1);
 
         // Alternating roughness for woven reflection catchlights
-        rCtx.fillStyle = isWarp ? "#4c4c4c" : "#808080";
+        rCtx.fillStyle = isWarp ? "#464646" : "#828282";
         rCtx.fillRect(x + 0.5, y + 0.5, cell - 1, cell - 1);
+
+        // Crowned tow height map for tactile bump relief
+        const bGrad = isWarp
+          ? bCtx.createLinearGradient(x, y, x + cell, y)
+          : bCtx.createLinearGradient(x, y, x, y + cell);
+        bGrad.addColorStop(0, "#404040");
+        bGrad.addColorStop(0.5, isWarp ? "#e6e6e6" : "#b8b8b8");
+        bGrad.addColorStop(1, "#404040");
+        bCtx.fillStyle = bGrad;
+        bCtx.fillRect(x + 0.5, y + 0.5, cell - 1, cell - 1);
       }
     }
   }
 
-  const map = new THREE.CanvasTexture(colorCanvas);
-  map.wrapS = THREE.RepeatWrapping;
-  map.wrapT = THREE.RepeatWrapping;
-  map.repeat.set(6, 6);
-  map.anisotropy = 4;
-  map.colorSpace = THREE.SRGBColorSpace;
-  map.needsUpdate = true;
+  const configureTex = (canvas: HTMLCanvasElement, isColor = false) => {
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(6, 6);
+    tex.anisotropy = 4;
+    if (isColor) tex.colorSpace = THREE.SRGBColorSpace;
+    tex.needsUpdate = true;
+    return tex;
+  };
 
-  const roughnessMap = new THREE.CanvasTexture(roughCanvas);
-  roughnessMap.wrapS = THREE.RepeatWrapping;
-  roughnessMap.wrapT = THREE.RepeatWrapping;
-  roughnessMap.repeat.set(6, 6);
-  roughnessMap.anisotropy = 4;
-  roughnessMap.needsUpdate = true;
+  cachedCarbonColorTex = configureTex(colorCanvas, true);
+  cachedCarbonRoughTex = configureTex(roughCanvas);
+  cachedCarbonBumpTex = configureTex(bumpCanvas);
+  return { map: cachedCarbonColorTex, roughnessMap: cachedCarbonRoughTex, bumpMap: cachedCarbonBumpTex };
+}
 
-  cachedCarbonColorTex = map;
-  cachedCarbonRoughTex = roughnessMap;
-  return { map, roughnessMap };
+/**
+ * Generates procedural directional brushed-metal roughness & bump textures offline (Anodized Al / Steel).
+ */
+function getBrushedMetalTextures(): {
+  roughnessMap: THREE.CanvasTexture;
+  bumpMap: THREE.CanvasTexture;
+} {
+  if (cachedBrushedRoughTex && cachedBrushedBumpTex) {
+    return { roughnessMap: cachedBrushedRoughTex, bumpMap: cachedBrushedBumpTex };
+  }
+
+  const size = 128;
+  const roughCanvas = document.createElement("canvas");
+  roughCanvas.width = size;
+  roughCanvas.height = size;
+  const rCtx = roughCanvas.getContext("2d");
+
+  const bumpCanvas = document.createElement("canvas");
+  bumpCanvas.width = size;
+  bumpCanvas.height = size;
+  const bCtx = bumpCanvas.getContext("2d");
+
+  if (rCtx && bCtx) {
+    rCtx.fillStyle = "#525252";
+    rCtx.fillRect(0, 0, size, size);
+    bCtx.fillStyle = "#808080";
+    bCtx.fillRect(0, 0, size, size);
+
+    // Deterministic fine horizontal brushed streaks
+    let seed = 1337;
+    const rand = () => {
+      seed = (seed * 16807) % 2147483647;
+      return (seed - 1) / 2147483646;
+    };
+
+    for (let y = 0; y < size; y++) {
+      const rVal = Math.round(58 + rand() * 58);
+      const bVal = Math.round(92 + rand() * 72);
+      rCtx.fillStyle = `rgb(${rVal},${rVal},${rVal})`;
+      rCtx.fillRect(0, y, size, 1);
+      bCtx.fillStyle = `rgb(${bVal},${bVal},${bVal})`;
+      bCtx.fillRect(0, y, size, 1);
+    }
+  }
+
+  const makeTex = (canvas: HTMLCanvasElement) => {
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(4, 4);
+    tex.anisotropy = 4;
+    tex.needsUpdate = true;
+    return tex;
+  };
+
+  cachedBrushedRoughTex = makeTex(roughCanvas);
+  cachedBrushedBumpTex = makeTex(bumpCanvas);
+  return { roughnessMap: cachedBrushedRoughTex, bumpMap: cachedBrushedBumpTex };
+}
+
+/**
+ * Generates procedural fine CNC machined-steel grain offline (gears, flanges, reducers).
+ */
+function getMachinedSteelTextures(): {
+  roughnessMap: THREE.CanvasTexture;
+  bumpMap: THREE.CanvasTexture;
+} {
+  if (cachedMachinedRoughTex && cachedMachinedBumpTex) {
+    return { roughnessMap: cachedMachinedRoughTex, bumpMap: cachedMachinedBumpTex };
+  }
+
+  const size = 128;
+  const roughCanvas = document.createElement("canvas");
+  roughCanvas.width = size;
+  roughCanvas.height = size;
+  const rCtx = roughCanvas.getContext("2d");
+
+  const bumpCanvas = document.createElement("canvas");
+  bumpCanvas.width = size;
+  bumpCanvas.height = size;
+  const bCtx = bumpCanvas.getContext("2d");
+
+  if (rCtx && bCtx) {
+    rCtx.fillStyle = "#484848";
+    rCtx.fillRect(0, 0, size, size);
+    bCtx.fillStyle = "#808080";
+    bCtx.fillRect(0, 0, size, size);
+
+    const cx = size / 2;
+    const cy = size / 2;
+    for (let rad = 4; rad < size * 0.72; rad += 3) {
+      const v = rad % 6 === 0 ? 156 : 104;
+      const rv = rad % 6 === 0 ? 52 : 84;
+      bCtx.strokeStyle = `rgb(${v},${v},${v})`;
+      bCtx.lineWidth = 1.2;
+      bCtx.beginPath();
+      bCtx.arc(cx, cy, rad, 0, Math.PI * 2);
+      bCtx.stroke();
+
+      rCtx.strokeStyle = `rgb(${rv},${rv},${rv})`;
+      rCtx.lineWidth = 1.2;
+      rCtx.beginPath();
+      rCtx.arc(cx, cy, rad, 0, Math.PI * 2);
+      rCtx.stroke();
+    }
+  }
+
+  const makeTex = (canvas: HTMLCanvasElement) => {
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(3, 3);
+    tex.anisotropy = 4;
+    tex.needsUpdate = true;
+    return tex;
+  };
+
+  cachedMachinedRoughTex = makeTex(roughCanvas);
+  cachedMachinedBumpTex = makeTex(bumpCanvas);
+  return { roughnessMap: cachedMachinedRoughTex, bumpMap: cachedMachinedBumpTex };
 }
 
 /**
@@ -286,47 +429,66 @@ export function createCadPhysicalMaterial(
 ): THREE.MeshPhysicalMaterial {
   const role = detectCadMaterialRole(mesh, family, materialId);
   const origColor = extractBaseColor(mesh.material);
+  const brushed = getBrushedMetalTextures();
+  const machined = getMachinedSteelTextures();
+  // Anti-z-fighting offset for crisp CAD crease edges
+  const polyOffset = { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 };
 
   switch (role) {
     case "carbon_fiber": {
-      const { map, roughnessMap } = getCarbonFiberTextures();
+      const { map, roughnessMap, bumpMap } = getCarbonFiberTextures();
       return new THREE.MeshPhysicalMaterial({
+        ...polyOffset,
         color: new THREE.Color("#e2e8f0"),
         map,
         roughnessMap,
-        metalness: 0.2,
+        bumpMap,
+        bumpScale: 0.35,
+        metalness: 0.22,
         roughness: 0.36,
-        clearcoat: 0.75,
-        clearcoatRoughness: 0.18,
-        envMapIntensity: 1.25,
+        clearcoat: 0.78,
+        clearcoatRoughness: 0.16,
+        envMapIntensity: 1.3,
       });
     }
 
     case "anodized_base":
       return new THREE.MeshPhysicalMaterial({
+        ...polyOffset,
         color: new THREE.Color("#334155"),
-        metalness: 0.85,
-        roughness: 0.28,
+        roughnessMap: brushed.roughnessMap,
+        bumpMap: brushed.bumpMap,
+        bumpScale: 0.12,
+        metalness: 0.86,
+        roughness: 0.3,
         clearcoat: 0.25,
-        clearcoatRoughness: 0.3,
-        envMapIntensity: 1.35,
+        clearcoatRoughness: 0.28,
+        envMapIntensity: 1.4,
       });
 
     case "anodized_mount":
       return new THREE.MeshPhysicalMaterial({
+        ...polyOffset,
         color: new THREE.Color("#3b648c"),
-        metalness: 0.85,
-        roughness: 0.28,
+        roughnessMap: brushed.roughnessMap,
+        bumpMap: brushed.bumpMap,
+        bumpScale: 0.12,
+        metalness: 0.86,
+        roughness: 0.3,
         clearcoat: 0.3,
-        clearcoatRoughness: 0.25,
-        envMapIntensity: 1.4,
+        clearcoatRoughness: 0.24,
+        envMapIntensity: 1.42,
       });
 
     case "anodized_tcp":
       return new THREE.MeshPhysicalMaterial({
+        ...polyOffset,
         color: new THREE.Color("#e09f24"),
-        metalness: 0.86,
-        roughness: 0.26,
+        roughnessMap: brushed.roughnessMap,
+        bumpMap: brushed.bumpMap,
+        bumpScale: 0.1,
+        metalness: 0.88,
+        roughness: 0.28,
         clearcoat: 0.35,
         clearcoatRoughness: 0.2,
         envMapIntensity: 1.45,
@@ -334,12 +496,16 @@ export function createCadPhysicalMaterial(
 
     case "machined_gear":
       return new THREE.MeshPhysicalMaterial({
+        ...polyOffset,
         color: new THREE.Color("#cbd5e1"),
+        roughnessMap: machined.roughnessMap,
+        bumpMap: machined.bumpMap,
+        bumpScale: 0.16,
         metalness: 0.9,
-        roughness: 0.22,
-        clearcoat: 0.15,
-        clearcoatRoughness: 0.25,
-        envMapIntensity: 1.5,
+        roughness: 0.24,
+        clearcoat: 0.18,
+        clearcoatRoughness: 0.24,
+        envMapIntensity: 1.55,
       });
 
     case "joint_hardware":
@@ -651,17 +817,26 @@ export function createCadPhysicalMaterial(
 
     case "resin_abs_like":
       return new THREE.MeshPhysicalMaterial({
+        ...polyOffset,
         color: new THREE.Color("#8b9cb3"),
-        metalness: 0.08,
-        roughness: 0.3,
-        clearcoat: 0.38,
-        clearcoatRoughness: 0.22,
-        envMapIntensity: 1.15,
+        metalness: 0.06,
+        roughness: 0.28,
+        ior: 1.52,
+        clearcoat: 0.45,
+        clearcoatRoughness: 0.18,
+        sheen: 0.25,
+        sheenColor: new THREE.Color("#bae6fd"),
+        sheenRoughness: 0.45,
+        envMapIntensity: 1.2,
       });
 
     case "torque_sensor_copper":
       return new THREE.MeshPhysicalMaterial({
+        ...polyOffset,
         color: new THREE.Color("#d97706"),
+        roughnessMap: machined.roughnessMap,
+        bumpMap: machined.bumpMap,
+        bumpScale: 0.12,
         metalness: 0.88,
         roughness: 0.24,
         clearcoat: 0.28,
@@ -671,7 +846,11 @@ export function createCadPhysicalMaterial(
 
     case "em_brake_dark_steel":
       return new THREE.MeshPhysicalMaterial({
+        ...polyOffset,
         color: new THREE.Color("#1f2937"),
+        roughnessMap: brushed.roughnessMap,
+        bumpMap: brushed.bumpMap,
+        bumpScale: 0.1,
         metalness: 0.8,
         roughness: 0.34,
         clearcoat: 0.22,
@@ -681,7 +860,11 @@ export function createCadPhysicalMaterial(
 
     case "iso9409_stainless":
       return new THREE.MeshPhysicalMaterial({
+        ...polyOffset,
         color: new THREE.Color("#cbd5e1"),
+        roughnessMap: machined.roughnessMap,
+        bumpMap: machined.bumpMap,
+        bumpScale: 0.12,
         metalness: 0.94,
         roughness: 0.18,
         clearcoat: 0.35,
@@ -691,6 +874,7 @@ export function createCadPhysicalMaterial(
 
     case "matte_polymer":
       return new THREE.MeshPhysicalMaterial({
+        ...polyOffset,
         color: origColor,
         metalness: 0.08,
         roughness: 0.52,
@@ -703,8 +887,29 @@ export function createCadPhysicalMaterial(
     default: {
       const isGear = family === "gears";
       const isMount = family === "mounts";
+      const isCarbonMat = materialId === "petg_cf" || materialId === "pa12_cf";
+      if (isCarbonMat) {
+        const { map, roughnessMap, bumpMap } = getCarbonFiberTextures();
+        return new THREE.MeshPhysicalMaterial({
+          ...polyOffset,
+          color: new THREE.Color("#d8e0ea"),
+          map,
+          roughnessMap,
+          bumpMap,
+          bumpScale: 0.3,
+          metalness: 0.18,
+          roughness: 0.38,
+          clearcoat: 0.65,
+          clearcoatRoughness: 0.2,
+          envMapIntensity: 1.25,
+        });
+      }
       return new THREE.MeshPhysicalMaterial({
+        ...polyOffset,
         color: origColor,
+        roughnessMap: isGear ? machined.roughnessMap : brushed.roughnessMap,
+        bumpMap: isGear ? machined.bumpMap : brushed.bumpMap,
+        bumpScale: isGear ? 0.14 : 0.08,
         metalness: isGear ? 0.65 : isMount ? 0.55 : 0.35,
         roughness: isGear ? 0.28 : isMount ? 0.34 : 0.38,
         clearcoat: isGear ? 0.2 : 0.35,

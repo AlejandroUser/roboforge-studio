@@ -2,11 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "./api";
 import { ArmDatabaseModal } from "./components/ArmDatabaseModal";
 import { AssemblyTree } from "./components/AssemblyTree";
+import { CommandPalette, type CommandItem } from "./components/CommandPalette";
 import { ProjectsInspector, ProjectsSidebar } from "./components/families/ProjectsWorkspace";
 import { MechatronicsPanel } from "./components/MechatronicsPanel";
 import { ModularArmPanel } from "./components/ModularArmPanel";
 import { ParetoChart } from "./components/ParetoChart";
-import { ViewportR3F } from "./components/ViewportR3F";
+import { type StudioTheme, ViewportR3F } from "./components/ViewportR3F";
 import type {
   ArmAssemblyResponse,
   ArmDatabaseEntry,
@@ -400,20 +401,60 @@ export default function App() {
     setTimeout(() => setToast(null), 4200);
   }, []);
 
-  // Keyboard shortcuts Ctrl+Z / Ctrl+Y / Ctrl+Enter
+  // v12.0 Dark Studio Viewport-First Chrome: Collapsible Docks, Zen Mode, Studio Theme & Ctrl+K
+  const [leftDockOpen, setLeftDockOpen] = useState(true);
+  const [rightDockOpen, setRightDockOpen] = useState(true);
+  const [studioTheme, setStudioTheme] = useState<StudioTheme>("dark_studio");
+  const [showCmdPalette, setShowCmdPalette] = useState(false);
+
+  // Keyboard shortcuts: Ctrl+Z / Ctrl+Y / Ctrl+K / [ / ] / Tab (Zen) / F (Fit)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const inInput =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable);
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setShowCmdPalette((v) => !v);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
         e.preventDefault();
         undo();
-      } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
         e.preventDefault();
         redo();
+        return;
+      }
+      if (inInput) return;
+      if (e.key === "[") {
+        e.preventDefault();
+        setLeftDockOpen((v) => !v);
+      } else if (e.key === "]") {
+        e.preventDefault();
+        setRightDockOpen((v) => !v);
+      } else if (e.key === "Tab") {
+        e.preventDefault();
+        setLeftDockOpen((prevL) => {
+          const anyOpen = prevL || rightDockOpen;
+          setRightDockOpen(!anyOpen);
+          return !anyOpen;
+        });
+      } else if (e.key.toLowerCase() === "f" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setCamPreset((c) => ({ view: "iso", nonce: c.nonce + 1 }));
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [undo, redo]);
+  }, [undo, redo, rightDockOpen]);
 
   // Bootstrap catalogs once
   useEffect(() => {
@@ -1356,6 +1397,168 @@ export default function App() {
     }
   };
 
+  const commandItems = useMemo<CommandItem[]>(() => {
+    const base: CommandItem[] = [
+      {
+        id: "tab-arm",
+        label: "Ir a Brazo Completo (22 Brazos Reales)",
+        category: "Módulo",
+        keywords: "arm brazo robot",
+        action: () => pushState((s) => ({ ...s, family: "arm" })),
+      },
+      {
+        id: "tab-projects",
+        label: "Ir a Proyectos 3D (FPV Drone, Hélice BEMT, Rover 4WD, Gimbal)",
+        category: "Módulo",
+        keywords: "fpv_drone propeller rover_4wd camera_gimbal proyectos drone helice rover gimbal",
+        action: () => pushState((s) => ({ ...s, family: "projects" })),
+      },
+      {
+        id: "tab-links",
+        label: "Ir a Eslabones Robóticos (TopOpt / FEA 3D / Gyroid)",
+        category: "Módulo",
+        keywords: "links eslabon fea gyroid",
+        action: () => pushState((s) => ({ ...s, family: "links" })),
+      },
+      {
+        id: "tab-mounts",
+        label: "Ir a Monturas Mecatrónicas",
+        category: "Módulo",
+        keywords: "mounts montura nema",
+        action: () => pushState((s) => ({ ...s, family: "mounts" })),
+      },
+      {
+        id: "tab-gears",
+        label: "Ir a Transmisión / Engranajes",
+        category: "Módulo",
+        keywords: "gears engranaje cicloidal",
+        action: () => pushState((s) => ({ ...s, family: "gears" })),
+      },
+      {
+        id: "open-arm-db",
+        label: "Abrir Base de Datos de Brazos Robóticos Reales",
+        category: "Catálogo",
+        keywords: "database catalogo biblioteca",
+        action: () => setShowArmDbModal(true),
+      },
+      {
+        id: "preset-mars-mini",
+        label: "Cargar RoboForge Mars-Mini (Elegoo Mars 5 Ultra · ~$39.50)",
+        category: "Preset",
+        keywords: "mars_mini resina msla esp32 barato",
+        action: () =>
+          applyArmPresetWithMechatronics(
+            "mars_mini",
+            presets.arms?.mars_mini?.defaults || presets.arms?.mars_mini || {}
+          ),
+      },
+      {
+        id: "preset-franka",
+        label: "Cargar Franka Emika Panda 7-DOF (DH, Par, Frenos 24V, Auto-Split)",
+        category: "Preset",
+        keywords: "franka_panda cobot 7dof iso9409",
+        action: () =>
+          applyArmPresetWithMechatronics(
+            "franka_panda",
+            presets.arms?.franka_panda?.defaults || presets.arms?.franka_panda || {}
+          ),
+      },
+      {
+        id: "theme-dark",
+        label: "Escena de Estudio: Dark Studio",
+        category: "Vista",
+        keywords: "tema oscuro dark studio",
+        action: () => setStudioTheme("dark_studio"),
+      },
+      {
+        id: "theme-keyshot",
+        label: "Escena de Estudio: Light KeyShot",
+        category: "Vista",
+        keywords: "tema claro light keyshot foto",
+        action: () => setStudioTheme("light_keyshot"),
+      },
+      {
+        id: "theme-blueprint",
+        label: "Escena de Estudio: Blueprint Técnico",
+        category: "Vista",
+        keywords: "plano blueprint azul cad",
+        action: () => setStudioTheme("blueprint"),
+      },
+      {
+        id: "toggle-left",
+        label: "Alternar Panel Izquierdo",
+        category: "Layout",
+        shortcut: "[",
+        action: () => setLeftDockOpen((v) => !v),
+      },
+      {
+        id: "toggle-right",
+        label: "Alternar Panel Derecho",
+        category: "Layout",
+        shortcut: "]",
+        action: () => setRightDockOpen((v) => !v),
+      },
+      {
+        id: "toggle-zen",
+        label: "Alternar Modo Zen (Lienzo 100%)",
+        category: "Layout",
+        shortcut: "Tab",
+        action: () =>
+          setLeftDockOpen((prevL) => {
+            const anyOpen = prevL || rightDockOpen;
+            setRightDockOpen(!anyOpen);
+            return !anyOpen;
+          }),
+      },
+      {
+        id: "fit-cam",
+        label: "Ajustar Cámara al Modelo (ISO)",
+        category: "Vista",
+        shortcut: "F",
+        action: () => setCamPreset((c) => ({ view: "iso", nonce: c.nonce + 1 })),
+      },
+      {
+        id: "export-rforge",
+        label: "Guardar Proyecto (.rforge)",
+        category: "Exportar",
+        keywords: "save guardar proyecto",
+        action: saveProject,
+      },
+      {
+        id: "export-ino",
+        label: "Exportar Firmware Arduino / ESP32 Wi-Fi (.INO)",
+        category: "Exportar",
+        keywords: "firmware ino arduino esp32",
+        action: handleExportIno,
+      },
+      {
+        id: "regen-cad",
+        label: "Regenerar Geometría CAD B-Rep",
+        category: "Acción",
+        action: runGeneration,
+      },
+    ];
+
+    const dbArms: CommandItem[] = (armDatabase?.arms || []).map((arm) => ({
+      id: `db-${arm.id}`,
+      label: `Cargar ${arm.name} (${arm.dof}-DOF · ${Math.round(arm.reach_mm)} mm)`,
+      category: "Brazo Real",
+      keywords: `${arm.id} ${arm.manufacturer_or_project} ${arm.category} ${arm.kinematics_type}`,
+      action: () => handleLoadArmFromDatabase(arm),
+    }));
+
+    return [...base, ...dbArms];
+  }, [
+    pushState,
+    presets.arms,
+    applyArmPresetWithMechatronics,
+    rightDockOpen,
+    handleExportIno,
+    runGeneration,
+    armDatabase,
+    handleLoadArmFromDatabase,
+  ]);
+
   return (
     <div className="app-shell">
       {/* HEADER */}
@@ -1363,7 +1566,7 @@ export default function App() {
         <div className="header-left">
           <div className="brand">
             <span>RoboForge</span>
-            <span className="brand-badge">PRO v10.0 · R3F</span>
+            <span className="brand-badge">PRO v12.0 · R3F</span>
           </div>
           <nav className="family-tabs">
             {(
@@ -1393,14 +1596,23 @@ export default function App() {
         </div>
 
         <div className="header-right">
+          <button
+            type="button"
+            className="btn-cmdk"
+            onClick={() => setShowCmdPalette(true)}
+            title="Abrir Paleta de Comandos (Ctrl+K)"
+          >
+            <span>Buscar…</span>
+            <kbd className="cmdk-kbd">Ctrl+K</kbd>
+          </button>
           <button type="button" className="btn-tool" disabled={!canUndo} onClick={undo} title="Deshacer (Ctrl+Z)">
-            ↶ Undo
+            ↶
           </button>
           <button type="button" className="btn-tool" disabled={!canRedo} onClick={redo} title="Rehacer (Ctrl+Y)">
-            ↷ Redo
+            ↷
           </button>
           <button type="button" className="btn-tool" onClick={saveProject}>
-            Guardar .rforge
+            Guardar
           </button>
           <label className="btn-tool" style={{ cursor: "pointer" }}>
             Abrir
@@ -1421,8 +1633,12 @@ export default function App() {
         </div>
       </header>
 
-      {/* 3-COLUMN STUDIO */}
-      <div className="studio-grid">
+      {/* 3-COLUMN COLLAPSIBLE STUDIO (80–95% Viewport-First) */}
+      <div
+        className={`studio-grid ${!leftDockOpen ? "left-collapsed" : ""} ${
+          !rightDockOpen ? "right-collapsed" : ""
+        }`}
+      >
         {/* LEFT INSPECTOR */}
         <aside className="sidebar">
           {state.family === "links" && (
@@ -1877,6 +2093,26 @@ export default function App() {
                     <option value="underwater_rov">Submarino ROV (Flotabilidad + Morison)</option>
                   </select>
                 </div>
+                <details className="accordion-card">
+                  <summary>
+                    <span>Mecánica Avanzada &amp; Cobot</span>
+                    <span className="badge neutral">
+                      {[
+                        state.arm.counterbalance_j2,
+                        state.arm.remote_base_motors,
+                        state.arm.four_bar_parallelogram,
+                        state.arm.bevel_differential_wrist,
+                        state.arm.vacuum_eoat,
+                        state.arm.cnc_plate_mode,
+                        state.arm.wrist_3dof,
+                        state.arm.joint_torque_sensors,
+                        state.arm.electromagnetic_brakes,
+                        state.arm.auto_dovetail_split,
+                      ].filter(Boolean).length}{" "}
+                      activas ▾
+                    </span>
+                  </summary>
+                  <div className="accordion-body">
                 <label className="check-row">
                   <span>Contrapeso J2 (Cilindro -65% Par)</span>
                   <input
@@ -1977,6 +2213,8 @@ export default function App() {
                     }
                   />
                 </label>
+                  </div>
+                </details>
                 {(
                   [
                     ["upper_arm_mm", "Brazo Superior (L1)", 90, 420, 5],
@@ -2370,6 +2608,22 @@ export default function App() {
 
         {/* CENTER R3F 3D VIEWPORT */}
         <main className="viewport-wrap">
+          <button
+            type="button"
+            className="dock-toggle-pill left"
+            onClick={() => setLeftDockOpen((v) => !v)}
+            title={leftDockOpen ? "Colapsar panel izquierdo ([)" : "Mostrar panel izquierdo ([)"}
+          >
+            {leftDockOpen ? "‹" : "›"}
+          </button>
+          <button
+            type="button"
+            className="dock-toggle-pill right"
+            onClick={() => setRightDockOpen((v) => !v)}
+            title={rightDockOpen ? "Colapsar panel derecho (])" : "Mostrar panel derecho (])"}
+          >
+            {rightDockOpen ? "›" : "‹"}
+          </button>
           <div className="vp-toolbar">
             {(["iso", "top", "front", "side"] as const).map((v) => (
               <button
@@ -2501,6 +2755,9 @@ export default function App() {
             hoveredArmPart={hoveredArmPart}
             onHoverArmPart={setHoveredArmPart}
             ikTargetMm={state.family === "arm" && ikMode ? { ...ikTarget, reachable: ikReachable } : null}
+            studioTheme={studioTheme}
+            onStudioThemeChange={setStudioTheme}
+            onFitCamera={() => setCamPreset((c) => ({ view: "iso", nonce: c.nonce + 1 }))}
             cameraPreset={camPreset}
           />
 
@@ -2832,6 +3089,12 @@ export default function App() {
         averageReplicabilityPct={armDatabase?.average_replicability_pct}
         onClose={() => setShowArmDbModal(false)}
         onLoadArm={handleLoadArmFromDatabase}
+      />
+
+      <CommandPalette
+        open={showCmdPalette}
+        items={commandItems}
+        onClose={() => setShowCmdPalette(false)}
       />
 
       {toast && <div className={`toast ${toast.err ? "err" : ""}`}>{toast.msg}</div>}

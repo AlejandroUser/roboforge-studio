@@ -35,6 +35,7 @@ from .cycloidal_variants import (
     build_cycloidal_reducer_3d,
     build_planetary_reducer_3d,
 )
+from .exporter import infer_node_semantics, part_to_studio_trimesh
 from .gear_variants import _build_gear_solid, _build_gear_spoked, _build_gear_webbed
 from .hardware_parts import (
     build_ball_bearing,
@@ -91,30 +92,27 @@ def _hex_to_rgba(hex_color: str, fallback: list[int]) -> list[int]:
     return fallback
 
 
-def _part_to_trimesh(part: Part | Compound, rgba: list[int], metallic: float, roughness: float, name: str) -> trimesh.Trimesh:
-    with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
-        tmp_path = Path(tmp.name)
-    try:
-        export_stl(part, str(tmp_path), tolerance=0.14, angular_tolerance=0.22)
-        loaded = trimesh.load(str(tmp_path), force="mesh")
-        mesh = loaded.dump(concatenate=True) if isinstance(loaded, trimesh.Scene) else loaded
-        if not isinstance(mesh, trimesh.Trimesh):
-            raise ValueError(f"Expected Trimesh for {name}")
-        mesh.fix_normals()
-        mat = trimesh.visual.material.PBRMaterial(
-            name=name,
-            baseColorFactor=rgba,
-            metallicFactor=metallic,
-            roughnessFactor=roughness,
-        )
-        mesh.visual = trimesh.visual.TextureVisuals(material=mat)
-        return mesh
-    finally:
-        if tmp_path.exists():
-            try:
-                tmp_path.unlink()
-            except OSError:
-                pass
+def _part_to_trimesh(
+    part: Part | Compound,
+    rgba: list[int],
+    metallic: float,
+    roughness: float,
+    name: str,
+    *,
+    role: str | None = None,
+    printable: bool | None = None,
+    material_hint: str | None = None,
+) -> trimesh.Trimesh:
+    return part_to_studio_trimesh(
+        part,
+        rgba=rgba,
+        metallic=metallic,
+        roughness=roughness,
+        name=name,
+        role=role,
+        printable=printable,
+        material_hint=material_hint,
+    )
 
 
 def _build_styled_segment(
@@ -700,7 +698,7 @@ def export_bom_csv(bom: list[BOMItem], output_path: Path) -> Path:
 
 def compute_modular_arm_hash(req: ModularArmRequest) -> str:
     """Compute a deterministic 16-char SHA-256 hex digest for a ModularArmRequest."""
-    canonical = "modarm_v100:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
+    canonical = "modarm_v120:" + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
@@ -1530,9 +1528,20 @@ def build_modular_arm_assembly(
         for v5_name, v5_solid, v5_rgba, v5_met, v5_rough, _ in extra_v5_nodes:
             node_specs.append((v5_name, v5_solid, v5_rgba, v5_met, v5_rough))
 
+        mat_id_hint = str(material.get("id", req.material_id))
         for node_name, solid, rgba, met, rough in node_specs:
-            mesh = _part_to_trimesh(solid, rgba, met, rough, node_name)
-            scene.add_geometry(mesh, node_name=node_name, geom_name=node_name)
+            sem = infer_node_semantics(node_name, material_hint=mat_id_hint)
+            mesh = _part_to_trimesh(
+                solid,
+                rgba,
+                met,
+                rough,
+                node_name,
+                role=sem["role"],
+                printable=sem["printable"],
+                material_hint=sem["material_hint"],
+            )
+            scene.add_geometry(mesh, node_name=node_name, geom_name=node_name, metadata=sem)
         scene.export(str(glb_path), file_type="glb")
 
     # 5. Explode vectors in exact GLB spatial units (mm) for 3D Exploded View slider

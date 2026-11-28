@@ -212,7 +212,15 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
               key={fam.id}
               type="button"
               className={`btn-tool ${familyId === fam.id ? "active" : ""}`}
-              style={{ padding: "7px 4px", fontSize: 11, textAlign: "center" }}
+              style={{
+                padding: "7px 6px",
+                fontSize: 11,
+                textAlign: "center",
+                whiteSpace: "normal",
+                lineHeight: 1.25,
+                minWidth: 0,
+                overflow: "hidden",
+              }}
               onClick={() => selectFamily(fam.id)}
             >
               <div>{fam.icon || "⚙"}</div>

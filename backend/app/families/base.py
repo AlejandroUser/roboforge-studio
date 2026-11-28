@@ -13,8 +13,8 @@ from typing import Any
 import trimesh
 from build123d import Compound, Part, export_step, export_stl
 
-from ..cad.arm_assembly import _part_to_trimesh
 from ..cad.dfm_auditor import audit_assembly_dfm
+from ..cad.exporter import infer_node_semantics, part_to_studio_trimesh
 from ..cad.print_prep import generate_print_readiness_pack
 from ..schemas import (
     MasterBomItem,
@@ -26,7 +26,7 @@ from ..schemas import (
 def compute_project_hash(family_id: str, req: ProjectGenerateRequest) -> str:
     """Compute a deterministic `prj_<16hex>` hash for a multi-project generation request."""
     canonical = (
-        f"prj_v90:{family_id}:"
+        f"prj_v120:{family_id}:"
         + json.dumps(req.model_dump(), sort_keys=True, separators=(",", ":"))
     )
     return "prj_" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
@@ -102,15 +102,29 @@ def package_project_exports(
     """Export GLB, STEP, STL, print-readiness plates/STLs, Goldfish DFM audit, BOM CSV, and master ZIP."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Build multi-node semantic PBR GLB + keep placed meshes for DFM AABB check
+    # 1. Build multi-node semantic PBR GLB with crease normals, box UVs & glTF extras + keep placed meshes for DFM
     scene = trimesh.Scene()
     placed_meshes: dict[str, trimesh.Trimesh] = {}
     all_solids: list[Part | Compound] = []
+    printable_set = set(printable_parts.keys())
+    mat_id_hint = str(material.get("id", req.material_id))
     for node_name, solid, rgba, met, rough in node_specs:
         all_solids.append(solid)
-        mesh = _part_to_trimesh(solid, rgba, met, rough, node_name)
-        placed_meshes[node_name] = mesh
-        scene.add_geometry(mesh, node_name=node_name, geom_name=node_name)
+        sem = infer_node_semantics(node_name, printable_names=printable_set, material_hint=mat_id_hint)
+        raw_holder: list[trimesh.Trimesh] = []
+        mesh = part_to_studio_trimesh(
+            solid,
+            rgba=rgba,
+            metallic=met,
+            roughness=rough,
+            name=node_name,
+            role=sem["role"],
+            printable=sem["printable"],
+            material_hint=sem["material_hint"],
+            out_raw_holder=raw_holder,
+        )
+        placed_meshes[node_name] = raw_holder[0] if raw_holder else mesh
+        scene.add_geometry(mesh, node_name=node_name, geom_name=node_name, metadata=sem)
 
     glb_path = output_dir / "arm_assembly.glb"
     step_path = output_dir / "arm_assembly.step"

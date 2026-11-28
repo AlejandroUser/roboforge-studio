@@ -1,10 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { ContactShadows, Environment, Grid, Lightformer, OrbitControls } from "@react-three/drei";
+import {
+  ContactShadows,
+  Environment,
+  GizmoHelper,
+  GizmoViewcube,
+  Grid,
+  Lightformer,
+  OrbitControls,
+} from "@react-three/drei";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { FamilyId, KinematicsType } from "../types";
 import { countSceneTriangles, createCadPhysicalMaterial } from "../utils/cadMaterials";
+
+export type StudioTheme = "dark_studio" | "light_keyshot" | "blueprint";
+export type SectionAxis = "off" | "x" | "y" | "z";
 
 const MAX_EDGE_TRIANGLES = 90_000;
 const CAD_EDGE_THRESHOLD_DEG = 28;
@@ -335,57 +346,62 @@ export interface ViewportR3FProps {
   hoveredArmPart?: string | null;
   onHoverArmPart?: (partName: string | null) => void;
   ikTargetMm?: { x: number; y: number; z: number; reachable?: boolean } | null;
+  studioTheme?: StudioTheme;
+  onStudioThemeChange?: (theme: StudioTheme) => void;
+  onFitCamera?: () => void;
   cameraPreset: { view: "iso" | "top" | "front" | "side"; nonce: number };
 }
 
 /**
- * 100% offline procedural IBL studio environment (zero remote HDRIs / presets).
+ * 100% offline procedural photographic studio IBL (strip-boxes + overhead softbox, 0 remote HDRIs).
  */
-function StudioEnvironment() {
+function StudioEnvironment({ theme }: { theme: StudioTheme }) {
+  const isLight = theme === "light_keyshot";
+  const isBlue = theme === "blueprint";
   return (
     <Environment resolution={256} frames={1}>
-      {/* Overhead diffused softbox */}
+      {/* Main overhead diffused softbox */}
       <Lightformer
         form="rect"
-        intensity={2.4}
-        color="#f8fafc"
-        scale={[14, 14, 1]}
-        position={[0, 10, 0]}
+        intensity={isLight ? 2.6 : 2.3}
+        color={isBlue ? "#dbeafe" : "#ffffff"}
+        scale={[16, 12, 1]}
+        position={[0, 12, 0]}
         rotation={[Math.PI / 2, 0, 0]}
       />
-      {/* Cool cyan rim light (left-back) */}
+      {/* Left vertical specular strip-box (creates crisp metallic reflections on brushed Al & carbon) */}
       <Lightformer
         form="rect"
-        intensity={2.1}
-        color="#7dd3fc"
-        scale={[10, 5, 1]}
-        position={[-9, 4, -7]}
-        target={[0, 0, 0]}
+        intensity={isLight ? 2.2 : 2.6}
+        color={isBlue ? "#38bdf8" : "#e0f2fe"}
+        scale={[3.2, 14, 1]}
+        position={[-11, 5, -5]}
+        target={[0, 1, 0]}
       />
-      {/* Warm industrial key-rim (right-front) */}
+      {/* Right vertical warm-neutral key strip-box */}
       <Lightformer
         form="rect"
-        intensity={1.7}
-        color="#fde68a"
-        scale={[8, 6, 1]}
-        position={[9, 5, 6]}
-        target={[0, 0, 0]}
+        intensity={isLight ? 2.0 : 2.1}
+        color={isBlue ? "#93c5fd" : "#fef3c7"}
+        scale={[3.6, 12, 1]}
+        position={[11, 6, 5]}
+        target={[0, 1, 0]}
       />
-      {/* Soft neutral front-side fill for dark anodized / carbon vertical faces */}
+      {/* Front-upper fill ring for dark anodized vertical faces */}
       <Lightformer
         form="ring"
-        intensity={1.4}
-        color="#e2e8f0"
-        scale={8}
-        position={[0, 3, 10]}
+        intensity={isLight ? 1.5 : 1.2}
+        color="#f1f5f9"
+        scale={7}
+        position={[0, 4, 12]}
         target={[0, 0, 0]}
       />
-      {/* Subtle dark-slate floor bounce */}
+      {/* Floor bounce */}
       <Lightformer
         form="rect"
-        intensity={0.45}
-        color="#1e293b"
-        scale={[18, 18, 1]}
+        intensity={isLight ? 0.95 : 0.32}
+        color={isLight ? "#cbd5e1" : "#1e293b"}
+        scale={[22, 22, 1]}
         position={[0, -6, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
       />
@@ -414,7 +430,10 @@ function LoadedModel({
   materialId,
   isFeaMesh,
   wireframe,
+  xrayMode,
   showEdges,
+  studioTheme,
+  clipPlane,
   meshOpacity,
   armAngles,
   selectedArmNode,
@@ -431,7 +450,10 @@ function LoadedModel({
   materialId?: string;
   isFeaMesh?: boolean;
   wireframe: boolean;
+  xrayMode: boolean;
   showEdges: boolean;
+  studioTheme: StudioTheme;
+  clipPlane: THREE.Plane | null;
   meshOpacity: number;
   armAngles?: {
     baseYaw?: number;
@@ -526,6 +548,8 @@ function LoadedModel({
             // Apply calibrated industrial CAD physical material by semantic node role
             obj.material = createCadPhysicalMaterial(obj as THREE.Mesh, family, materialId);
           }
+          obj.castShadow = true;
+          obj.receiveShadow = true;
         });
 
         const triangles = countSceneTriangles(root);
@@ -550,9 +574,11 @@ function LoadedModel({
     };
   }, [url, isFeaMesh, family, materialId]);
 
-  // Apply wireframe, opacity, selection & hover highlight live
+  // Apply wireframe, opacity, X-Ray, Section Cut clipping plane, selection & hover highlight live
   useEffect(() => {
     if (!sceneObj) return;
+    const effectiveOpacity = xrayMode ? Math.min(meshOpacity, 0.3) : meshOpacity;
+    const planes = clipPlane ? [clipPlane] : [];
     sceneObj.traverse((obj: any) => {
       if (!obj.isMesh || !obj.material) return;
       const semantic = resolveSemanticKey(obj);
@@ -569,8 +595,11 @@ function LoadedModel({
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
       mats.forEach((m: any) => {
         m.wireframe = wireframe;
-        m.transparent = meshOpacity < 0.99;
-        m.opacity = meshOpacity;
+        m.transparent = effectiveOpacity < 0.99;
+        m.opacity = effectiveOpacity;
+        m.depthWrite = !xrayMode;
+        m.clippingPlanes = planes;
+        m.clipShadows = true;
         if (isSelected) {
           m.emissive?.setHex?.(0x38bdf8);
           m.emissiveIntensity = 0.38;
@@ -584,11 +613,11 @@ function LoadedModel({
         m.needsUpdate = true;
       });
     });
-  }, [sceneObj, wireframe, meshOpacity, selectedArmNode, hoveredArmPart]);
+  }, [sceneObj, wireframe, xrayMode, meshOpacity, clipPlane, selectedArmNode, hoveredArmPart]);
 
-  // 60 FPS client-side Exploded View (Despiece 3D) + Gripper Open/Close (0-100%)
+  // 60 FPS client-side Exploded View (Despiece 3D) for Arm & Multi-Project + Gripper Open/Close
   useEffect(() => {
-    if (!sceneObj || family !== "arm") return;
+    if (!sceneObj || (family !== "arm" && family !== "projects")) return;
     const vecMap: Record<string, number[]> = {
       ...FALLBACK_EXPLODE_VECTORS,
       ...(explodeVectors || {}),
@@ -696,14 +725,26 @@ function LoadedModel({
 
     if (!allowEdges) return;
 
+    const edgeColor =
+      studioTheme === "light_keyshot"
+        ? 0x1e293b
+        : studioTheme === "blueprint"
+          ? 0x7dd3fc
+          : 0x0b0f17;
+    const edgeOpacity =
+      studioTheme === "blueprint"
+        ? Math.min(0.65, meshOpacity * 0.7)
+        : Math.min(0.46, meshOpacity * 0.52);
+
     sceneObj.traverse((obj: any) => {
       if (!obj.isMesh || !obj.geometry) return;
       const edgeGeom = new THREE.EdgesGeometry(obj.geometry, CAD_EDGE_THRESHOLD_DEG);
       const edgeMat = new THREE.LineBasicMaterial({
-        color: 0x0f172a,
+        color: edgeColor,
         transparent: true,
-        opacity: Math.min(0.55, meshOpacity * 0.6),
+        opacity: edgeOpacity,
         depthTest: true,
+        clippingPlanes: clipPlane ? [clipPlane] : [],
       });
       const lines = new THREE.LineSegments(edgeGeom, edgeMat);
       lines.raycast = () => {};
@@ -714,7 +755,7 @@ function LoadedModel({
     return () => {
       disposeCadEdges(sceneObj);
     };
-  }, [sceneObj, showEdges, wireframe, isFeaMesh, meshOpacity]);
+  }, [sceneObj, showEdges, wireframe, isFeaMesh, meshOpacity, studioTheme, clipPlane]);
 
   // 60 FPS real-time GPU FK for J0 Base Yaw, hierarchical articulated J1/J2/J3, and SCARA horizontal arms
   useEffect(() => {
@@ -1001,6 +1042,10 @@ function IkTargetMarker({
 export const ViewportR3F: React.FC<ViewportR3FProps> = (props) => {
   const [bounds, setBounds] = useState<THREE.Box3 | null>(null);
   const [showEdges, setShowEdges] = useState<boolean>(true);
+  const [xrayMode, setXrayMode] = useState<boolean>(false);
+  const [internalTheme, setInternalTheme] = useState<StudioTheme>("dark_studio");
+  const [sectionAxis, setSectionAxis] = useState<SectionAxis>("off");
+  const [sectionPos, setSectionPos] = useState<number>(0);
   const [internalExplode, setInternalExplode] = useState<number>(0);
   const [internalHoverPart, setInternalHoverPart] = useState<string | null>(null);
   const [modelMeta, setModelMeta] = useState<{ triangles: number; hasVertexColors: boolean }>({
@@ -1008,14 +1053,16 @@ export const ViewportR3F: React.FC<ViewportR3FProps> = (props) => {
     hasVertexColors: false,
   });
 
+  const studioTheme = props.studioTheme ?? internalTheme;
+  const setStudioTheme = props.onStudioThemeChange ?? setInternalTheme;
   const explodeFactor = props.explodeFactor ?? internalExplode;
   const setExplodeFactor = props.onExplodeFactorChange ?? setInternalExplode;
   const hoveredPart = props.hoveredArmPart !== undefined ? props.hoveredArmPart : internalHoverPart;
   const setHoveredPart = props.onHoverArmPart ?? setInternalHoverPart;
 
-  const { splitOffsetZ, shadowScale, shadowFar } = useMemo(() => {
+  const { splitOffsetZ, shadowScale, shadowFar, shadowCamExtent } = useMemo(() => {
     if (!bounds || bounds.isEmpty()) {
-      return { splitOffsetZ: 70, shadowScale: 420, shadowFar: 260 };
+      return { splitOffsetZ: 70, shadowScale: 420, shadowFar: 260, shadowCamExtent: 260 };
     }
     const s = new THREE.Vector3();
     bounds.getSize(s);
@@ -1024,8 +1071,27 @@ export const ViewportR3F: React.FC<ViewportR3FProps> = (props) => {
       splitOffsetZ: Math.max(45, s.z + 24),
       shadowScale: Math.min(Math.max(maxSpan * 2.4, 240), 1400),
       shadowFar: Math.max(s.y * 2.2, 220),
+      shadowCamExtent: Math.min(Math.max(maxSpan * 0.9, 180), 900),
     };
   }, [bounds]);
+
+  // Dynamic Section Cut clipping plane mapped to model bounding box
+  const activeClipPlane = useMemo(() => {
+    if (sectionAxis === "off") return null;
+    const min = bounds && !bounds.isEmpty() ? bounds.min : new THREE.Vector3(-150, 0, -150);
+    const max = bounds && !bounds.isEmpty() ? bounds.max : new THREE.Vector3(150, 260, 150);
+    const t = (sectionPos + 1) * 0.5; // 0..1
+    if (sectionAxis === "x") {
+      const cutX = THREE.MathUtils.lerp(min.x - 5, max.x + 5, t);
+      return new THREE.Plane(new THREE.Vector3(-1, 0, 0), cutX);
+    }
+    if (sectionAxis === "y") {
+      const cutY = THREE.MathUtils.lerp(min.y - 5, max.y + 5, t);
+      return new THREE.Plane(new THREE.Vector3(0, -1, 0), cutY);
+    }
+    const cutZ = THREE.MathUtils.lerp(min.z - 5, max.z + 5, t);
+    return new THREE.Plane(new THREE.Vector3(0, 0, -1), cutZ);
+  }, [sectionAxis, sectionPos, bounds]);
 
   const edgesBlockedReason = useMemo(() => {
     if (props.isFeaMesh || modelMeta.hasVertexColors) {
@@ -1040,37 +1106,87 @@ export const ViewportR3F: React.FC<ViewportR3FProps> = (props) => {
   const edgesDisabled =
     Boolean(props.isFeaMesh) || modelMeta.hasVertexColors || modelMeta.triangles > MAX_EDGE_TRIANGLES;
 
+  const canvasBg =
+    studioTheme === "light_keyshot"
+      ? "radial-gradient(circle at 50% 42%, #e8edf3 0%, #cbd5e1 82%)"
+      : studioTheme === "blueprint"
+        ? "radial-gradient(circle at 50% 42%, #102a4c 0%, #0a192f 80%)"
+        : "radial-gradient(circle at 50% 42%, #1c2029 0%, #0f1117 80%)";
+
+  const gridCellColor =
+    studioTheme === "light_keyshot" ? "#cbd5e1" : studioTheme === "blueprint" ? "#163a63" : "#222733";
+  const gridSecColor =
+    studioTheme === "light_keyshot" ? "#94a3b8" : studioTheme === "blueprint" ? "#2563a8" : "#343d4f";
+
+  const canExplode = props.family === "arm" || props.family === "projects";
+
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <Canvas
+        shadows="soft"
         dpr={[1, 2]}
         gl={{
           antialias: true,
+          localClippingEnabled: true,
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.08,
+          toneMappingExposure: studioTheme === "light_keyshot" ? 1.02 : 1.08,
         }}
         camera={{ position: [180, 140, 210], fov: 42, near: 0.5, far: 8000 }}
         style={{
           width: "100%",
           height: "100%",
-          background: "radial-gradient(circle at 50% 42%, #131c2b 0%, #090d14 78%)",
+          background: canvasBg,
         }}
       >
-        {/* 100% offline procedural IBL + studio key/fill + front fill for dark faces */}
-        <StudioEnvironment />
-        <ambientLight intensity={0.42} />
-        <hemisphereLight args={["#e0f2fe", "#1e293b", 0.52]} />
-        <directionalLight position={[180, 280, 180]} intensity={1.15} color="#ffffff" />
-        <directionalLight position={[40, 95, 260]} intensity={0.55} color="#e2e8f0" />
-        <directionalLight position={[-170, 120, -150]} intensity={0.48} color="#7dd3fc" />
+        {/* 100% offline procedural photographic studio IBL + live shadow-casting key light */}
+        <StudioEnvironment theme={studioTheme} />
+        <ambientLight intensity={studioTheme === "light_keyshot" ? 0.22 : 0.12} />
+        <hemisphereLight
+          args={[
+            studioTheme === "light_keyshot" ? "#ffffff" : "#e0f2fe",
+            studioTheme === "light_keyshot" ? "#94a3b8" : "#0f172a",
+            studioTheme === "light_keyshot" ? 0.45 : 0.26,
+          ]}
+        />
+        <directionalLight
+          position={[210, 320, 190]}
+          intensity={studioTheme === "light_keyshot" ? 1.45 : 1.35}
+          color="#ffffff"
+          castShadow
+          shadow-mapSize-width={2048}
+          shadow-mapSize-height={2048}
+          shadow-bias={-0.0004}
+          shadow-normalBias={0.04}
+          shadow-camera-left={-shadowCamExtent}
+          shadow-camera-right={shadowCamExtent}
+          shadow-camera-top={shadowCamExtent}
+          shadow-camera-bottom={-shadowCamExtent}
+          shadow-camera-near={10}
+          shadow-camera-far={1600}
+        />
+        <directionalLight
+          position={[-190, 140, -170]}
+          intensity={studioTheme === "blueprint" ? 0.8 : 0.45}
+          color={studioTheme === "blueprint" ? "#38bdf8" : "#93c5fd"}
+        />
+
+        {/* Live 60 FPS floor shadow receiver (moves with FK/IK & Explode) */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
+          <planeGeometry args={[2400, 2400]} />
+          <shadowMaterial
+            transparent
+            opacity={studioTheme === "light_keyshot" ? 0.2 : 0.36}
+            color="#020617"
+          />
+        </mesh>
 
         <ContactShadows
           key={`shadow-${props.glbUrl || "none"}-${props.family}`}
-          position={[0, -0.05, 0]}
+          position={[0, -0.06, 0]}
           frames={1}
-          opacity={0.45}
+          opacity={studioTheme === "light_keyshot" ? 0.26 : 0.35}
           scale={shadowScale}
-          blur={2.2}
+          blur={2.4}
           far={shadowFar}
           resolution={512}
           color="#020617"
@@ -1080,10 +1196,10 @@ export const ViewportR3F: React.FC<ViewportR3FProps> = (props) => {
           args={[700, 700]}
           cellSize={10}
           cellThickness={0.5}
-          cellColor="#1e293b"
+          cellColor={gridCellColor}
           sectionSize={50}
           sectionThickness={1}
-          sectionColor="#334155"
+          sectionColor={gridSecColor}
           fadeDistance={650}
           fadeStrength={2.2}
           position={[0, -0.2, 0]}
@@ -1096,7 +1212,10 @@ export const ViewportR3F: React.FC<ViewportR3FProps> = (props) => {
             materialId={props.materialId}
             isFeaMesh={props.isFeaMesh}
             wireframe={props.wireframe}
+            xrayMode={xrayMode}
             showEdges={showEdges}
+            studioTheme={studioTheme}
+            clipPlane={activeClipPlane}
             meshOpacity={props.meshOpacity}
             armAngles={props.family === "arm" ? props.armAngles : undefined}
             selectedArmNode={props.selectedArmNode}
@@ -1132,6 +1251,18 @@ export const ViewportR3F: React.FC<ViewportR3FProps> = (props) => {
           <IkTargetMarker target={props.ikTargetMm} />
         )}
 
+        {/* Interactive ViewCube (100% offline, @react-three/drei) */}
+        <GizmoHelper alignment="bottom-right" margin={[70, 86]}>
+          <GizmoViewcube
+            color={studioTheme === "light_keyshot" ? "#e2e8f0" : "#1e2433"}
+            hoverColor="#38bdf8"
+            textColor={studioTheme === "light_keyshot" ? "#0f172a" : "#e2e8f0"}
+            strokeColor={studioTheme === "light_keyshot" ? "#94a3b8" : "#334155"}
+            opacity={0.92}
+            faces={["Der", "Izq", "Sup", "Inf", "Fren", "Tras"]}
+          />
+        </GizmoHelper>
+
         <CameraController
           bounds={bounds}
           preset={props.cameraPreset}
@@ -1141,19 +1272,19 @@ export const ViewportR3F: React.FC<ViewportR3FProps> = (props) => {
         />
       </Canvas>
 
-      {/* Floating hovered/selected part label in Arm mode */}
+      {/* Floating hovered/selected part label */}
       {props.family === "arm" && (hoveredPart || props.selectedArmNode) && (
         <div
           style={{
             position: "absolute",
             left: 14,
-            bottom: 14,
+            bottom: 72,
             zIndex: 8,
             padding: "5px 11px",
             borderRadius: 999,
-            background: "rgba(14, 19, 27, 0.86)",
+            background: "rgba(17, 19, 24, 0.86)",
             border: "1px solid rgba(56, 189, 248, 0.45)",
-            backdropFilter: "blur(8px)",
+            backdropFilter: "blur(10px)",
             color: "#e2e8f0",
             fontSize: 11.5,
             fontWeight: 600,
@@ -1165,85 +1296,117 @@ export const ViewportR3F: React.FC<ViewportR3FProps> = (props) => {
         </div>
       )}
 
-      {/* Floating CAD Studio HUD pills: Despiece 3D (Arm) + Aristas CAD */}
-      <div
-        style={{
-          position: "absolute",
-          right: 14,
-          bottom: 14,
-          zIndex: 8,
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          pointerEvents: "auto",
-        }}
-      >
-        {props.family === "arm" && (
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "5px 12px",
-              borderRadius: 999,
-              border: `1px solid ${
-                explodeFactor > 0 ? "rgba(56, 189, 248, 0.55)" : "rgba(148, 163, 184, 0.22)"
-              }`,
-              background: "rgba(14, 19, 27, 0.85)",
-              backdropFilter: "blur(8px)",
-              color: "#e2e8f0",
-              fontSize: 11.5,
-              fontWeight: 600,
-            }}
-          >
-            <span style={{ color: explodeFactor > 0 ? "#38bdf8" : "#94a3b8" }}>Despiece 3D</span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={Math.round(explodeFactor * 100)}
-              onChange={(e) => setExplodeFactor(Number(e.target.value) / 100)}
-              style={{ width: 96, accentColor: "#38bdf8", cursor: "pointer" }}
-              title="Despiece interactivo 3D (60 FPS)"
-            />
-            <span style={{ fontFamily: "monospace", minWidth: 32, textAlign: "right", color: "#7dd3fc" }}>
-              {Math.round(explodeFactor * 100)}%
-            </span>
-          </div>
-        )}
+      {/* Unified Floating Bottom Pill Toolbar (Phase A & D) */}
+      <div className="vp-pill-dock">
+        {/* Studio Scene Switcher */}
+        <div className="vp-pill-group" title="Escena de Estudio Fotográfico (100% Offline)">
+          {(
+            [
+              ["dark_studio", "Dark"],
+              ["light_keyshot", "KeyShot"],
+              ["blueprint", "Blueprint"],
+            ] as const
+          ).map(([tid, lbl]) => (
+            <button
+              key={tid}
+              type="button"
+              className={`vp-pill-btn ${studioTheme === tid ? "active" : ""}`}
+              onClick={() => setStudioTheme(tid)}
+            >
+              {lbl}
+            </button>
+          ))}
+        </div>
 
+        <span className="vp-pill-sep" />
+
+        {/* Bordes CAD */}
         <button
           type="button"
+          className={`vp-pill-btn ${showEdges && !edgesDisabled ? "active" : ""}`}
           onClick={() => !edgesDisabled && setShowEdges((v) => !v)}
           disabled={edgesDisabled}
           title={edgesBlockedReason}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "6px 11px",
-            borderRadius: 999,
-            border: `1px solid ${
-              showEdges && !edgesDisabled ? "rgba(56, 189, 248, 0.55)" : "rgba(148, 163, 184, 0.2)"
-            }`,
-            background:
-              showEdges && !edgesDisabled ? "rgba(56, 189, 248, 0.16)" : "rgba(14, 19, 27, 0.82)",
-            backdropFilter: "blur(8px)",
-            color: edgesDisabled ? "#64748b" : showEdges ? "#7dd3fc" : "#cbd5e1",
-            fontSize: 11.5,
-            fontWeight: 600,
-            cursor: edgesDisabled ? "not-allowed" : "pointer",
-            opacity: edgesDisabled ? 0.65 : 1,
-            transition: "all 0.15s ease",
-          }}
         >
-          <svg width="14" height="14" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-            <path d="M9 2L16 6V12L9 16L2 12V6L9 2Z" stroke="currentColor" strokeWidth="1.5" />
-            <path d="M9 9L16 6M9 9L2 6M9 9V16" stroke="currentColor" strokeWidth="1.3" />
-          </svg>
-          <span>Aristas CAD</span>
+          Bordes CAD
         </button>
+
+        {/* Rayos X */}
+        <button
+          type="button"
+          className={`vp-pill-btn ${xrayMode ? "active" : ""}`}
+          onClick={() => setXrayMode((v) => !v)}
+          title="Modo Rayos X translúcido para inspeccionar cavidades internas"
+        >
+          Rayos X
+        </button>
+
+        {/* Section Cut (Off / X / Y / Z + slider) */}
+        <div className="vp-pill-group" title="Plano de Corte (Section Cut) para inspeccionar interiores B-Rep">
+          {(["off", "x", "y", "z"] as const).map((ax) => (
+            <button
+              key={ax}
+              type="button"
+              className={`vp-pill-btn ${sectionAxis === ax ? "active" : ""}`}
+              onClick={() => {
+                setSectionAxis(ax);
+                if (ax !== "off" && sectionAxis === "off") setSectionPos(0);
+              }}
+            >
+              {ax === "off" ? "Corte" : ax.toUpperCase()}
+            </button>
+          ))}
+          {sectionAxis !== "off" && (
+            <input
+              type="range"
+              min={-100}
+              max={100}
+              step={2}
+              value={Math.round(sectionPos * 100)}
+              onChange={(e) => setSectionPos(Number(e.target.value) / 100)}
+              style={{ width: 68, accentColor: "#38bdf8", cursor: "pointer", marginLeft: 4 }}
+              title={`Posición plano de corte ${sectionAxis.toUpperCase()}`}
+            />
+          )}
+        </div>
+
+        {/* Despiece 3D (enabled for BOTH Arm AND Multi-Project 3D!) */}
+        {canExplode && (
+          <>
+            <span className="vp-pill-sep" />
+            <div className="vp-pill-slider">
+              <span style={{ color: explodeFactor > 0 ? "#38bdf8" : "#94a3b8" }}>Despiece</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={Math.round(explodeFactor * 100)}
+                onChange={(e) => setExplodeFactor(Number(e.target.value) / 100)}
+                style={{ width: 76, accentColor: "#38bdf8", cursor: "pointer" }}
+                title="Despiece interactivo 3D (60 FPS)"
+              />
+              <span className="mono" style={{ minWidth: 30, textAlign: "right", color: "#7dd3fc" }}>
+                {Math.round(explodeFactor * 100)}%
+              </span>
+            </div>
+          </>
+        )}
+
+        {/* Fit Camera (F) */}
+        {props.onFitCamera && (
+          <>
+            <span className="vp-pill-sep" />
+            <button
+              type="button"
+              className="vp-pill-btn"
+              onClick={props.onFitCamera}
+              title="Ajustar Cámara al Modelo (Atajo: F)"
+            >
+              Ajustar (F)
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
