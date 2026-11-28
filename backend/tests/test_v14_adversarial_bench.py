@@ -12,7 +12,10 @@ from backend.app.physics.adversarial_bench import (
     run_modal_resonance_check,
     run_monte_carlo_reliability,
 )
-from backend.app.physics.competition_referee import evaluate_competitor_adversarial
+from backend.app.physics.competition_referee import (
+    evaluate_competitor_adversarial,
+    run_extreme_drone_gauntlet,
+)
 
 
 def test_modal_eigsh_matches_analytical_cantilever_beam():
@@ -70,3 +73,15 @@ def test_crash_20g_and_adversarial_referee_end_to_end(tmp_path: Path):
     )
     assert 0.0 <= score["total_score_100"] <= 100.0
     assert set(score["breakdown"].keys()) == {"flight_30", "modal_20", "crash_20g_20", "monte_carlo_20", "manufacturing_10"}
+
+    extreme = run_extreme_drone_gauntlet(
+        name="ExtremeTestDrone",
+        frame_stl=stl_p,
+        auw_base_g=660.0,
+        bemt_thrust_per_motor_g=900.0,
+        bemt_power_per_motor_w=260.0,
+        efficiency_g_per_w=3.46,
+        prop_root_sf=1.8,
+    )
+    assert 0.0 <= extreme["extreme_score_100"] <= 100.0
+    assert 0 <= extreme["tests_passed"] <= 5
