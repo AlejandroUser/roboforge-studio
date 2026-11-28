@@ -1,4 +1,4 @@
-# RoboForge Studio Pro v11.0
+# RoboForge Studio Pro v13.0
 
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![React 19 + R3F](https://img.shields.io/badge/React_19-R3F_%2F_Three.js-61DAFB?logo=react&logoColor=000)](https://react.dev/)
@@ -7,9 +7,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-10B981.svg)](LICENSE)
 [![Benchmark](https://img.shields.io/badge/21_Robotic_Systems-93.0%25_avg-8B5CF6)](docs/)
 
-**RoboForge Studio Pro v11.0** es una plataforma integral local-first de **ingeniería computacional, CAD paramétrico B-Rep, simulación FEA 3D ortotrópica, dinámica acoplada RNEA + fricción LuGre, aerodinámica BEMT para hélices de drones (convencionales y toroidales), cinemática inversa (IK) en vivo, control de hardware USB/Wi-Fi y manufactura aditiva FDM + Resina MSLA**.
+**RoboForge Studio Pro v13.0** es una plataforma integral local-first (100% offline) de **diseño generativo por física desde cero (SIMP 3D + Langelaar 45° + SDF y evolución genética `NSGA-II` de hélices), CAD paramétrico B-Rep, simulación FEA 3D ortotrópica, dinámica acoplada RNEA + fricción LuGre, IK híbrido (analítico + LM-DLS 6–7 DOF), renderizado de estudio PBR y manufactura aditiva FDM + Resina MSLA**.
 
-Genera geometría manufacturable en **`.STEP`**, **`.STL`**, **`.GLB`**, **`.DXF`**, **`.URDF` / MuJoCo** y platos listos para laminar en **`.3MF`** con pruebas de tolerancia, diagramas de cableado WireViz auditados eléctricamente y firmware **Arduino / ESP32 Wi-Fi `.INO`** autogenerado.
+Genera geometría manufacturable en **`.STEP`**, **`.STL`**, **`.GLB`** (normales `32°` + UVs físicas mm), **`.DXF`**, **`.URDF` / MuJoCo** y platos listos para laminar en **`.3MF`** con auditoría pre-impresión **Goldfish DFM 5/5**, cableado WireViz auditado y firmware **Arduino / ESP32 Wi-Fi `.INO`**.
 
 ---
 
@@ -21,16 +21,18 @@ Genera geometría manufacturable en **`.STEP`**, **`.STL`**, **`.GLB`**, **`.DXF
 
 ---
 
-## Novedades Destacadas (v9.0 – v11.0)
+## Novedades Destacadas (v10.0 – v13.0)
 
-- **Motor Aerodinámico BEMT + Generador Paramétrico de Hélices 3D (v11.0):**
-  - Solucionador **BEMT** (*Blade Element Momentum Theory*) con pérdida en punta de **Prandtl**, perfiles reales de bajo Reynolds (**`NACA 4412`**, **`Clark-Y`**, **`Eppler E63`**), cálculo de empuje, par, potencia, Figura de Mérito, ruido estimado (`dBA`) y esfuerzo centrífugo + flexión en raíz.
-  - Generador **CAD NURBS (`build123d`)** para **hélices convencionales (2/3/4 palas)** con borde de fuga imprimible ($\ge 0.4\text{ mm}$) y **hélices toroidales de lazo cerrado** (pares **CW + CCW**), integrado directamente en el dron FPV y como familia independiente (`propeller`).
-- **Física Avanzada y Seguridad Eléctrica Auditada (v10.0+):**
-  - Dinámica acoplada **RNEA + fricción Stribeck/LuGre** por tipo de reductor (`servo`, `planetary`, `harmonic`) + deformación por cortante de **Timoshenko** para eslabones cortos ($L/h < 5$).
-  - Modelo **electrotérmico RC** de calentamiento de bobinado y **caída de tensión `I·R`** por calibre AWG; separación estricta de potencia/señal en esquemáticos SVG + WireViz, protocolo serial en vivo `P:<j0>,...,<g>\n` en `.INO` y pool serial persistente sin reinicios DTR/RTS.
-- **Familias Multi-Proyecto (v9.0 – v11.0):**
-  - **Drones FPV & Cinewhoop** (`3"`, `5"`, `7"` con hélices BEMT montadas y `.DXF` CNC), **Hélices de Dron**, **Rovers 4WD** y **Gimbals de Cámara**.
+- **Diseño Generativo por Física desde Cero (v13.0):**
+  - **Motor A — Eslabones Orgánicos 3D (`SIMP 3D Hex8` + `Langelaar 45°` + `Preserve/Obstacle SDF` + `Taubin`):** esculpe topologías biónicas únicas en `~7 s` en CPU local bajo cargas combinadas de flexión, inercia angular y torsión, imprimibles sin soportes (`-60% a -80%` masa) y validadas por Goldfish DFM.
+  - **Motor B — Evolucionador Genético de Hélices (`Adkins-Liebeck` + `BEMT` + `NSGA-II`):** evalúa `>1,200` palas en `~4 s` y entrega **3 diseños únicos del Frente de Pareto** (*Máx. Eficiencia*, *Ultra-Silenciosa con sweep*, *Máx. Empuje*) en pares **CW + CCW** watertight.
+  - **Importador de Perfiles `.dat` (UIUC Selig/Lednicer)** y **SDK de Plugins Comunitarios** ([docs/PLUGIN_SDK.md](docs/PLUGIN_SDK.md)).
+- **Interfaz Studio Pro Viewport-First & Render PBR de Estudio (v12.0):**
+  - Docks colapsables (`[` / `]` / `Tab` Zen Mode), **Dark Studio / Light KeyShot / Blueprint**, sombras vivas 2K, `<Lightformer>` procedurales 100% offline, materiales táctiles (fibra de carbono 2×2, aluminio cepillado, resina MSLA), **ViewCube**, **Section Cut (X/Y/Z)** y **Paleta de Comandos `Ctrl+K`**.
+- **Física Avanzada, IK Híbrido y Familias Multi-Proyecto Pro (v10.0 – v11.5):**
+  - **IK Híbrido:** analítico ultrarrápido (`5.6 µs`) para 3–4 DOF + **Levenberg-Marquardt DLS** para brazos redundantes de **6–7 DOF**.
+  - **RNEA + Stribeck/LuGre** + cortante **Timoshenko** + modelo **electrotérmico RC / `I·R`** + seguridad eléctrica P0–P2.
+  - **Drones FPV** (hélices BEMT montadas + `.DXF`), **Hélices BEMT/Toroidales**, **Rovers 4WD** (*Rígida / Rocker-Bogie / Ackerman* + física de pendientes) y **Gimbals de Cámara** (equilibrado automático de Centro de Masa CoM).
 - **Proyecto Demostrador `RoboForge Mars-Mini` (~$40 USD · Elegoo Mars 5 Ultra MSLA 9K):**
   - Brazo robótico 4-DOF paralelogramo + pinza 100% imprimible en **Resina ABS-Like** (`153.36 × 77.76 × 165 mm`, **0 piezas fuera de cama**), con tuercas cautivas M3, servos económicos (`3× MG996R` + `1× MG90S`), bus `ESP32 + PCA9685 (5V 5A)`, receta dedicada para **Elegoo SatelLite / Chitubox** y servidor Web Wi-Fi integrado (`mars_mini_esp32_wifi.ino`). Consulta la guía paso a paso en [docs/MARS_MINI_BUILD_GUIDE.md](docs/MARS_MINI_BUILD_GUIDE.md).
 - **Cinemática Inversa (IK) 3D Interactiva a 60 FPS:**

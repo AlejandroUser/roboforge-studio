@@ -15,6 +15,7 @@ from ..cad.organic_sdf_builder import build_organic_sdf_link, export_organic_sdf
 from ..families import compute_project_hash, get_family_plugin, list_family_infos
 from ..physics.mechanics import load_materials
 from ..physics.profiles import load_printers
+from ..physics.propeller_bemt import register_custom_airfoil_dat
 from ..physics.propeller_optimizer import evolve_propeller_pareto
 from ..physics.topopt_3d import run_simp_3d_link
 from ..schemas import (
@@ -49,10 +50,24 @@ class Simp3DLinkRequest(BaseModel):
     printer_id: str = Field(default="bambu_x1c")
 
 
+class AirfoilDatImportRequest(BaseModel):
+    airfoil_id: str = Field(default="custom_dat", min_length=2, max_length=48)
+    dat_text: str = Field(..., min_length=20)
+
+
 @router.get("/families")
 def get_project_families() -> dict[str, Any]:
     """Return metadata and presets for all registered project families."""
     return {"families": list_family_infos()}
+
+
+@router.post("/propeller/import-dat")
+def import_airfoil_dat_endpoint(req: AirfoilDatImportRequest) -> dict[str, Any]:
+    """Parse and register a custom UIUC (.dat Selig/Lednicer) airfoil profile in memory."""
+    try:
+        return register_custom_airfoil_dat(req.airfoil_id, req.dat_text)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/propeller/evolve")

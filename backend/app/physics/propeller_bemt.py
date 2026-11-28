@@ -12,8 +12,11 @@ Implements:
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field
 from typing import Any
+
+import numpy as np
 
 AIR_DENSITY_KG_M3 = 1.225  # Sea-level ISA
 SPEED_OF_SOUND_MS = 340.3  # Sea-level ISA
@@ -75,6 +78,154 @@ AIRFOIL_LIBRARY: dict[str, AirfoilSpec] = {
         cd_k=0.039,
     ),
 }
+
+# Runtime registry of custom imported UIUC .dat airfoil coordinates (chord=1, pivoted at 25%)
+_CUSTOM_AIRFOIL_COORDS: dict[str, list[tuple[float, float]]] = {}
+
+
+def parse_uiuc_dat_airfoil(
+    dat_text: str,
+    airfoil_id: str = "custom_dat",
+) -> tuple[AirfoilSpec, list[tuple[float, float]]]:
+    """
+    Parse a UIUC airfoil .dat file in either Selig (TE->LE->TE single block) or
+    Lednicer (two blocks: upper LE->TE and lower LE->TE) format.
+
+    Normalizes chord to 1.0, pivots at 25% chord, enforces printable trailing-edge
+    thickness (>= 0.032 chord), and estimates thickness t, camber (m, p), and Cl0
+    via thin-airfoil theory.
+    """
+    lines = [ln.strip() for ln in dat_text.splitlines()]
+    non_empty = [ln for ln in lines if ln]
+    if len(non_empty) < 6:
+        raise ValueError("Archivo .dat inválido: contiene muy pocas coordenadas.")
+
+    # Parse numeric pairs while tracking blank-line block breaks (for Lednicer format)
+    num_re = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$")
+    header_name = ""
+    blocks: list[list[tuple[float, float]]] = [[]]
+    started_coords = False
+
+    for ln in lines:
+        if not ln:
+            if started_coords and blocks[-1]:
+                blocks.append([])
+            continue
+        parts = ln.split()
+        if len(parts) >= 2 and num_re.match(parts[0]) and num_re.match(parts[1]):
+            x_val, y_val = float(parts[0]), float(parts[1])
+            # Skip Lednicer point-count header line (e.g., "33. 33.")
+            if not started_coords and x_val > 2.0 and y_val > 2.0:
+                continue
+            started_coords = True
+            blocks[-1].append((x_val, y_val))
+        elif not started_coords and not header_name:
+            header_name = ln
+
+    blocks = [b for b in blocks if len(b) >= 3]
+    if not blocks:
+        raise ValueError("No se encontraron coordenadas numéricas (x, y) en el archivo .dat.")
+
+    # Distinguish Lednicer (2 blocks both LE->TE) vs Selig (1 block TE->LE->TE)
+    if len(blocks) >= 2:
+        raw_upper = blocks[0]
+        raw_lower = blocks[1]
+    else:
+        pts_all = blocks[0]
+        xs_all = [p[0] for p in pts_all]
+        le_idx = int(np.argmin(xs_all))
+        if le_idx <= 1 or le_idx >= len(pts_all) - 2:
+            raise ValueError("Formato Selig inválido: no se detectó el borde de ataque (LE).")
+        raw_upper = list(reversed(pts_all[: le_idx + 1]))
+        raw_lower = pts_all[le_idx:]
+
+    # Normalize chord to [0, 1]
+    all_x = [p[0] for p in raw_upper] + [p[0] for p in raw_lower]
+    x_min = min(all_x)
+    chord = max(all_x) - x_min
+    if chord <= 1e-6:
+        raise ValueError("Cuerda nula en archivo .dat.")
+
+    def _clean_surface(raw: list[tuple[float, float]]) -> tuple[np.ndarray, np.ndarray]:
+        arr = sorted((( (p[0] - x_min) / chord, p[1] / chord ) for p in raw), key=lambda t: t[0])
+        xs_u: list[float] = []
+        ys_u: list[float] = []
+        for xv, yv in arr:
+            if not xs_u or abs(xv - xs_u[-1]) > 1e-6:
+                xs_u.append(xv)
+                ys_u.append(yv)
+            else:
+                ys_u[-1] = 0.5 * (ys_u[-1] + yv)
+        return np.array(xs_u, dtype=np.float64), np.array(ys_u, dtype=np.float64)
+
+    ux, uy = _clean_surface(raw_upper)
+    lx, ly = _clean_surface(raw_lower)
+
+    # Ensure upper surface is actually above lower surface at mid-chord
+    if float(np.interp(0.5, ux, uy)) < float(np.interp(0.5, lx, ly)):
+        ux, uy, lx, ly = lx, ly, ux, uy
+
+    # Cosine-spaced resampling (18 points per surface -> clean printable CCW loop)
+    n_surf = 18
+    x_grid = 0.5 * (1.0 - np.cos(np.pi * np.linspace(0.0, 1.0, n_surf + 1)))
+    yu_g = np.interp(x_grid, ux, uy)
+    yl_g = np.interp(x_grid, lx, ly)
+
+    yc = 0.5 * (yu_g + yl_g)
+    yt = np.maximum(0.5 * (yu_g - yl_g), 0.0)
+
+    # Estimate geometric & thin-airfoil aerodynamic parameters
+    thickness_t = float(np.clip(np.max(2.0 * yt), 0.05, 0.24))
+    camber_idx = int(np.argmax(yc))
+    camber_m = float(np.clip(yc[camber_idx], 0.0, 0.12))
+    camber_p = float(np.clip(x_grid[camber_idx], 0.15, 0.75)) if camber_m > 1e-4 else 0.40
+    # Thin-airfoil theory: Cl0 ≈ 2*pi*(2*m) with low-Re viscous decambering factor (~0.82)
+    cl0 = float(np.clip(2.0 * math.pi * (1.65 * camber_m), 0.0, 0.85))
+    cl_max = float(np.clip(1.12 + 4.8 * camber_m + 0.6 * thickness_t, 1.15, 1.55))
+    cd0 = float(np.clip(0.013 + 0.04 * thickness_t, 0.014, 0.026))
+    flat_bottom = bool(np.max(np.abs(yl_g[3:-2])) < 0.018)
+
+    # Enforce printable finite trailing-edge thickness (>= 0.032 chord)
+    min_te_ratio = 0.032
+    yt_print = np.maximum(yt, 0.5 * min_te_ratio * (x_grid**1.5))
+    yu_print = yc + yt_print
+    yl_print = yc - yt_print
+
+    upper_pts = [(float(x_grid[i] - 0.25), float(yu_print[i])) for i in range(len(x_grid))]
+    lower_pts = [(float(x_grid[i] - 0.25), float(yl_print[i])) for i in range(len(x_grid))]
+    ccw_pts = list(reversed(upper_pts)) + lower_pts[1:]
+
+    clean_id = re.sub(r"[^a-z0-9_]+", "_", (airfoil_id or "custom_dat").strip().lower()).strip("_") or "custom_dat"
+    display_name = header_name[:60] if header_name else f"UIUC {clean_id.upper()}"
+    spec = AirfoilSpec(
+        id=clean_id,
+        name=f"{display_name} (UIUC .dat)",
+        camber_m=round(camber_m, 4),
+        camber_p=round(camber_p, 3),
+        thickness_t=round(thickness_t, 4),
+        flat_bottom=flat_bottom,
+        cl0=round(cl0, 3),
+        cl_alpha=5.55,
+        cl_max=round(cl_max, 3),
+        cd0=round(cd0, 4),
+        cd_k=0.042,
+    )
+    return spec, ccw_pts
+
+
+def register_custom_airfoil_dat(airfoil_id: str, dat_text: str) -> dict[str, Any]:
+    """Parse and register a custom UIUC .dat airfoil into AIRFOIL_LIBRARY and coordinate cache."""
+    spec, pts = parse_uiuc_dat_airfoil(dat_text, airfoil_id=airfoil_id)
+    AIRFOIL_LIBRARY[spec.id] = spec
+    _CUSTOM_AIRFOIL_COORDS[spec.id] = pts
+    return {
+        "id": spec.id,
+        "name": spec.name,
+        "thickness_pct": round(spec.thickness_t * 100.0, 2),
+        "camber_pct": round(spec.camber_m * 100.0, 2),
+        "cl0": spec.cl0,
+        "points": len(pts),
+    }
 
 
 @dataclass
@@ -155,6 +306,8 @@ def sample_airfoil_coords(
     and CNC-milled blades have no degenerate zero-thickness knife edges.
     Coordinates are ordered counter-clockwise starting from trailing edge top -> LE -> TE bottom.
     """
+    if airfoil_id in _CUSTOM_AIRFOIL_COORDS:
+        return list(_CUSTOM_AIRFOIL_COORDS[airfoil_id])
     spec = AIRFOIL_LIBRARY.get(airfoil_id, AIRFOIL_LIBRARY["naca4412"])
     m = spec.camber_m
     p = max(0.05, min(0.95, spec.camber_p))

@@ -154,12 +154,20 @@ const METRIC_LABELS: Record<string, { label: string; unit?: string }> = {
   volume_fraction_pct: { label: "Volumen", unit: "%" },
   volume_fraction: { label: "Frac. Vol.", unit: "" },
   triangle_count: { label: "Triángulos", unit: "" },
+  max_slope_deg: { label: "Pendiente Máx.", unit: "°" },
+  climb_torque_nm: { label: "Torque 20°", unit: "N·m" },
+  suspension_mode: { label: "Suspensión", unit: "" },
+  pitch_com_offset_mm: { label: "CoM Pitch", unit: "mm" },
+  roll_com_offset_mm: { label: "CoM Roll", unit: "mm" },
+  recommended_counterweight_g: { label: "Contrapeso", unit: "g" },
+  idle_torque_reduction_pct: { label: "Ahorro Par", unit: "%" },
 };
 
 export interface ProjectsSidebarProps {
   materials: Record<string, any>;
   printers: Record<string, any>;
   busy: boolean;
+  initialMode?: "families" | "simp3d";
   onResult: (res: ProjectGenerateResponse, materialId: string) => void;
   onBusyChange: (label: string | null) => void;
   onToast: (msg: string, err?: boolean) => void;
@@ -169,13 +177,20 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
   materials,
   printers,
   busy,
+  initialMode,
   onResult,
   onBusyChange,
   onToast,
 }) => {
   const [families, setFamilies] = useState<ProjectFamilyInfo[]>(FALLBACK_FAMILIES);
   const [familyId, setFamilyId] = useState<ProjectFamilyId>("fpv_drone");
-  const [generativeMode, setGenerativeMode] = useState<"families" | "simp3d">("families");
+  const [generativeMode, setGenerativeMode] = useState<"families" | "simp3d">(initialMode || "families");
+  const [customAirfoilInfo, setCustomAirfoilInfo] = useState<{
+    id: string;
+    name: string;
+    thickness_pct: number;
+    camber_pct: number;
+  } | null>(null);
   const [presetId, setPresetId] = useState<string>("freestyle_5in");
   const [materialId, setMaterialId] = useState<string>("pa12_cf");
   const [printerId, setPrinterId] = useState<string>("bambu_x1c");
@@ -201,6 +216,12 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
     volume_fraction: 0.38,
     overhang_filter_45: true,
   });
+
+  useEffect(() => {
+    if (initialMode) {
+      setGenerativeMode(initialMode);
+    }
+  }, [initialMode]);
 
   useEffect(() => {
     api
@@ -524,6 +545,17 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
                 onChange={(e) => setParams((p) => ({ ...p, wheel_diameter_mm: Number(e.target.value) }))}
               />
             </div>
+            <div className="field-row">
+              <div className="field-head"><span>Suspensión / Dirección</span></div>
+              <select
+                value={String(params.suspension_mode ?? "rigid")}
+                onChange={(e) => setParams((p) => ({ ...p, suspension_mode: e.target.value }))}
+              >
+                <option value="rigid">Rígida 4WD</option>
+                <option value="rocker_bogie">Rocker-Bogie (Basculante)</option>
+                <option value="ackerman">Dirección Ackerman</option>
+              </select>
+            </div>
             <label className="check-row">
               <span>Torreta LiDAR / Cámara 360°</span>
               <input
@@ -657,6 +689,59 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
                   <option value="scimitar">Cimitarra</option>
                 </select>
               </div>
+            </div>
+
+            {/* Fase 4: Importador de Perfiles .dat UIUC */}
+            <div className="field-row" style={{ marginTop: 4 }}>
+              <label
+                className="btn-tool"
+                style={{ display: "block", textAlign: "center", cursor: "pointer" }}
+                title="Cargar perfil aerodinámico en formato Selig o Lednicer (.dat UIUC)"
+              >
+                📄 Importar Perfil .dat (UIUC)
+                <input
+                  type="file"
+                  accept=".dat,.txt"
+                  hidden
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file) return;
+                    const cleanId =
+                      file.name
+                        .replace(/\.[^/.]+$/, "")
+                        .toLowerCase()
+                        .replace(/[^a-z0-9_]+/g, "_")
+                        .replace(/^_|_$/g, "") || "custom_dat";
+                    onBusyChange(`Importando perfil aerodinámico ${file.name}...`);
+                    try {
+                      const datText = await file.text();
+                      const res = await api.importAirfoilDat(cleanId, datText);
+                      setCustomAirfoilInfo({
+                        id: res.id,
+                        name: res.name,
+                        thickness_pct: res.thickness_pct,
+                        camber_pct: res.camber_pct,
+                      });
+                      setParams((p) => ({ ...p, airfoil_id: res.id }));
+                      onToast(
+                        `Perfil ${res.name} importado (espesor ${res.thickness_pct.toFixed(1)}%, curvatura ${res.camber_pct.toFixed(1)}%).`
+                      );
+                    } catch (err: any) {
+                      onToast(`Error importando .dat: ${err.message}`, true);
+                    } finally {
+                      onBusyChange(null);
+                    }
+                  }}
+                />
+              </label>
+              {customAirfoilInfo && (
+                <div className="alert-item info" style={{ marginTop: 4, fontSize: 10.5 }}>
+                  <strong>Perfil activo:</strong> {customAirfoilInfo.name} · espesor{" "}
+                  {customAirfoilInfo.thickness_pct.toFixed(1)}% · curvatura{" "}
+                  {customAirfoilInfo.camber_pct.toFixed(1)}%
+                </div>
+              )}
             </div>
 
             <button

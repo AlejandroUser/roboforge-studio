@@ -96,6 +96,9 @@ class Rover4WDPlugin(ProjectFamilyPlugin):
         motor_torque_nm = float(cfg.get("motor_torque_nm", 0.45))
         motor_rpm = float(cfg.get("motor_rpm", 160.0))
         battery_wh = float(cfg.get("battery_wh", 44.0))
+        suspension_mode = str(cfg.get("suspension_mode", "rigid")).strip().lower()
+        if suspension_mode not in ("rigid", "rocker_bogie", "ackerman"):
+            suspension_mode = "rigid"
 
         deck_t = 5.0
         z_low = max(24.0, wheel_r - 12.0)
@@ -165,7 +168,8 @@ class Rover4WDPlugin(ProjectFamilyPlugin):
         rover_wheel_raw = w_bp.part
 
         rot_wheel = Location((0.0, 0.0, 0.0), (90.0, 0.0, 0.0))
-        wheel_y_off = width / 2.0 + wheel_w / 2.0 + 4.0
+        extra_y_clear = 12.0 if suspension_mode in ("rocker_bogie", "ackerman") else 4.0
+        wheel_y_off = width / 2.0 + wheel_w / 2.0 + extra_y_clear
         wheel_solids = [
             Location((sx, sy, wheel_r)) * (rot_wheel * (Location((0.0, 0.0, -wheel_w / 2.0)) * rover_wheel_raw))
             for sx in (-axle_x, axle_x)
@@ -173,7 +177,67 @@ class Rover4WDPlugin(ProjectFamilyPlugin):
         ]
         wheels_4wd = Compound(children=wheel_solids)
 
-        # Real 4WD Traction Physics
+        # 5b. Optional v13.0 Suspension / Steering 3D Mechanism (Rocker-Bogie or Ackerman)
+        extra_nodes: list[tuple[str, Part | Compound, list[int], float, float]] = []
+        extra_printable: dict[str, Part] = {}
+        extra_explode: dict[str, list[float]] = {}
+        extra_bom: list[MasterBomItem] = []
+
+        if suspension_mode == "rocker_bogie":
+            # Articulated Rocker-Bogie side linkage arms mounted cleanly between chassis wall and wheels
+            arm_y = width / 2.0 + 5.5
+            arm_span = axle_x * 2.0 + 18.0
+            arm_z = wheel_r + 10.0
+            rocker_raw = (
+                Location((0.0, 0.0, 0.0)) * Box(arm_span, 5.5, 11.0)
+                + Location((-axle_x, 0.0, -6.0)) * Box(14.0, 5.5, 16.0)
+                + Location((+axle_x, 0.0, -6.0)) * Box(14.0, 5.5, 16.0)
+                + Location((0.0, 0.0, 9.0)) * Box(20.0, 5.5, 12.0)
+            )
+            rocker_l = Location((0.0, -arm_y, arm_z)) * rocker_raw
+            rocker_r = Location((0.0, +arm_y, arm_z)) * rocker_raw
+            extra_nodes.append(("suspension_rocker_bogie", Compound(children=[rocker_l, rocker_r]), [234, 88, 12, 255], 0.65, 0.32))
+            extra_printable["rocker_bogie_arm"] = rocker_raw
+            extra_explode["suspension_rocker_bogie"] = [0.0, 0.0, -18.0]
+            extra_bom.append(
+                MasterBomItem(
+                    category="printed_cnc",
+                    category_label="Suspensión Rocker-Bogie",
+                    part_code="ROV-SUS-08",
+                    part_name="rocker_bogie_arm",
+                    spec=f"Brazo basculante Rocker-Bogie {arm_span:.0f} mm (par izq/der)",
+                    qty=2,
+                    unit_cost_usd=3.80,
+                    total_cost_usd=7.60,
+                )
+            )
+        elif suspension_mode == "ackerman":
+            # Front Ackerman steering knuckles + tie-rod cleanly positioned forward of chassis lower deck
+            knuckle_y = width / 2.0 + 5.5
+            knuckle_raw = (
+                Location((0.0, 0.0, 0.0)) * Box(18.0, 6.0, 18.0)
+                + Location((9.0, 0.0, 4.0)) * Box(12.0, 6.0, 8.0)
+            )
+            knuckle_l = Location((axle_x, -knuckle_y, wheel_r)) * knuckle_raw
+            knuckle_r = Location((axle_x, +knuckle_y, wheel_r)) * knuckle_raw
+            tie_rod = Location((axle_x + 12.0, 0.0, wheel_r + 4.0)) * Box(5.0, knuckle_y * 2.0, 5.0)
+            extra_nodes.append(("steering_ackerman", Compound(children=[knuckle_l, knuckle_r, tie_rod]), [245, 158, 11, 255], 0.72, 0.28))
+            extra_printable["ackerman_knuckle"] = knuckle_raw
+            extra_explode["steering_ackerman"] = [42.0, 0.0, -10.0]
+            extra_bom.append(
+                MasterBomItem(
+                    category="printed_cnc",
+                    category_label="Dirección Ackerman",
+                    part_code="ROV-ACK-08",
+                    part_name="ackerman_knuckle",
+                    spec="Manguetas de dirección Ackerman + barra de acople (par)",
+                    qty=2,
+                    unit_cost_usd=3.40,
+                    total_cost_usd=6.80,
+                )
+            )
+
+        # Real 4WD Traction & Slope Physics
         density = float(material.get("density_g_cm3", 1.29))
         printed_g = (chassis_lower.volume + chassis_upper.volume + lidar_turret.volume + 4.0 * rover_wheel_raw.volume) / 1000.0 * density
         hardware_g = 420.0 if preset["id"] == "mini_rover_tt" else (1150.0 if preset["id"] == "mecanum_nema17" else 1480.0)
@@ -181,18 +245,26 @@ class Rover4WDPlugin(ProjectFamilyPlugin):
         total_mass_kg = total_mass_g / 1000.0
         total_torque_nm = round(4.0 * motor_torque_nm, 2)
         tractive_force_n = total_torque_nm / max(wheel_r / 1000.0, 0.01)
-        sin_slope = min(0.85, (tractive_force_n * 0.72) / max(total_mass_kg * 9.81, 0.1))
+        traction_eff = 0.80 if suspension_mode == "rocker_bogie" else 0.72
+        sin_slope = min(0.85, (tractive_force_n * traction_eff) / max(total_mass_kg * 9.81, 0.1))
         max_climb_deg = round(math.degrees(math.asin(sin_slope)), 1)
+        # Required torque for a 20° reference climb (gravity + rolling resistance Crr=0.06)
+        slope_20 = math.radians(20.0)
+        climb_force_20_n = total_mass_kg * 9.81 * (math.sin(slope_20) + 0.06 * math.cos(slope_20))
+        climb_torque_nm = round(climb_force_20_n * (wheel_r / 1000.0), 3)
         max_speed_m_s = round((motor_rpm / 60.0) * math.pi * (wheel_d / 1000.0), 2)
         runtime_min = round((battery_wh / max(8.0, total_mass_kg * 12.0)) * 60.0, 1)
 
         metrics = {
             "total_mass_g": total_mass_g,
             "total_torque_nm": total_torque_nm,
+            "climb_torque_nm": climb_torque_nm,
             "max_climb_deg": max_climb_deg,
+            "max_slope_deg": max_climb_deg,
             "max_speed_m_s": max_speed_m_s,
             "runtime_min": runtime_min,
             "wheelbase_mm": round(axle_x * 2.0, 1),
+            "suspension_mode": suspension_mode,
         }
 
         bom = [
@@ -268,18 +340,22 @@ class Rover4WDPlugin(ProjectFamilyPlugin):
             ),
         ]
 
+        bom.extend(extra_bom)
+
         node_specs = [
             ("chassis_lower", chassis_lower, [56, 72, 94, 255], 0.55, 0.34),
             ("chassis_upper", chassis_upper, [64, 156, 198, 255], 0.52, 0.34),
             ("standoffs", standoffs, [218, 174, 58, 255], 0.88, 0.24),
             ("lidar_turret", lidar_turret, [34, 40, 50, 255], 0.65, 0.32),
             ("wheels_4wd", wheels_4wd, [28, 32, 38, 255], 0.18, 0.78),
+            *extra_nodes,
         ]
         printable_parts = {
             "chassis_lower": chassis_lower,
             "chassis_upper": chassis_upper,
             "lidar_turret": lidar_turret,
             "rover_wheel": rover_wheel_raw,
+            **extra_printable,
         }
         explode_vectors = {
             "chassis_lower": [0.0, 0.0, -28.0],
@@ -287,6 +363,7 @@ class Rover4WDPlugin(ProjectFamilyPlugin):
             "standoffs": [0.0, 0.0, 18.0],
             "lidar_turret": [0.0, 0.0, 82.0],
             "wheels_4wd": [0.0, 0.0, -48.0],
+            **extra_explode,
         }
 
         return package_project_exports(
@@ -304,7 +381,7 @@ class Rover4WDPlugin(ProjectFamilyPlugin):
             metrics=metrics,
             bom=bom,
             notes=[
-                f"Tracción 4WD total: {total_torque_nm:.2f} N·m · Pendiente máxima estimada: {max_climb_deg:.1f}°.",
-                f"Velocidad punta: {max_speed_m_s:.2f} m/s · Autonomía: {runtime_min:.0f} min.",
+                f"Suspensión/Dirección: {suspension_mode.upper()} · Tracción 4WD total: {total_torque_nm:.2f} N·m (requerido a 20°: {climb_torque_nm:.2f} N·m).",
+                f"Pendiente máxima estimada: {max_climb_deg:.1f}° · Velocidad punta: {max_speed_m_s:.2f} m/s · Autonomía: {runtime_min:.0f} min.",
             ],
         )

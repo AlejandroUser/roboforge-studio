@@ -349,9 +349,10 @@ export default function App() {
   const [armDatabase, setArmDatabase] = useState<ArmDatabaseResponse | null>(null);
   const [showArmDbModal, setShowArmDbModal] = useState(false);
 
-  // v9.0 Multi-Project Workspace state (FPV Drone, Rover 4WD, Camera Gimbal)
+  // v9.0/v13.0 Multi-Project Workspace state (FPV Drone, Rover 4WD, Camera Gimbal, Propeller, SIMP 3D)
   const [projectRes, setProjectRes] = useState<ProjectGenerateResponse | null>(null);
   const [projectMaterialId, setProjectMaterialId] = useState<string>("pa12_cf");
+  const [projectInitialMode, setProjectInitialMode] = useState<"families" | "simp3d">("families");
 
   // v4.1/v4.2 Pose Sequencer (5-axis 60 FPS GPU FK playback + .INO export)
   const [recordedPoses, setRecordedPoses] = useState<
@@ -1566,7 +1567,7 @@ export default function App() {
         <div className="header-left">
           <div className="brand">
             <span>RoboForge</span>
-            <span className="brand-badge">PRO v12.0 · R3F</span>
+            <span className="brand-badge">PRO v13.0 · R3F</span>
           </div>
           <nav className="family-tabs">
             {(
@@ -1681,6 +1682,22 @@ export default function App() {
                   </label>
                 </div>
                 {copilotInfo && <div className="alert-item info">{copilotInfo}</div>}
+                <button
+                  type="button"
+                  className="btn-tool"
+                  style={{
+                    marginTop: 4,
+                    borderColor: "rgba(16, 185, 129, 0.45)",
+                    color: "#6ee7b7",
+                  }}
+                  onClick={() => {
+                    setProjectInitialMode("simp3d");
+                    pushState((s) => ({ ...s, family: "projects" }));
+                  }}
+                  title="Abrir optimizador topológico volumétrico SIMP 3D (Langelaar 45°) en Proyectos 3D"
+                >
+                  🧬 Esculpir Orgánico SIMP 3D →
+                </button>
               </div>
 
               {/* .STEP REFERENCE */}
@@ -2525,6 +2542,7 @@ export default function App() {
               materials={materials}
               printers={printers}
               busy={Boolean(busyLabel)}
+              initialMode={projectInitialMode}
               onResult={(res, mid) => {
                 setProjectRes(res);
                 setProjectMaterialId(mid);

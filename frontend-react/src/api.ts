@@ -179,4 +179,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  importAirfoilDat: (airfoil_id: string, dat_text: string) =>
+    reqJson<{
+      id: string;
+      name: string;
+      thickness_pct: number;
+      camber_pct: number;
+      cl0: number;
+      points: number;
+    }>("/api/projects/propeller/import-dat", {
+      method: "POST",
+      body: JSON.stringify({ airfoil_id, dat_text }),
+    }),
 };

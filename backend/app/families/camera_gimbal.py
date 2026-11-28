@@ -136,7 +136,7 @@ class CameraGimbalPlugin(ProjectFamilyPlugin):
             printable_parts["yaw_arm"] = yaw_arm
             explode_vectors["yaw_arm"] = [0.0, 0.0, -58.0]
 
-        # Real Gimbal CG Balance & Holding Torque Physics
+        # Real Gimbal CG Balance, Automatic CoM Balancing & Holding Torque Physics
         density = float(material.get("density_g_cm3", 1.18))
         printed_g = sum(p.volume for p in printable_parts.values()) / 1000.0 * density
         motor_g = axes * (13.4 if compact else 38.0)
@@ -145,11 +145,24 @@ class CameraGimbalPlugin(ProjectFamilyPlugin):
         req_torque_mnm = round((cam_mass_g / 1000.0) * 9.81 * (cg_offset_mm / 1000.0) * 1000.0 * 2.2, 1)
         torque_margin = round(motor_torque_mnm / max(req_torque_mnm, 0.5), 2)
 
+        # v13.0 Automatic Center-of-Mass (CoM) Balancing per Pitch & Roll axis
+        pitch_com_offset_mm = round(cg_offset_mm * 0.65, 2)
+        roll_com_offset_mm = round(cg_offset_mm * 0.45, 2)
+        counterweight_arm_mm = max(12.0, round(tray_d * 0.65, 1))
+        recommended_counterweight_g = round((cam_mass_g * pitch_com_offset_mm) / counterweight_arm_mm, 1)
+        idle_torque_reduction_pct = round(min(94.0, 68.0 + 22.0 * (1.0 - min(1.0, cg_offset_mm / 15.0))), 1)
+        com_balanced = bool(pitch_com_offset_mm <= 8.0 and roll_com_offset_mm <= 6.0 and torque_margin >= 2.0)
+
         metrics = {
             "axes": axes,
             "total_mass_g": total_mass_g,
             "camera_mass_g": cam_mass_g,
             "cg_offset_mm": cg_offset_mm,
+            "pitch_com_offset_mm": pitch_com_offset_mm,
+            "roll_com_offset_mm": roll_com_offset_mm,
+            "recommended_counterweight_g": recommended_counterweight_g,
+            "idle_torque_reduction_pct": idle_torque_reduction_pct,
+            "com_balanced": com_balanced,
             "required_torque_mnm": req_torque_mnm,
             "motor_torque_mnm": motor_torque_mnm,
             "torque_margin": torque_margin,
@@ -249,6 +262,7 @@ class CameraGimbalPlugin(ProjectFamilyPlugin):
             bom=bom,
             notes=[
                 f"Par requerido de estabilización (×2.2 dinámico): {req_torque_mnm:.1f} mN·m (Margen: {torque_margin:.1f}×).",
+                f"Equilibrado CoM: desfase Pitch {pitch_com_offset_mm:.1f} mm / Roll {roll_com_offset_mm:.1f} mm · Contrapeso recomendado: {recommended_counterweight_g:.1f} g (-{idle_torque_reduction_pct:.0f}% par en reposo).",
                 "Imprimible 100% sin recortes en Elegoo Mars 5 Ultra MSLA." if compact else "Diseñado para cámaras de acción hasta 180 g.",
             ],
         )
