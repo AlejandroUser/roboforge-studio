@@ -19,6 +19,10 @@ import type {
   ProjectFamilyInfo,
   ProjectGenerateRequest,
   ProjectGenerateResponse,
+  PropellerEvolveRequest,
+  PropellerEvolveResponse,
+  Simp3DLinkRequest,
+  Simp3DLinkResponse,
 } from "./types";
 
 async function reqJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -159,6 +163,19 @@ export const api = {
 
   generateProject: (familyId: string, body: ProjectGenerateRequest) =>
     reqJson<ProjectGenerateResponse>(`/api/projects/${familyId}/generate`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // v13.0: Diseño Generativo por Física (NSGA-II Hélices + SIMP 3D Orgánico)
+  evolvePropeller: (body: PropellerEvolveRequest) =>
+    reqJson<PropellerEvolveResponse>("/api/projects/propeller/evolve", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  generateSimp3DLink: (body: Simp3DLinkRequest) =>
+    reqJson<Simp3DLinkResponse>("/api/projects/generative/simp3d-link", {
       method: "POST",
       body: JSON.stringify(body),
     }),

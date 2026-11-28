@@ -4,6 +4,8 @@ import type {
   ProjectFamilyId,
   ProjectFamilyInfo,
   ProjectGenerateResponse,
+  PropellerEvolveResponse,
+  PropellerWinner,
 } from "../../types";
 import { DFMAuditCard } from "./DFMAuditCard";
 
@@ -96,6 +98,38 @@ const FALLBACK_FAMILIES: ProjectFamilyInfo[] = [
       },
     ],
   },
+  {
+    id: "propeller",
+    name: "Hélices BEMT",
+    subtitle: "Aerodinámica BEMT · Evolución NSGA-II · Par CCW+CW",
+    icon: "🌀",
+    presets: [
+      {
+        id: "fpv_5043_tri",
+        name: "FPV 5043 Tri-Pala",
+        subtitle: "5.0\" · 3 Palas · 18k RPM",
+        material_id: "pa12_cf",
+        printer_id: "bambu_x1c",
+        defaults: { diameter_inch: 5.0, rpm: 18000, blade_count: 3, prop_style: "standard", target_thrust_g: 480 },
+      },
+      {
+        id: "cinewhoop_3020_quad",
+        name: "Cinewhoop 3\" Silenciosa",
+        subtitle: "3.0\" · 4 Palas · Toroidal",
+        material_id: "resin_abs_like",
+        printer_id: "elegoo_mars_5_ultra",
+        defaults: { diameter_inch: 3.0, rpm: 22000, blade_count: 4, prop_style: "toroidal", target_thrust_g: 260 },
+      },
+      {
+        id: "longrange_7035_bi",
+        name: "Long-Range 7\" Bi-Pala",
+        subtitle: "7.0\" · 2 Palas · Máx. Eficiencia",
+        material_id: "pa12_cf",
+        printer_id: "bambu_x1c",
+        defaults: { diameter_inch: 7.0, rpm: 12000, blade_count: 2, prop_style: "standard", target_thrust_g: 680 },
+      },
+    ],
+  },
 ];
 
 const METRIC_LABELS: Record<string, { label: string; unit?: string }> = {
@@ -112,6 +146,14 @@ const METRIC_LABELS: Record<string, { label: string; unit?: string }> = {
   motor_torque_nm: { label: "Par Motor Req.", unit: "N·m" },
   required_torque_nm: { label: "Par Req.", unit: "N·m" },
   safety_factor: { label: "Factor Seg.", unit: "×" },
+  thrust_g: { label: "Empuje", unit: "g" },
+  efficiency_g_per_w: { label: "Eficiencia", unit: "g/W" },
+  noise_dba: { label: "Ruido Est.", unit: "dBA" },
+  root_sf: { label: "FS Raíz", unit: "×" },
+  mass_savings_pct: { label: "Ahorro Masa", unit: "%" },
+  volume_fraction_pct: { label: "Volumen", unit: "%" },
+  volume_fraction: { label: "Frac. Vol.", unit: "" },
+  triangle_count: { label: "Triángulos", unit: "" },
 };
 
 export interface ProjectsSidebarProps {
@@ -133,6 +175,7 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
 }) => {
   const [families, setFamilies] = useState<ProjectFamilyInfo[]>(FALLBACK_FAMILIES);
   const [familyId, setFamilyId] = useState<ProjectFamilyId>("fpv_drone");
+  const [generativeMode, setGenerativeMode] = useState<"families" | "simp3d">("families");
   const [presetId, setPresetId] = useState<string>("freestyle_5in");
   const [materialId, setMaterialId] = useState<string>("pa12_cf");
   const [printerId, setPrinterId] = useState<string>("bambu_x1c");
@@ -141,6 +184,22 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
     plate_thickness_mm: 4.0,
     stack_mm: 30.5,
     battery_cells: 6,
+  });
+
+  // v13.0 Propeller NSGA-II Genetic Evolution state
+  const [evolveRes, setEvolveRes] = useState<PropellerEvolveResponse | null>(null);
+  const [activeWinnerId, setActiveWinnerId] = useState<string | null>(null);
+
+  // v13.0 Organic SIMP 3D Topology Optimization state
+  const [simpParams, setSimpParams] = useState({
+    length_mm: 180,
+    root_width_mm: 38,
+    tip_width_mm: 24,
+    thickness_mm: 22,
+    payload_kg: 2.0,
+    angular_accel_rad_s2: 15,
+    volume_fraction: 0.38,
+    overhang_filter_45: true,
   });
 
   useEffect(() => {
@@ -162,7 +221,10 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
   );
 
   const selectFamily = (fid: ProjectFamilyId) => {
+    setGenerativeMode("families");
     setFamilyId(fid);
+    setEvolveRes(null);
+    setActiveWinnerId(null);
     const fam = families.find((f) => f.id === fid) || FALLBACK_FAMILIES.find((f) => f.id === fid);
     const first = fam?.presets?.[0];
     if (first) {
@@ -171,8 +233,11 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
   };
 
   const applyPreset = (fid: ProjectFamilyId, preset: any) => {
+    setGenerativeMode("families");
     setFamilyId(fid);
     setPresetId(preset.id);
+    setEvolveRes(null);
+    setActiveWinnerId(null);
     if (preset.material_id) setMaterialId(preset.material_id);
     if (preset.printer_id) setPrinterId(preset.printer_id);
     const fallbackPreset = FALLBACK_FAMILIES.find((f) => f.id === fid)?.presets.find((p) => p.id === preset.id);
@@ -198,20 +263,111 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
     }
   };
 
+  const handleEvolvePropeller = async () => {
+    onBusyChange("Evolucionando hélices por física BEMT (NSGA-II)...");
+    try {
+      const res = await api.evolvePropeller({
+        target_thrust_g: Number(params.target_thrust_g ?? 480),
+        diameter_inch: Number(params.diameter_inch ?? 5.0),
+        rpm: Number(params.rpm ?? 18000),
+        blade_count: Number(params.blade_count ?? 3),
+        prop_style: String(params.prop_style ?? "standard"),
+        material_id: materialId,
+      });
+      setEvolveRes(res);
+      setActiveWinnerId(null);
+      onToast(
+        `NSGA-II completado: ${res.evaluations} hélices evaluadas en ${res.elapsed_s.toFixed(2)}s (${res.winners.length} ganadoras Pareto).`
+      );
+    } catch (err: any) {
+      onToast(`Error evolucionando hélices: ${err.message}`, true);
+    } finally {
+      onBusyChange(null);
+    }
+  };
+
+  const handleBuildEvolvedWinner = async (w: PropellerWinner) => {
+    setActiveWinnerId(w.candidate_id);
+    onBusyChange(`Sintetizando par CCW+CW «${w.label}» (build123d)...`);
+    try {
+      const res = await api.generateProject("propeller", {
+        preset_id: presetId || "fpv_5043_tri",
+        material_id: materialId,
+        printer_id: printerId,
+        params: {
+          diameter_inch: Number(params.diameter_inch ?? 5.0),
+          rpm: Number(params.rpm ?? 18000),
+          blade_count: Number(params.blade_count ?? 3),
+          airfoil_id: w.airfoil_id,
+          prop_style: String(params.prop_style ?? "standard"),
+          sweep_deg: w.sweep_deg,
+          rake_deg: w.rake_deg,
+          custom_stations: w.stations,
+          evolved_label: w.label,
+          evolved_metrics: w.metrics,
+        },
+      });
+      onResult(res, materialId);
+      onToast(`Par CCW+CW «${w.label}» renderizado en el visor 3D.`);
+    } catch (err: any) {
+      onToast(`Error sintetizando hélice ganadora: ${err.message}`, true);
+    } finally {
+      onBusyChange(null);
+    }
+  };
+
+  const handleGenerateSimp3D = async () => {
+    onBusyChange("Esculpiendo eslabón orgánico SIMP 3D (TopOpt Volumétrico + Langelaar 45°)...");
+    try {
+      const res = await api.generateSimp3DLink({
+        ...simpParams,
+        material_id: materialId,
+        printer_id: printerId,
+      });
+      const filesMap: Record<string, string> = {
+        glb: res.glb_url,
+        stl: res.stl_url,
+      };
+      if (res.threemf_url) filesMap.threemf = res.threemf_url;
+
+      const adapted: ProjectGenerateResponse = {
+        family_id: "simp3d_generative",
+        preset_id: "simp3d_link",
+        design_hash: res.design_hash,
+        name: res.name,
+        metrics: res.metrics || {},
+        bom: [],
+        total_bom_cost_usd: Number(res.metrics?.estimated_cost_usd ?? 0),
+        dfm_audit: res.dfm_audit,
+        explode_vectors: {},
+        files: filesMap,
+      };
+      onResult(adapted, materialId);
+      const savePct = res.metrics?.mass_savings_pct;
+      onToast(
+        `${res.name} esculpido${typeof savePct === "number" ? ` (-${savePct.toFixed(1)}% masa)` : ""} · DFM ${res.dfm_audit?.status?.toUpperCase() || "PASS"}.`
+      );
+    } catch (err: any) {
+      onToast(`Error en SIMP 3D: ${err.message}`, true);
+    } finally {
+      onBusyChange(null);
+    }
+  };
+
   return (
     <>
       <div className="section-card">
         <div className="section-title">
-          <span>Proyectos 3D Multi-Familia (v9.0)</span>
+          <span>Proyectos 3D &amp; Generativo (v13.0)</span>
         </div>
 
-        {/* Family selector */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 5, marginBottom: 8 }}>
+        {/* Family selector + Generative SIMP 3D button */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, marginBottom: 8 }}>
           {families.map((fam) => (
             <button
               key={fam.id}
               type="button"
-              className={`btn-tool ${familyId === fam.id ? "active" : ""}`}
+              className={`btn-tool ${generativeMode === "families" && familyId === fam.id ? "active" : ""}`}
               style={{
                 padding: "7px 6px",
                 fontSize: 11,
@@ -227,9 +383,31 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
               <div>{fam.name}</div>
             </button>
           ))}
+          <button
+            type="button"
+            className={`btn-tool ${generativeMode === "simp3d" ? "active" : ""}`}
+            style={{
+              gridColumn: "1 / -1",
+              padding: "8px 8px",
+              fontSize: 11.5,
+              textAlign: "center",
+              background:
+                generativeMode === "simp3d"
+                  ? "rgba(16, 185, 129, 0.22)"
+                  : "rgba(56, 189, 248, 0.12)",
+              borderColor:
+                generativeMode === "simp3d"
+                  ? "rgba(16, 185, 129, 0.65)"
+                  : "rgba(56, 189, 248, 0.42)",
+            }}
+            onClick={() => setGenerativeMode("simp3d")}
+          >
+            🧬 Generativo SIMP 3D (Eslabón Orgánico TopOpt)
+          </button>
         </div>
 
-        {/* Presets */}
+        {/* Presets (only in standard family mode) */}
+        {generativeMode === "families" && (
         <div className="preset-grid">
           {(activeFamily?.presets || []).map((p) => (
             <button
@@ -243,9 +421,10 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
             </button>
           ))}
         </div>
+        )}
 
         {/* Family-specific parametric sliders */}
-        {familyId === "fpv_drone" && (
+        {generativeMode === "families" && familyId === "fpv_drone" && (
           <>
             <div className="field-row">
               <div className="field-head">
@@ -301,7 +480,7 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
           </>
         )}
 
-        {familyId === "rover_4wd" && (
+        {generativeMode === "families" && familyId === "rover_4wd" && (
           <>
             <div className="field-row">
               <div className="field-head">
@@ -356,7 +535,7 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
           </>
         )}
 
-        {familyId === "camera_gimbal" && (
+        {generativeMode === "families" && familyId === "camera_gimbal" && (
           <>
             <div className="two-col">
               <div className="field-row">
@@ -411,6 +590,214 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
           </>
         )}
 
+        {generativeMode === "families" && familyId === "propeller" && (
+          <>
+            <div className="field-row">
+              <div className="field-head">
+                <span>Empuje Objetivo</span>
+                <span>{Math.round(Number(params.target_thrust_g ?? 480))} g</span>
+              </div>
+              <input
+                type="range"
+                min={100}
+                max={1500}
+                step={20}
+                value={Number(params.target_thrust_g ?? 480)}
+                onChange={(e) => setParams((p) => ({ ...p, target_thrust_g: Number(e.target.value) }))}
+              />
+            </div>
+            <div className="field-row">
+              <div className="field-head">
+                <span>Diámetro Hélice</span>
+                <span>{Number(params.diameter_inch ?? 5.0).toFixed(1)}&quot;</span>
+              </div>
+              <input
+                type="range"
+                min={2.5}
+                max={8.0}
+                step={0.5}
+                value={Number(params.diameter_inch ?? 5.0)}
+                onChange={(e) => setParams((p) => ({ ...p, diameter_inch: Number(e.target.value) }))}
+              />
+            </div>
+            <div className="field-row">
+              <div className="field-head">
+                <span>Régimen RPM</span>
+                <span>{Math.round(Number(params.rpm ?? 18000)).toLocaleString("es")} RPM</span>
+              </div>
+              <input
+                type="range"
+                min={8000}
+                max={28000}
+                step={500}
+                value={Number(params.rpm ?? 18000)}
+                onChange={(e) => setParams((p) => ({ ...p, rpm: Number(e.target.value) }))}
+              />
+            </div>
+            <div className="two-col">
+              <div className="field-row">
+                <div className="field-head"><span>Palas</span></div>
+                <select
+                  value={Number(params.blade_count ?? 3)}
+                  onChange={(e) => setParams((p) => ({ ...p, blade_count: Number(e.target.value) }))}
+                >
+                  <option value={2}>2 Palas</option>
+                  <option value={3}>3 Palas</option>
+                  <option value={4}>4 Palas</option>
+                </select>
+              </div>
+              <div className="field-row">
+                <div className="field-head"><span>Estilo</span></div>
+                <select
+                  value={String(params.prop_style ?? "standard")}
+                  onChange={(e) => setParams((p) => ({ ...p, prop_style: e.target.value }))}
+                >
+                  <option value="standard">Estándar</option>
+                  <option value="toroidal">Toroidal</option>
+                  <option value="scimitar">Cimitarra</option>
+                </select>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="btn-primary"
+              style={{
+                width: "100%",
+                marginTop: 8,
+                background: "linear-gradient(135deg, #059669, #10b981)",
+              }}
+              disabled={busy}
+              onClick={handleEvolvePropeller}
+            >
+              {busy ? "Evolucionando NSGA-II..." : "🧬 Evolucionar Hélices por Física (NSGA-II)"}
+            </button>
+
+            {evolveRes && (
+              <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ fontSize: 10.5, color: "#94a3b8", display: "flex", justifyContent: "space-between" }}>
+                  <span>
+                    Baseline: {Number(evolveRes.baseline_metrics?.efficiency_g_per_w ?? 0).toFixed(2)} g/W ·{" "}
+                    {Number(evolveRes.baseline_metrics?.noise_dba ?? 0).toFixed(1)} dBA
+                  </span>
+                  <span>
+                    {evolveRes.evaluations} eval · {evolveRes.elapsed_s.toFixed(1)}s
+                  </span>
+                </div>
+                {evolveRes.winners.map((w) => {
+                  const eff = Number(w.metrics?.efficiency_g_per_w ?? 0);
+                  const dba = Number(w.metrics?.noise_dba ?? 0);
+                  const thr = Number(w.metrics?.thrust_g ?? 0);
+                  const sf = Number(w.metrics?.root_sf ?? 0);
+                  const isSel = activeWinnerId === w.candidate_id;
+                  return (
+                    <button
+                      key={w.candidate_id}
+                      type="button"
+                      className={`preset-btn ${isSel ? "active" : ""}`}
+                      style={{ width: "100%", padding: "8px 9px" }}
+                      disabled={busy}
+                      onClick={() => handleBuildEvolvedWinner(w)}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+                        <strong>{w.label}</strong>
+                        <span className="badge good">{eff.toFixed(2)} g/W</span>
+                      </div>
+                      <small style={{ color: "#cbd5e1" }}>{w.summary}</small>
+                      <small style={{ fontFamily: "var(--mono)", color: "#7dd3fc" }}>
+                        {Math.round(thr)} g · {dba.toFixed(1)} dBA · FS {sf.toFixed(1)}× · Sweep {w.sweep_deg.toFixed(0)}°
+                      </small>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {generativeMode === "simp3d" && (
+          <>
+            <div className="field-row">
+              <div className="field-head">
+                <span>Longitud Eslabón</span>
+                <span>{simpParams.length_mm} mm</span>
+              </div>
+              <input
+                type="range"
+                min={100}
+                max={320}
+                step={10}
+                value={simpParams.length_mm}
+                onChange={(e) => setSimpParams((p) => ({ ...p, length_mm: Number(e.target.value) }))}
+              />
+            </div>
+            <div className="field-row">
+              <div className="field-head">
+                <span>Carga Útil (Punta)</span>
+                <span>{simpParams.payload_kg.toFixed(1)} kg</span>
+              </div>
+              <input
+                type="range"
+                min={0.5}
+                max={6.0}
+                step={0.25}
+                value={simpParams.payload_kg}
+                onChange={(e) => setSimpParams((p) => ({ ...p, payload_kg: Number(e.target.value) }))}
+              />
+            </div>
+            <div className="field-row">
+              <div className="field-head">
+                <span>Aceleración Angular</span>
+                <span>{simpParams.angular_accel_rad_s2} rad/s²</span>
+              </div>
+              <input
+                type="range"
+                min={5}
+                max={30}
+                step={1}
+                value={simpParams.angular_accel_rad_s2}
+                onChange={(e) => setSimpParams((p) => ({ ...p, angular_accel_rad_s2: Number(e.target.value) }))}
+              />
+            </div>
+            <div className="field-row">
+              <div className="field-head">
+                <span>Fracción de Volumen</span>
+                <span>{Math.round(simpParams.volume_fraction * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min={25}
+                max={55}
+                step={1}
+                value={Math.round(simpParams.volume_fraction * 100)}
+                onChange={(e) => setSimpParams((p) => ({ ...p, volume_fraction: Number(e.target.value) / 100 }))}
+              />
+            </div>
+            <label className="check-row">
+              <span>Filtro Voladizos Langelaar 45° (Sin Soportes)</span>
+              <input
+                type="checkbox"
+                checked={simpParams.overhang_filter_45}
+                onChange={(e) => setSimpParams((p) => ({ ...p, overhang_filter_45: e.target.checked }))}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn-primary"
+              style={{
+                width: "100%",
+                marginTop: 10,
+                background: "linear-gradient(135deg, #059669, #10b981)",
+              }}
+              disabled={busy}
+              onClick={handleGenerateSimp3D}
+            >
+              {busy ? "Esculpiendo SIMP 3D..." : "🧬 Esculpir Eslabón Orgánico 3D"}
+            </button>
+          </>
+        )}
+
+        {generativeMode === "families" && (
         <button
           type="button"
           className="btn-primary"
@@ -420,6 +807,7 @@ export const ProjectsSidebar: React.FC<ProjectsSidebarProps> = ({
         >
           {busy ? "Generando CAD 3D..." : "Generar Proyecto 3D"}
         </button>
+        )}
       </div>
 
       {/* Printer & Material */}
@@ -512,6 +900,16 @@ export const ProjectsInspector: React.FC<ProjectsInspectorProps> = ({ result }) 
           {result.files?.stl_parts_zip && (
             <a className="dl-link dl-zip" href={result.files.stl_parts_zip} download>
               ★ Piezas 3D (.STL · ZIP)
+            </a>
+          )}
+          {result.files?.stl && (
+            <a className="dl-link dl-zip" href={result.files.stl} download>
+              ★ Descargar .STL
+            </a>
+          )}
+          {result.files?.threemf && (
+            <a className="dl-link" href={result.files.threemf} download>
+              .3MF
             </a>
           )}
           {result.files?.step && (

@@ -112,8 +112,10 @@ class PropellerPlugin(ProjectFamilyPlugin):
         prop_style = str(cfg.get("prop_style", "conventional"))
         shaft_d = max(1.5, min(8.0, float(cfg.get("shaft_diam_mm", 5.0))))
         chord_scale = max(0.7, min(1.4, float(cfg.get("chord_scale", 1.0))))
-        sweep_deg = max(-15.0, min(20.0, float(cfg.get("sweep_deg", 0.0))))
+        sweep_deg = max(-15.0, min(22.0, float(cfg.get("sweep_deg", 0.0))))
         rake_deg = max(-10.0, min(12.0, float(cfg.get("rake_deg", 0.0))))
+        custom_stations = cfg.get("custom_stations") if isinstance(cfg.get("custom_stations"), list) else None
+        evolved_label = str(cfg.get("evolved_label") or "").strip()
 
         density = float(material.get("density_g_cm3", 1.25))
         yield_z = float(material.get("yield_z_mpa", material.get("yield_mpa", 38.0)))
@@ -130,7 +132,7 @@ class PropellerPlugin(ProjectFamilyPlugin):
             material_yield_z_mpa=yield_z,
         )
 
-        # 2. Generate matched CCW & CW B-Rep propeller solids
+        # 2. Generate matched CCW & CW B-Rep propeller solids (supports evolved NSGA-II custom_stations!)
         prop_ccw_raw = generate_propeller_part(
             diameter_inch=diam_in,
             pitch_inch=pitch_in,
@@ -142,6 +144,7 @@ class PropellerPlugin(ProjectFamilyPlugin):
             chord_scale=chord_scale,
             sweep_deg=sweep_deg,
             rake_deg=rake_deg,
+            custom_stations=custom_stations,
         )
         prop_cw_raw = generate_propeller_part(
             diameter_inch=diam_in,
@@ -154,6 +157,7 @@ class PropellerPlugin(ProjectFamilyPlugin):
             chord_scale=chord_scale,
             sweep_deg=sweep_deg,
             rake_deg=rake_deg,
+            custom_stations=custom_stations,
         )
 
         # Side-by-side presentation offset (no overlap in 3D viewport)
@@ -163,8 +167,13 @@ class PropellerPlugin(ProjectFamilyPlugin):
 
         real_mass_g = round((prop_ccw_raw.volume / 1000.0) * density, 2)
         metrics = bemt.to_metrics_dict()
+        if isinstance(cfg.get("evolved_metrics"), dict):
+            metrics.update(cfg["evolved_metrics"])
         metrics["cad_volume_mm3"] = round(float(prop_ccw_raw.volume), 1)
         metrics["cad_mass_g"] = real_mass_g
+        metrics["evolved"] = bool(custom_stations)
+        if evolved_label:
+            metrics["evolved_label"] = evolved_label
 
         style_label = "Toroidal (Lazo Cerrado)" if bemt.prop_style == "toroidal" else "Convencional NURBS"
         bom = [
@@ -213,16 +222,22 @@ class PropellerPlugin(ProjectFamilyPlugin):
             "propeller_cw": [24.0, 0.0, 12.0],
         }
 
+        project_name = f"{preset['name']} · {evolved_label}" if evolved_label else preset["name"]
         notes = [
-            f"BEMT ({style_label} · {airfoil_id.upper()}): {bemt.thrust_g:.0f} g empuje @ {rpm:.0f} RPM ({bemt.power_w:.0f} W · {bemt.efficiency_g_per_w:.2f} g/W · FM {bemt.figure_of_merit:.2f}).",
-            f"Estructural raíz: F_centrífuga = {bemt.centrifugal_force_n:.1f} N · σ = {bemt.root_stress_mpa:.1f} MPa · FS = {bemt.root_safety_factor:.2f} · Ruido est. {bemt.estimated_noise_dba:.1f} dBA.",
+            f"BEMT ({style_label} · {airfoil_id.upper()}): {metrics.get('thrust_g', bemt.thrust_g):.0f} g empuje @ {rpm:.0f} RPM ({metrics.get('power_w', bemt.power_w):.0f} W · {metrics.get('efficiency_g_per_w', bemt.efficiency_g_per_w):.2f} g/W).",
+            f"Estructural raíz: F_centrífuga = {bemt.centrifugal_force_n:.1f} N · σ = {bemt.root_stress_mpa:.1f} MPa · FS = {bemt.root_safety_factor:.2f} · Ruido est. {metrics.get('estimated_noise_dba', bemt.estimated_noise_dba):.1f} dBA.",
+            *(
+                [f"Geometría evolucionada NSGA-II ({evolved_label or 'Pareto'}) con {len(custom_stations)} estaciones radiales únicas."]
+                if custom_stations
+                else []
+            ),
             *bemt.warnings,
         ]
 
         return package_project_exports(
             family_id=self.family_id,
             preset_id=preset["id"],
-            name=preset["name"],
+            name=project_name,
             design_hash=design_hash,
             req=req,
             material=material,

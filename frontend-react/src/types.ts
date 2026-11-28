@@ -544,7 +544,7 @@ export interface DFMAuditReport {
   checks: DFMCheckItem[];
 }
 
-export type ProjectFamilyId = "fpv_drone" | "rover_4wd" | "camera_gimbal";
+export type ProjectFamilyId = "fpv_drone" | "rover_4wd" | "camera_gimbal" | "propeller";
 
 export interface ProjectPresetInfo {
   id: string;
@@ -581,4 +581,58 @@ export interface ProjectGenerateResponse {
   dfm_audit: DFMAuditReport;
   explode_vectors: Record<string, number[]>;
   files: Record<string, string>;
+}
+
+// v13.0: Diseño Generativo por Física (Evolucionador NSGA-II de Hélices + TopOpt Orgánico SIMP 3D)
+export interface PropellerEvolveRequest {
+  target_thrust_g: number;
+  diameter_inch: number;
+  rpm: number;
+  blade_count: number;
+  prop_style: string;
+  material_id: string;
+}
+
+export interface PropellerWinner {
+  candidate_id: string;
+  label: string;
+  summary: string;
+  airfoil_id: string;
+  sweep_deg: number;
+  rake_deg: number;
+  metrics: Record<string, any>;
+  stations: Array<Record<string, any>>;
+}
+
+export interface PropellerEvolveResponse {
+  baseline_metrics: Record<string, any>;
+  elapsed_s: number;
+  evaluations: number;
+  winners: PropellerWinner[];
+  pareto_front: Array<Record<string, any>>;
+}
+
+export interface Simp3DLinkRequest {
+  length_mm: number;
+  root_width_mm: number;
+  tip_width_mm: number;
+  thickness_mm: number;
+  payload_kg: number;
+  angular_accel_rad_s2: number;
+  volume_fraction: number;
+  overhang_filter_45: boolean;
+  material_id: string;
+  printer_id: string;
+}
+
+export interface Simp3DLinkResponse {
+  design_hash: string;
+  name: string;
+  glb_url: string;
+  stl_url: string;
+  threemf_url?: string | null;
+  metrics: Record<string, any>;
+  compliance_history: number[];
+  dfm_audit: DFMAuditReport;
+  notes: string[];
 }

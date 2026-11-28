@@ -27,11 +27,51 @@ from build123d import (
     loft,
 )
 
+from typing import Any
+
 from ..physics.propeller_bemt import (
     AIRFOIL_LIBRARY,
+    BladeStation,
     compute_blade_stations,
     sample_airfoil_coords,
 )
+
+
+def _normalize_custom_stations(
+    custom_stations: list[BladeStation] | list[dict[str, Any]],
+) -> list[BladeStation]:
+    """Normalize a list of BladeStation objects or JSON dicts into sorted, printable BladeStations."""
+    out: list[BladeStation] = []
+    for item in custom_stations:
+        if isinstance(item, BladeStation):
+            r_mm = float(item.r_mm)
+            r_frac = float(item.r_frac)
+            chord_mm = max(2.6, float(item.chord_mm))
+            twist_deg = max(4.0, min(58.0, float(item.twist_deg)))
+            thickness_mm = max(0.75, float(item.thickness_mm))
+            sweep_mm = float(item.sweep_mm)
+            rake_mm = float(item.rake_mm)
+        else:
+            r_mm = float(item["r_mm"])
+            r_frac = float(item.get("r_frac", item.get("r_norm", 0.5)))
+            chord_mm = max(2.6, float(item["chord_mm"]))
+            twist_deg = max(4.0, min(58.0, float(item["twist_deg"])))
+            thickness_mm = max(0.75, float(item.get("thickness_mm", max(0.85, chord_mm * 0.11))))
+            sweep_mm = float(item.get("sweep_mm", 0.0))
+            rake_mm = float(item.get("rake_mm", 0.0))
+        out.append(
+            BladeStation(
+                r_frac=r_frac,
+                r_mm=r_mm,
+                chord_mm=chord_mm,
+                twist_deg=twist_deg,
+                thickness_mm=thickness_mm,
+                sweep_mm=sweep_mm,
+                rake_mm=rake_mm,
+            )
+        )
+    out.sort(key=lambda s: s.r_mm)
+    return out
 
 
 def _make_airfoil_face(
@@ -84,22 +124,26 @@ def _build_conventional_blade(
     sweep_deg: float = 0.0,
     rake_deg: float = 0.0,
     n_sections: int = 8,
+    custom_stations: list[BladeStation] | list[dict[str, Any]] | None = None,
 ) -> Part:
     """Loft a single conventional aerodynamic blade starting embedded inside the hub."""
     spec = AIRFOIL_LIBRARY.get(airfoil_id, AIRFOIL_LIBRARY["naca4412"])
     base_coords = sample_airfoil_coords(airfoil_id, n_per_surface=11, min_te_ratio=0.036)
 
-    stations = compute_blade_stations(
-        diameter_inch=diameter_inch,
-        pitch_inch=pitch_inch,
-        blade_count=blade_count,
-        airfoil_id=airfoil_id,
-        hub_radius_mm=hub_radius_mm,
-        n_stations=n_sections,
-        chord_scale=chord_scale,
-        sweep_deg=sweep_deg,
-        rake_deg=rake_deg,
-    )
+    if custom_stations:
+        stations = _normalize_custom_stations(custom_stations)
+    else:
+        stations = compute_blade_stations(
+            diameter_inch=diameter_inch,
+            pitch_inch=pitch_inch,
+            blade_count=blade_count,
+            airfoil_id=airfoil_id,
+            hub_radius_mm=hub_radius_mm,
+            n_stations=n_sections,
+            chord_scale=chord_scale,
+            sweep_deg=sweep_deg,
+            rake_deg=rake_deg,
+        )
 
     section_faces: list[Face] = []
 
@@ -235,6 +279,7 @@ def generate_propeller_part(
     sweep_deg: float = 0.0,
     rake_deg: float = 0.0,
     fast_preview: bool = False,
+    custom_stations: list[BladeStation] | list[dict[str, Any]] | None = None,
 ) -> Part:
     """Generate a complete 3D B-Rep drone propeller Part centered at origin (Z = spin axis)."""
     diam_mm = diameter_inch * 25.4
@@ -274,6 +319,7 @@ def generate_propeller_part(
             sweep_deg=sweep_deg,
             rake_deg=rake_deg,
             n_sections=n_sec,
+            custom_stations=custom_stations,
         )
 
     # 3. Circular array & boolean fusion with hub (with clean Compound fallback if OCCT fuse fails)
