@@ -36,19 +36,51 @@ def write_simple_dxf_outline(
     circles: list[tuple[float, float, float]],
     rects: list[tuple[float, float, float, float]],
     output_path: Path,
+    title: str = "ROBOFORGE v13.1 CNC PLATE (MM)",
 ) -> Path:
-    """Write a clean R12 ASCII DXF file with CNC bolt circles and plate rectangles."""
+    """Write a clean R12 ASCII DXF with standard CAM layers (OUTLINE, CUT_HOLES, CENTERLINES, ANNOTATIONS)."""
     lines = [
-        "0", "SECTION", "2", "HEADER", "9", "$ACADVER", "1", "AC1009", "0", "ENDSEC",
+        "0", "SECTION", "2", "HEADER",
+        "9", "$ACADVER", "1", "AC1009",
+        "9", "$INSUNITS", "70", "4",  # millimeters
+        "0", "ENDSEC",
+        "0", "SECTION", "2", "TABLES",
+        "0", "TABLE", "2", "LAYER", "70", "4",
+        # Layer 1: OUTLINE (Color 1 = Red, external contour)
+        "0", "LAYER", "2", "OUTLINE", "70", "0", "62", "1", "6", "CONTINUOUS",
+        # Layer 2: CUT_HOLES (Color 5 = Blue, internal bores/holes)
+        "0", "LAYER", "2", "CUT_HOLES", "70", "0", "62", "5", "6", "CONTINUOUS",
+        # Layer 3: CENTERLINES (Color 4 = Cyan, drill center marks)
+        "0", "LAYER", "2", "CENTERLINES", "70", "0", "62", "4", "6", "CONTINUOUS",
+        # Layer 4: ANNOTATIONS (Color 3 = Green, title & overall dimensions)
+        "0", "LAYER", "2", "ANNOTATIONS", "70", "0", "62", "3", "6", "CONTINUOUS",
+        "0", "ENDTAB",
+        "0", "ENDSEC",
         "0", "SECTION", "2", "ENTITIES",
     ]
+    all_x: list[float] = []
+    all_y: list[float] = []
     for cx, cy, r in circles:
+        all_x.extend([cx - r, cx + r])
+        all_y.extend([cy - r, cy + r])
         lines.extend([
             "0", "CIRCLE", "8", "CUT_HOLES",
             "10", f"{cx:.3f}", "20", f"{cy:.3f}", "30", "0.0",
             "40", f"{r:.3f}",
         ])
+        # Add drill center crosshairs on CENTERLINES layer
+        tick = max(1.2, min(3.5, r * 0.65))
+        lines.extend([
+            "0", "LINE", "8", "CENTERLINES",
+            "10", f"{cx - tick:.3f}", "20", f"{cy:.3f}", "30", "0.0",
+            "11", f"{cx + tick:.3f}", "21", f"{cy:.3f}", "31", "0.0",
+            "0", "LINE", "8", "CENTERLINES",
+            "10", f"{cx:.3f}", "20", f"{cy - tick:.3f}", "30", "0.0",
+            "11", f"{cx:.3f}", "21", f"{cy + tick:.3f}", "31", "0.0",
+        ])
     for x0, y0, x1, y1 in rects:
+        all_x.extend([x0, x1])
+        all_y.extend([y0, y1])
         pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
         for i in range(4):
             a, b = pts[i], pts[(i + 1) % 4]
@@ -57,6 +89,18 @@ def write_simple_dxf_outline(
                 "10", f"{a[0]:.3f}", "20", f"{a[1]:.3f}", "30", "0.0",
                 "11", f"{b[0]:.3f}", "21", f"{b[1]:.3f}", "31", "0.0",
             ])
+    if all_x and all_y:
+        w_mm = max(all_x) - min(all_x)
+        h_mm = max(all_y) - min(all_y)
+        tx = min(all_x)
+        ty = min(all_y) - 8.0
+        label = f"{title} | {w_mm:.1f}x{h_mm:.1f}mm | {len(circles)} HOLES"
+        lines.extend([
+            "0", "TEXT", "8", "ANNOTATIONS",
+            "10", f"{tx:.3f}", "20", f"{ty:.3f}", "30", "0.0",
+            "40", "3.0",
+            "1", label,
+        ])
     lines.extend(["0", "ENDSEC", "0", "EOF"])
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

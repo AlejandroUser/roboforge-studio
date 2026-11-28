@@ -187,6 +187,20 @@ def run_simp_3d_link(
     outside_taper_mask = (np.abs(Y) > (half_w_taper + 0.5 * (max_w / ny))) & (~preserve_mask)
     passive_void_mask = obstacle_mask | outside_taper_mask
 
+    # Protect continuous top/bottom outer perimeter chords (z=0 and z=nz-1 along tapered rails)
+    # so Z-bending moment of inertia (I ~ h^3) is never strangled while SIMP sculpts the interior web.
+    z_idx = np.broadcast_to(np.arange(nz)[None, None, :], (nx, ny, nz))
+    dy_voxel = max_w / max(ny, 1)
+    rail_band = (np.abs(Y) >= np.maximum(0.0, half_w_taper - 1.65 * dy_voxel)) & (
+        np.abs(Y) <= (half_w_taper + 0.20 * dy_voxel)
+    )
+    chord_preserve_mask = (
+        ((z_idx <= 1) | (z_idx >= nz - 2))
+        & rail_band
+        & (~passive_void_mask)
+    )
+    preserve_mask = preserve_mask | chord_preserve_mask
+
     # Boundary conditions: clamp root face (ix == 0)
     fixed_nodes = node_grid[0, :, :].ravel()
     fixed_dofs = np.concatenate((3 * fixed_nodes, 3 * fixed_nodes + 1, 3 * fixed_nodes + 2))
@@ -239,14 +253,35 @@ def run_simp_3d_link(
     u_lat_free = np.zeros(n_free, dtype=np.float64)
 
     compliance_history: list[float] = []
-    target_design_mean = volfrac
+    active_domain = ~passive_void_mask
+    n_active = max(int(np.sum(active_domain)), 1)
+    n_preserve = int(np.sum(preserve_mask))
+    # Compute target mean on free design voxels so total active volume matches volfrac
+    target_design_mean = float(
+        np.clip(
+            (volfrac * n_active - n_preserve) / max(int(np.sum(design_mask)), 1),
+            0.12,
+            0.85,
+        )
+    )
 
     for it in range(n_iter):
-        rho_phys = gaussian_filter(rho, sigma=0.75, mode="nearest")
+        rho_phys = gaussian_filter(rho, sigma=0.70, mode="nearest")
         rho_phys[preserve_mask] = 1.0
         rho_phys[passive_void_mask] = 0.001
         if overhang_filter_45:
             rho_phys = _apply_langelaar_overhang_45(rho_phys, preserve_mask, passive_void_mask)
+
+        # Prevent Langelaar + Gaussian filtering from collapsing effective volume below 0.88 * volfrac
+        eff_vf = float(rho_phys[active_domain].mean())
+        if eff_vf < 0.88 * volfrac and np.any(design_mask):
+            boost = min(1.35, (0.92 * volfrac) / max(eff_vf, 1e-4))
+            rho[design_mask] = np.clip(rho[design_mask] * boost, 0.001, 1.0)
+            rho_phys = gaussian_filter(rho, sigma=0.70, mode="nearest")
+            rho_phys[preserve_mask] = 1.0
+            rho_phys[passive_void_mask] = 0.001
+            if overhang_filter_45:
+                rho_phys = _apply_langelaar_overhang_45(rho_phys, preserve_mask, passive_void_mask)
 
         x_flat = rho_phys.ravel()
         e_elem = e_min + (x_flat**penal) * (e_max - e_min)
@@ -266,24 +301,24 @@ def run_simp_3d_link(
             dtype=np.float64,
         )
 
-        # Solve both load cases via warm-started Jacobi-CG
+        # Solve both load cases via warm-started Jacobi-CG (primary Z-bending + lateral Y-stiffness)
         u_vert_free, _ = cg(k_free, f_vert_free, x0=u_vert_free, rtol=1.5e-3, maxiter=200, M=m_precond)
         u_lat_free, _ = cg(k_free, f_lat_free, x0=u_lat_free, rtol=1.5e-3, maxiter=200, M=m_precond)
 
         u_vert[free_dofs] = u_vert_free
         u_lat[free_dofs] = u_lat_free
 
-        # Element strain energies for both load cases
+        # Element strain energies for both load cases (Z bending primary, Y lateral secondary)
         uv_el = u_vert[edof_mat]
         ul_el = u_lat[edof_mat]
         ce_v = np.einsum("ij,jk,ik->i", uv_el, ke, uv_el)
         ce_l = np.einsum("ij,jk,ik->i", ul_el, ke, ul_el)
 
-        c_total = float(np.dot(e_elem, ce_v) + 0.55 * np.dot(e_elem, ce_l))
+        c_total = float(np.dot(e_elem, ce_v) + 0.30 * np.dot(e_elem, ce_l))
         compliance_history.append(round(c_total, 4))
 
-        dc_flat = -penal * (e_max - e_min) * (x_flat ** (penal - 1.0)) * (ce_v + 0.55 * ce_l)
-        dc_3d = gaussian_filter(dc_flat.reshape((nx, ny, nz)), sigma=0.85, mode="nearest")
+        dc_flat = -penal * (e_max - e_min) * (x_flat ** (penal - 1.0)) * (ce_v + 0.30 * ce_l)
+        dc_3d = gaussian_filter(dc_flat.reshape((nx, ny, nz)), sigma=0.80, mode="nearest")
 
         # Optimality Criteria (OC) update over free design voxels
         l1, l2 = 1e-12, 1e12
@@ -319,15 +354,31 @@ def run_simp_3d_link(
         if it >= 8 and change < 0.015:
             break
 
-    # Final filtered & overhang-compliant density field
-    rho_final = gaussian_filter(rho, sigma=0.65, mode="nearest")
-    rho_final[preserve_mask] = 1.0
-    rho_final[passive_void_mask] = 0.001
+    # Final filtered, overhang-compliant, and Heaviside-sharpened density field
+    # (prevents gray 0.25..0.37 voxels from disappearing at SDF iso_level=0.38)
+    rho_smooth = gaussian_filter(rho, sigma=0.55, mode="nearest")
+    rho_smooth[preserve_mask] = 1.0
+    rho_smooth[passive_void_mask] = 0.001
     if overhang_filter_45:
-        rho_final = _apply_langelaar_overhang_45(rho_final, preserve_mask, passive_void_mask)
-    rho_final = np.clip(rho_final, 0.0, 1.0)
+        rho_smooth = _apply_langelaar_overhang_45(rho_smooth, preserve_mask, passive_void_mask)
 
-    active_domain = ~passive_void_mask
+    beta_h = 5.0
+    eta_lo, eta_hi = 0.05, 0.95
+    rho_final = rho_smooth
+    for _ in range(20):
+        eta = 0.5 * (eta_lo + eta_hi)
+        num = np.tanh(beta_h * eta) + np.tanh(beta_h * (rho_smooth - eta))
+        den = np.tanh(beta_h * eta) + np.tanh(beta_h * (1.0 - eta))
+        cand = np.clip(num / max(float(den), 1e-9), 0.0, 1.0)
+        cand[preserve_mask] = 1.0
+        cand[passive_void_mask] = 0.001
+        if float(cand[active_domain].mean()) > volfrac:
+            eta_lo = eta
+        else:
+            eta_hi = eta
+        rho_final = cand
+
+    rho_final = np.clip(rho_final, 0.0, 1.0)
     final_vf = float(rho_final[active_domain].mean()) if np.any(active_domain) else volfrac
     mass_red_pct = max(0.0, min(85.0, (1.0 - final_vf) * 100.0))
     elapsed_s = time.perf_counter() - t0

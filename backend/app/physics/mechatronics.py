@@ -1612,9 +1612,9 @@ def _generate_pca9685_schematic_svg(mechatronics: MechatronicsResponse) -> str:
         f'<rect width="{svg_w}" height="{svg_h}" fill="#0b1120"/>',
         f'<rect width="{svg_w}" height="{svg_h}" fill="url(#rf-grid-pca)"/>',
         '<text x="24" y="32" fill="#f8fafc" font-family="ui-monospace,Consolas,monospace" font-size="16" font-weight="700">'
-        'ROBOFORGE v10.0 — ESQUEMÁTICO BRAZO 5.0 (ARDUINO UNO + PCA9685 I2C · 8 SERVOS)</text>',
+        'ROBOFORGE v13.1 — ESQUEMÁTICO BRAZO 5.0 (ARDUINO UNO + PCA9685 I2C · 8 SERVOS)</text>',
         '<text x="24" y="52" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="11">'
-        f'{escape(pb.recommended_psu)} · {pb.system_voltage_v:.1f}V · Pico {pb.peak_current_a:.1f}A ({pb.peak_power_w:.0f}W) · Arnés {pb.total_harness_length_m:.2f} m</text>',
+        f'{escape(pb.recommended_psu)} · {pb.system_voltage_v:.1f}V · Pico {pb.peak_current_a:.1f}A ({pb.peak_power_w:.0f}W) · Caída I·R {pb.bus_voltage_droop_pct:.1f}% · Stall 30s {pb.estimated_stall_temp_30s_c:.0f}°C</text>',
         # PSU block
         '<rect x="24" y="120" width="190" height="104" rx="8" fill="#111827" stroke="#f59e0b" stroke-width="1.8"/>',
         f'<text x="36" y="144" fill="#fbbf24" font-family="ui-monospace,Consolas,monospace" font-size="12" font-weight="700">FUENTE {pb.system_voltage_v:.1f}V (SERVOS)</text>',
@@ -1628,14 +1628,26 @@ def _generate_pca9685_schematic_svg(mechatronics: MechatronicsResponse) -> str:
         '<text x="36" y="352" fill="#22c55e" font-family="ui-monospace,Consolas,monospace" font-size="10">A4 (SDA) / A5 (SCL)</text>',
         '<text x="36" y="370" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">5V → VCC_5V · GND común</text>',
         '<text x="36" y="388" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">USB 115200 Live (P:...)</text>',
-        # Wires PSU -> PCA9685 (V+ / GND) and Arduino -> PCA9685 (VCC_5V / SDA / SCL / GND)
-        '<line x1="214" y1="162" x2="310" y2="162" stroke="#ef4444" stroke-width="2.8"/>',
+        # Orthogonal Manhattan wiring + inline Fuse F1 + decoupling Cap C1 (1000uF)
+        '<line x1="214" y1="162" x2="240" y2="162" stroke="#ef4444" stroke-width="2.8"/>',
+        '<rect x="240" y="153" width="38" height="18" rx="3" fill="#1e293b" stroke="#fbbf24" stroke-width="1.5"/>',
+        f'<text x="244" y="165" fill="#fbbf24" font-family="ui-monospace,Consolas,monospace" font-size="8.5" font-weight="700">F1 {max(5, int(round(pb.peak_current_a * 1.25)))}A</text>',
+        '<line x1="278" y1="162" x2="310" y2="162" stroke="#ef4444" stroke-width="2.8"/>',
         '<line x1="214" y1="184" x2="310" y2="184" stroke="#64748b" stroke-width="2.4" stroke-dasharray="4 2"/>',
-        f'<text x="218" y="154" fill="#fca5a5" font-family="ui-monospace,Consolas,monospace" font-size="9">V+ {pb.system_voltage_v:.1f}V ({escape(pb.power_wire_awg[:6])})</text>',
-        '<line x1="214" y1="336" x2="310" y2="274" stroke="#22c55e" stroke-width="2.0"/>',
-        '<line x1="214" y1="354" x2="310" y2="292" stroke="#38bdf8" stroke-width="2.0"/>',
-        '<line x1="214" y1="372" x2="310" y2="310" stroke="#64748b" stroke-width="1.8" stroke-dasharray="4 2"/>',
-        '<text x="216" y="294" fill="#86efac" font-family="ui-monospace,Consolas,monospace" font-size="8.5">VCC_5V/SDA/SCL/GND</text>',
+        # Decoupling capacitor C1 across V+/GND
+        '<circle cx="292" cy="162" r="3" fill="#ef4444"/>',
+        '<circle cx="292" cy="184" r="3" fill="#64748b"/>',
+        '<line x1="292" y1="162" x2="292" y2="170" stroke="#94a3b8" stroke-width="1.4"/>',
+        '<line x1="285" y1="170" x2="299" y2="170" stroke="#38bdf8" stroke-width="2.0"/>',
+        '<line x1="285" y1="175" x2="299" y2="175" stroke="#38bdf8" stroke-width="2.0"/>',
+        '<line x1="292" y1="175" x2="292" y2="184" stroke="#94a3b8" stroke-width="1.4"/>',
+        '<text x="220" y="206" fill="#7dd3fc" font-family="ui-monospace,Consolas,monospace" font-size="8.2">C1 1000µF 16V (Anti-Droop)</text>',
+        f'<text x="218" y="146" fill="#fca5a5" font-family="ui-monospace,Consolas,monospace" font-size="9">V+ {pb.system_voltage_v:.1f}V ({escape(pb.power_wire_awg[:6])})</text>',
+        # Orthogonal Manhattan I2C + Logic routing (Arduino -> PCA9685)
+        '<path d="M 214 336 H 252 V 274 H 310" fill="none" stroke="#22c55e" stroke-width="2.0"/>',
+        '<path d="M 214 354 H 264 V 292 H 310" fill="none" stroke="#38bdf8" stroke-width="2.0"/>',
+        '<path d="M 214 372 H 276 V 310 H 310" fill="none" stroke="#64748b" stroke-width="1.8" stroke-dasharray="4 2"/>',
+        '<text x="218" y="264" fill="#86efac" font-family="ui-monospace,Consolas,monospace" font-size="8.5">VCC_5V / SDA / SCL / GND</text>',
         # PCA9685 16ch Shield block
         '<rect x="310" y="130" width="230" height="215" rx="8" fill="#111827" stroke="#a855f7" stroke-width="2.0"/>',
         '<text x="324" y="158" fill="#c084fc" font-family="ui-monospace,Consolas,monospace" font-size="12.5" font-weight="700">PCA9685 16ch I2C</text>',
@@ -1694,9 +1706,9 @@ def _generate_esp32_pca9685_schematic_svg(mechatronics: MechatronicsResponse) ->
         f'<rect width="{svg_w}" height="{svg_h}" fill="#0b1120"/>',
         f'<rect width="{svg_w}" height="{svg_h}" fill="url(#rf-grid-esp32)"/>',
         '<text x="24" y="32" fill="#f8fafc" font-family="ui-monospace,Consolas,monospace" font-size="16" font-weight="700">'
-        'ROBOFORGE v9.0 — ESQUEMÁTICO MARS-MINI (ESP32 WI-FI + PCA9685 0x40 · 5V 5A)</text>',
+        'ROBOFORGE v13.1 — ESQUEMÁTICO MARS-MINI (ESP32 WI-FI + PCA9685 0x40 · 5V 5A)</text>',
         '<text x="24" y="52" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="11">'
-        f'{escape(pb.recommended_psu)} · {pb.system_voltage_v:.1f}V · Pico {pb.peak_current_a:.1f}A ({pb.peak_power_w:.0f}W) · Arnés {pb.total_harness_length_m:.2f} m</text>',
+        f'{escape(pb.recommended_psu)} · {pb.system_voltage_v:.1f}V · Pico {pb.peak_current_a:.1f}A ({pb.peak_power_w:.0f}W) · Caída I·R {pb.bus_voltage_droop_pct:.1f}% · Stall 30s {pb.estimated_stall_temp_30s_c:.0f}°C</text>',
         # PSU 5V 5A block
         '<rect x="24" y="96" width="194" height="104" rx="8" fill="#111827" stroke="#f59e0b" stroke-width="1.8"/>',
         '<text x="36" y="120" fill="#fbbf24" font-family="ui-monospace,Consolas,monospace" font-size="12" font-weight="700">FUENTE 5V 5A (25W)</text>',
@@ -1710,14 +1722,24 @@ def _generate_esp32_pca9685_schematic_svg(mechatronics: MechatronicsResponse) ->
         '<text x="36" y="298" fill="#22c55e" font-family="ui-monospace,Consolas,monospace" font-size="10">GPIO21 (SDA) / GPIO22 (SCL)</text>',
         '<text x="36" y="316" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">3.3V -> VCC · GND -> GND</text>',
         '<text x="36" y="334" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="10">Web Server Sliders 90/120/60/80°</text>',
-        # Wires PSU -> PCA9685 and ESP32 -> PCA9685
-        '<line x1="218" y1="138" x2="314" y2="138" stroke="#ef4444" stroke-width="2.8"/>',
+        # Orthogonal Manhattan wiring + Fuse F1 + Capacitor C1 (1000uF)
+        '<line x1="218" y1="138" x2="244" y2="138" stroke="#ef4444" stroke-width="2.8"/>',
+        '<rect x="244" y="129" width="38" height="18" rx="3" fill="#1e293b" stroke="#fbbf24" stroke-width="1.5"/>',
+        '<text x="248" y="141" fill="#fbbf24" font-family="ui-monospace,Consolas,monospace" font-size="8.5" font-weight="700">F1 5A</text>',
+        '<line x1="282" y1="138" x2="314" y2="138" stroke="#ef4444" stroke-width="2.8"/>',
         '<line x1="218" y1="160" x2="314" y2="160" stroke="#64748b" stroke-width="2.4" stroke-dasharray="4 2"/>',
-        '<text x="226" y="130" fill="#fca5a5" font-family="ui-monospace,Consolas,monospace" font-size="9">5V 5A (18 AWG)</text>',
-        '<line x1="218" y1="286" x2="314" y2="236" stroke="#22c55e" stroke-width="2.0"/>',
-        '<line x1="218" y1="304" x2="314" y2="254" stroke="#38bdf8" stroke-width="2.0"/>',
-        '<line x1="218" y1="322" x2="314" y2="272" stroke="#64748b" stroke-width="1.8" stroke-dasharray="4 2"/>',
-        '<text x="222" y="246" fill="#86efac" font-family="ui-monospace,Consolas,monospace" font-size="9">I2C SDA/SCL/3.3V</text>',
+        '<circle cx="296" cy="138" r="3" fill="#ef4444"/>',
+        '<circle cx="296" cy="160" r="3" fill="#64748b"/>',
+        '<line x1="296" y1="138" x2="296" y2="146" stroke="#94a3b8" stroke-width="1.4"/>',
+        '<line x1="289" y1="146" x2="303" y2="146" stroke="#38bdf8" stroke-width="2.0"/>',
+        '<line x1="289" y1="151" x2="303" y2="151" stroke="#38bdf8" stroke-width="2.0"/>',
+        '<line x1="296" y1="151" x2="296" y2="160" stroke="#94a3b8" stroke-width="1.4"/>',
+        '<text x="222" y="180" fill="#7dd3fc" font-family="ui-monospace,Consolas,monospace" font-size="8.2">C1 1000µF 10V</text>',
+        '<text x="226" y="122" fill="#fca5a5" font-family="ui-monospace,Consolas,monospace" font-size="9">5V 5A (18 AWG)</text>',
+        '<path d="M 218 286 H 256 V 236 H 314" fill="none" stroke="#22c55e" stroke-width="2.0"/>',
+        '<path d="M 218 304 H 268 V 254 H 314" fill="none" stroke="#38bdf8" stroke-width="2.0"/>',
+        '<path d="M 218 322 H 280 V 272 H 314" fill="none" stroke="#64748b" stroke-width="1.8" stroke-dasharray="4 2"/>',
+        '<text x="224" y="226" fill="#86efac" font-family="ui-monospace,Consolas,monospace" font-size="9">I2C SDA / SCL / 3.3V</text>',
         # PCA9685 0x40 block
         '<rect x="314" y="106" width="230" height="214" rx="8" fill="#111827" stroke="#a855f7" stroke-width="2.0"/>',
         '<text x="328" y="134" fill="#c084fc" font-family="ui-monospace,Consolas,monospace" font-size="12.5" font-weight="700">PCA9685 16ch I2C (0x40)</text>',
@@ -1796,9 +1818,9 @@ def generate_circuit_schematic_svg(mechatronics: MechatronicsResponse, dof: int)
         f'<rect width="{svg_w}" height="{svg_h}" fill="#0b1120"/>',
         f'<rect width="{svg_w}" height="{svg_h}" fill="url(#rf-grid)"/>',
         '<text x="24" y="32" fill="#f8fafc" font-family="ui-monospace,Consolas,monospace" font-size="16" font-weight="700">'
-        f'ROBOFORGE STUDIO v5.0 — ESQUEMÁTICO ELÉCTRICO ({escape(header_arch)})</text>',
+        f'ROBOFORGE STUDIO v13.1 — ESQUEMÁTICO ELÉCTRICO ({escape(header_arch)})</text>',
         '<text x="24" y="52" fill="#94a3b8" font-family="ui-monospace,Consolas,monospace" font-size="11">'
-        f'{escape(pb.recommended_psu)} · Pico {pb.peak_power_w:.0f} W ({pb.peak_current_a:.1f} A) · Potencia {escape(pb.power_wire_awg)} · Arnés {pb.total_harness_length_m:.2f} m</text>',
+        f'{escape(pb.recommended_psu)} · Pico {pb.peak_power_w:.0f} W ({pb.peak_current_a:.1f} A) · Caída I·R {pb.bus_voltage_droop_pct:.1f}% · Stall 30s {pb.estimated_stall_temp_30s_c:.0f}°C · {escape(pb.power_wire_awg)}</text>',
     ]
 
     # Block 1: PSU
