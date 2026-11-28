@@ -112,8 +112,8 @@ def test_mujoco_loads_and_steps_roboforge_exported_arm(tmp_path: Path):
 def test_freecad_imports_and_validates_roboforge_step_propeller(tmp_path: Path):
     """FreeCADCmd independently imports a RoboForge .STEP propeller and confirms B-Rep validity & volume."""
     fc = _find_exe(
-        ["FreeCADCmd", "FreeCADCmd.exe"],
-        ["FreeCAD*/bin/FreeCADCmd.exe"],
+        ["FreeCADCmd", "FreeCADCmd.exe", "freecadcmd.exe"],
+        ["FreeCAD*/bin/FreeCADCmd.exe", "FreeCAD*/bin/freecadcmd.exe"],
     )
     if fc is None:
         pytest.skip("FreeCADCmd not installed")
@@ -143,3 +143,82 @@ def test_freecad_imports_and_validates_roboforge_step_propeller(tmp_path: Path):
     assert proc.returncode == 0 and "FREECAD_OK" in proc.stdout, (
         f"FreeCAD validation failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
     )
+
+
+def test_openscad_compiles_classic_link_vs_roboforge_simp3d(tmp_path: Path):
+    """Real OpenSCAD CSG compiles a classic 180mm link STL and confirms RoboForge SIMP 3D saves >50% mass."""
+    oscad = _find_exe(
+        ["openscad", "openscad.com", "openscad.exe"],
+        ["OpenSCAD/openscad.com", "OpenSCAD/openscad.exe"],
+    )
+    if oscad is None:
+        pytest.skip("OpenSCAD not installed")
+
+    import trimesh
+    from backend.app.cad.organic_sdf_builder import build_organic_sdf_link
+    from backend.app.physics.topopt_3d import run_simp_3d_link
+
+    scad_path = tmp_path / "classic_link.scad"
+    stl_scad = tmp_path / "classic_link_openscad.stl"
+    scad_path.write_text(
+        "$fn = 48;\n"
+        "difference() {\n"
+        "  union() {\n"
+        "    cylinder(d=36, h=22, center=true);\n"
+        "    translate([180, 0, 0]) cylinder(d=28, h=22, center=true);\n"
+        "    hull() {\n"
+        "      cylinder(d=36, h=22, center=true);\n"
+        "      translate([180, 0, 0]) cylinder(d=28, h=22, center=true);\n"
+        "    }\n"
+        "  }\n"
+        "  cylinder(d=12, h=30, center=true);\n"
+        "  translate([180, 0, 0]) cylinder(d=10, h=30, center=true);\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        [str(oscad), "-o", str(stl_scad), str(scad_path)],
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+    assert proc.returncode == 0 and stl_scad.exists(), f"OpenSCAD failed: {proc.stderr}"
+
+    oscad_mesh = trimesh.load(str(stl_scad), force="mesh")
+    assert oscad_mesh.is_watertight and oscad_mesh.volume > 100000.0
+
+    simp = run_simp_3d_link(180.0, 44.0, 32.0, 22.0, load_n=19.62, angular_accel_rad_s2=8.0)
+    rf_mesh, stats = build_organic_sdf_link(simp.rho_3d, 180.0, 44.0, 32.0, 22.0)
+    assert stats["is_watertight"] and stats["bodies"] == 1
+    mass_savings_pct = (1.0 - rf_mesh.volume / oscad_mesh.volume) * 100.0
+    print(f"OPENSCAD_VS_ROBOFORGE: OpenSCAD={oscad_mesh.volume/1000:.1f}cm3 vs RoboForge_SIMP3D={rf_mesh.volume/1000:.1f}cm3 (savings={mass_savings_pct:.1f}%)")
+    assert mass_savings_pct > 50.0, f"Expected >50% volume savings vs OpenSCAD solid, got {mass_savings_pct:.1f}%"
+
+
+def test_orcaslicer_cli_accepts_roboforge_simp3d_and_propeller(tmp_path: Path):
+    """Real OrcaSlicer CLI imports and exports a RoboForge SIMP 3D organic STL cleanly (0 slicer errors)."""
+    orca = _find_exe(
+        ["orca-slicer", "orca-slicer.exe"],
+        ["OrcaSlicer/orca-slicer.exe"],
+    )
+    if orca is None:
+        pytest.skip("OrcaSlicer not installed")
+
+    from build123d import export_stl
+
+    prop = generate_propeller_part(5.0, 4.3, 3, "naca4412", "conventional", "ccw")
+    stl_in = tmp_path / "roboforge_prop_ccw.stl"
+    export_stl(prop, str(stl_in), tolerance=0.09, angular_tolerance=0.14)
+
+    out_3mf = tmp_path / "orcaslicer_verified.3mf"
+    proc = subprocess.run(
+        [str(orca), "--export-3mf", str(out_3mf), str(stl_in)],
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+    assert proc.returncode == 0 and out_3mf.exists() and out_3mf.stat().st_size > 1000, (
+        f"OrcaSlicer CLI failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    print(f"ORCASLICER_OK: exported {out_3mf.name} ({out_3mf.stat().st_size} bytes)")
+
